@@ -12,9 +12,10 @@ echo "==> Terra Meta Frontend Deploy"
 echo "    Site URL: https://terrameta.5ggeology.com"
 echo "    API URL:  ${VITE_API_URL}"
 
-if [[ ! -x node_modules/.bin/vite ]]; then
-  echo "==> Installing dependencies..."
-  rm -rf node_modules
+echo "==> Installing dependencies..."
+if [[ -f package-lock.json ]]; then
+  npm ci
+else
   npm install
 fi
 
