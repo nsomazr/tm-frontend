@@ -14,12 +14,13 @@ export default function MapRightDock({ basemap, onBasemapChange, layers }: MapRi
   const current = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
 
   return (
-    <aside className="absolute top-3 right-3 z-10 w-64 flex flex-col gap-2 pointer-events-none max-h-[calc(100%-4rem)] overflow-y-auto">
-      <div className="pointer-events-auto shrink-0 bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+    <aside className="absolute z-10 flex-col gap-2 pointer-events-none max-h-[calc(100%-4rem)] overflow-y-auto
+      top-3 right-3 w-64 hidden md:flex">
+      <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
         <BasemapSwitcher value={basemap} onChange={onBasemapChange} embedded current={current} />
       </div>
-      <div className="pointer-events-auto shrink-0 bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-        <LegendPanel layers={layers} embedded />
+      <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
+        <LegendPanel layers={layers} embedded defaultOpen />
       </div>
     </aside>
   )

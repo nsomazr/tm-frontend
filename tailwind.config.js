@@ -1,12 +1,25 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
+        app: {
+          bg: 'var(--color-app-bg)',
+          surface: 'var(--color-app-surface)',
+          elevated: 'var(--color-app-elevated)',
+          subtle: 'var(--color-app-muted)',
+          border: 'var(--color-app-border)',
+          'border-strong': 'var(--color-app-border-strong)',
+          text: 'var(--color-app-text)',
+          secondary: 'var(--color-app-text-secondary)',
+          muted: 'var(--color-app-text-muted)',
+          'accent-soft': 'var(--color-app-accent-soft)',
+        },
         terra: {
           50: '#f0fdf4',
           100: '#dcfce7',
@@ -31,7 +44,9 @@ export default {
       },
       boxShadow: {
         soft: '0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)',
+        'soft-dark': '0 4px 24px -4px rgba(0, 0, 0, 0.45), 0 8px 16px -6px rgba(0, 0, 0, 0.35)',
         glow: '0 0 40px -10px rgba(22, 163, 74, 0.3)',
+        'glow-dark': '0 0 48px -12px rgba(74, 222, 128, 0.22)',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out',

@@ -6,14 +6,36 @@ import { useAuth } from '../auth/AuthContext'
 import SubscribeCheckoutModal, {
   handleCheckoutResponse,
 } from '../components/payments/SubscribeCheckoutModal'
+import {
+  CheckoutPriceHint,
+  PlanPriceAmount,
+  PricingCurrencyProvider,
+  PricingCurrencyToggle,
+  usePricingCurrency,
+} from '../components/payments/PricingCurrency'
+import { formatUsd, tzsToUsd } from '../hooks/useTzsUsdRate'
 import type { SubscriptionPlan, UserSubscription } from '../types'
 import MarketingHero from '../components/marketing/MarketingHero'
+import MarketingCta, { MarketingCtaLink } from '../components/marketing/MarketingCta'
 import { useTranslation } from '../i18n/LocaleContext'
 import { interpolate } from '../i18n/utils'
+import {
+  localizedBillingCycle,
+  localizedMineralNames,
+  localizedPlanDescription,
+  localizedPlanName,
+} from '../i18n/planLocalization'
 import { FALLBACK_PLANS } from '../constants/fallbackPlans'
 
 function formatPrice(plan: SubscriptionPlan) {
   return `${Number(plan.price).toLocaleString()} ${plan.currency}`
+}
+
+function formatPlanPriceLabel(plan: SubscriptionPlan, currency: 'TZS' | 'USD', rate?: number) {
+  if (currency === 'USD' && rate) {
+    return `${formatUsd(tzsToUsd(Number(plan.price), rate))} USD`
+  }
+  return formatPrice(plan)
 }
 
 type PlanAction = 'subscribe' | 'current' | 'upgrade_annual' | 'switch'
@@ -36,14 +58,14 @@ function resolvePlanAction(
 
 function CheckIcon({ ok }: { ok: boolean | string }) {
   if (typeof ok === 'string') {
-    return <span className="text-xs font-medium text-slate-600">{ok}</span>
+    return <span className="text-xs font-medium text-app-secondary">{ok}</span>
   }
   return ok ? (
-    <svg className="w-5 h-5 text-terra-600 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className="w-5 h-5 text-terra-600 dark:text-terra-400 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
     </svg>
   ) : (
-    <svg className="w-5 h-5 text-slate-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className="w-5 h-5 text-app-muted mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
     </svg>
   )
@@ -52,7 +74,7 @@ function CheckIcon({ ok }: { ok: boolean | string }) {
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border-b border-slate-200 last:border-0">
+    <div className="border-b app-divider last:border-0">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -67,6 +89,24 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 }
 
 export default function SubscriptionsPage() {
+  const { m } = useTranslation()
+  const p = m.pricing
+
+  return (
+    <PricingCurrencyProvider
+      labels={{
+        tzs: p.currencyTzs,
+        usd: p.currencyUsd,
+        liveRateHint: p.liveRateHint,
+        rateUnavailable: p.rateUnavailable,
+      }}
+    >
+      <SubscriptionsPageContent />
+    </PricingCurrencyProvider>
+  )
+}
+
+function SubscriptionsPageContent() {
   const {
     user,
     hasPaidAccess,
@@ -75,14 +115,16 @@ export default function SubscriptionsPage() {
     registerWithOtp,
     loginWithOtp,
   } = useAuth()
-  const { m, t } = useTranslation()
+  const { m, t, locale } = useTranslation()
   const p = m.pricing
+  const { currency, rate } = usePricingCurrency()
   const [checkoutPlanId, setCheckoutPlanId] = useState<number | null>(null)
   const [checkoutError, setCheckoutError] = useState('')
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['plans'],
     queryFn: () => subscriptionsApi.plans().then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: subscription } = useQuery({
@@ -96,16 +138,25 @@ export default function SubscriptionsPage() {
       planId,
       msisdn,
       paymentMethod,
+      cardBrand,
+      cardholderName,
+      billingEmail,
     }: {
       planId: number
       msisdn?: string
       paymentMethod: 'mobile_money' | 'card'
+      cardBrand?: 'visa' | 'mastercard'
+      cardholderName?: string
+      billingEmail?: string
     }) =>
       paymentsApi.checkout({
         order_type: 'subscription',
         plan_id: planId,
         msisdn,
         payment_method: paymentMethod,
+        card_brand: cardBrand,
+        cardholder_name: cardholderName,
+        billing_email: billingEmail,
       }),
     onSuccess: ({ data: checkoutData }) => {
       setCheckoutPlanId(null)
@@ -149,14 +200,27 @@ export default function SubscriptionsPage() {
   const handleSubscribeCheckout = async ({
     paymentMethod,
     msisdn,
+    cardBrand,
+    cardholderName,
+    billingEmail,
   }: {
     paymentMethod: 'mobile_money' | 'card'
     msisdn?: string
+    cardBrand?: 'visa' | 'mastercard'
+    cardholderName?: string
+    billingEmail?: string
   }) => {
     if (checkoutPlanId === null) return
     setCheckoutError('')
     try {
-      await checkout.mutateAsync({ planId: checkoutPlanId, msisdn, paymentMethod })
+      await checkout.mutateAsync({
+        planId: checkoutPlanId,
+        msisdn,
+        paymentMethod,
+        cardBrand,
+        cardholderName,
+        billingEmail,
+      })
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { detail?: string } } }
       setCheckoutError(
@@ -192,6 +256,7 @@ export default function SubscriptionsPage() {
   const resolveCompareValue = (value: boolean | string) => {
     if (value === 'payPerReport') return p.payPerReport
     if (value === 'previewOnly') return p.previewOnly
+    if (value === 'highlightsOnly') return p.highlightsOnly
     if (value === 'included') return p.included
     return value
   }
@@ -205,7 +270,9 @@ export default function SubscriptionsPage() {
       case 'switch':
         return p.switchPlan
       default:
-        return user ? t('pricing.subscribeFor', { price: formatPrice(plan) }) : p.subscribeNow
+        return user
+          ? t('pricing.subscribeFor', { price: formatPlanPriceLabel(plan, currency, rate) })
+          : p.subscribeNow
     }
   }
 
@@ -214,32 +281,6 @@ export default function SubscriptionsPage() {
       <MarketingHero eyebrow={p.eyebrow} title={p.heroTitle} subtitle={p.heroSubtitle}>
         <Link to="/" className="btn-primary text-sm">{p.exploreFree}</Link>
       </MarketingHero>
-
-      {hasPaidAccess && subscription?.is_active && (
-        <div className="bg-emerald-50 border-b border-emerald-100">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-emerald-900">
-            <div>
-              <p className="font-semibold">
-                {interpolate(p.activePlanBanner, {
-                  plan: subscription.plan_detail.name,
-                  cycle: subscription.plan_detail.billing_cycle,
-                })}
-              </p>
-              {subscription.end_date && (
-                <p className="text-emerald-800/80 mt-0.5">
-                  {interpolate(p.activePlanExpires, { date: subscription.end_date })}
-                </p>
-              )}
-            </div>
-            <Link
-              to="/dashboard/subscription"
-              className="font-medium text-emerald-800 hover:text-emerald-950 underline shrink-0"
-            >
-              {p.managePlan}
-            </Link>
-          </div>
-        </div>
-      )}
 
       <section className="py-16 sm:py-20">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -254,6 +295,12 @@ export default function SubscriptionsPage() {
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
             </div>
           ) : (
+            <>
+              {!usingFallbackPlans && plans.some((plan) => Number(plan.price) > 0) && (
+                <div className="flex justify-center mb-8 lg:mb-10">
+                  <PricingCurrencyToggle />
+                </div>
+              )}
             <div className={`grid gap-6 lg:gap-8 ${plans.length >= 2 ? 'lg:grid-cols-3' : plans.length === 1 ? 'lg:grid-cols-2' : 'max-w-md mx-auto'}`}>
               <div className={`card flex flex-col border-slate-200 relative ${!hasPaidAccess ? 'ring-2 ring-slate-300' : ''}`}>
                 {!hasPaidAccess && (
@@ -264,9 +311,8 @@ export default function SubscriptionsPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{p.freeEyebrow}</p>
                 <h2 className="text-xl font-bold text-slate-900 mt-2">{p.freeTitle}</h2>
                 <p className="text-slate-500 text-sm mt-1">{p.freeDesc}</p>
-                <div className="mt-6 pb-6 border-b border-slate-100">
-                  <span className="text-4xl font-bold text-slate-900">0</span>
-                  <span className="text-slate-500 ml-1">TZS</span>
+                <div className="mt-6 pb-6 border-b app-divider">
+                  <PlanPriceAmount amountTzs={0} />
                   <span className="text-slate-400 text-sm ml-2">{p.freeForever}</span>
                 </div>
                 <ul className="mt-6 text-sm text-slate-600 space-y-3 flex-1">
@@ -314,12 +360,11 @@ export default function SubscriptionsPage() {
                       </span>
                     )}
                     <p className="text-xs font-semibold uppercase tracking-wider text-terra-600">{p.paidEyebrow}</p>
-                    <h2 className="text-xl font-bold text-slate-900 mt-2">{plan.name}</h2>
-                    <p className="text-slate-500 text-sm mt-1">{plan.description}</p>
-                    <div className="mt-6 pb-6 border-b border-slate-100">
-                      <span className="text-4xl font-bold text-slate-900">{Number(plan.price).toLocaleString()}</span>
-                      <span className="text-slate-500 ml-1">{plan.currency}</span>
-                      <span className="text-slate-400 text-sm ml-2">/ {plan.billing_cycle}</span>
+                    <h2 className="text-xl font-bold text-slate-900 mt-2">{localizedPlanName(plan, locale)}</h2>
+                    <p className="text-slate-500 text-sm mt-1">{localizedPlanDescription(plan, locale)}</p>
+                    <div className="mt-6 pb-6 border-b app-divider">
+                      <PlanPriceAmount amountTzs={Number(plan.price)} />
+                      <span className="text-slate-400 text-sm ml-2">/ {localizedBillingCycle(plan, locale)}</span>
                       {isAnnual && annualSavings != null && annualSavings > 0 && (
                         <p className="text-xs text-terra-700 font-medium mt-2">
                           {t('pricing.saveVsMonthly', { pct: annualSavings })}
@@ -339,7 +384,10 @@ export default function SubscriptionsPage() {
                           <span>
                             {interpolate(p.mineralLayersIncluded, {
                               count: plan.included_mineral_names.length,
-                              sample: plan.included_mineral_names.slice(0, 3).join(', '),
+                              sample: localizedMineralNames(
+                                plan.included_mineral_names.slice(0, 3),
+                                locale
+                              ).join(', '),
                             })}
                             {plan.included_mineral_names.length > 3 ? '…' : ''}
                           </span>
@@ -366,31 +414,32 @@ export default function SubscriptionsPage() {
                 )
               })}
             </div>
+            </>
           )}
         </div>
       </section>
 
-      <section className="bg-slate-50 py-16 sm:py-20">
+      <section className="bg-app-subtle border-y border-app-border py-16 sm:py-20">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold text-slate-900">{p.compareTitle}</h2>
-            <p className="text-slate-500 mt-2 text-sm">{p.compareSubtitle}</p>
+            <h2 className="text-2xl font-bold text-app-text">{p.compareTitle}</h2>
+            <p className="text-app-muted mt-2 text-sm">{p.compareSubtitle}</p>
           </div>
           <div className="card-flat overflow-hidden p-0">
-            <table className="w-full text-sm">
+            <table className="admin-table">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/80">
-                  <th className="text-left py-3 px-4 font-semibold text-slate-700">{p.featureCol}</th>
-                  <th className="py-3 px-4 font-semibold text-slate-700 text-center w-28">{p.freeCol}</th>
-                  <th className="py-3 px-4 font-semibold text-terra-700 text-center w-28">{p.paidCol}</th>
+                <tr className="bg-app-subtle">
+                  <th>{p.featureCol}</th>
+                  <th className="text-center w-28">{p.freeCol}</th>
+                  <th className="text-center w-28 text-terra-700 dark:text-terra-400">{p.paidCol}</th>
                 </tr>
               </thead>
               <tbody>
                 {p.comparison.map((row) => (
-                  <tr key={row.feature} className="border-b border-slate-50 last:border-0">
-                    <td className="py-3 px-4 text-slate-700">{row.feature}</td>
-                    <td className="py-3 px-4 text-center"><CheckIcon ok={resolveCompareValue(row.free)} /></td>
-                    <td className="py-3 px-4 text-center"><CheckIcon ok={resolveCompareValue(row.paid)} /></td>
+                  <tr key={row.feature}>
+                    <td>{row.feature}</td>
+                    <td className="text-center"><CheckIcon ok={resolveCompareValue(row.free)} /></td>
+                    <td className="text-center"><CheckIcon ok={resolveCompareValue(row.paid)} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -412,25 +461,26 @@ export default function SubscriptionsPage() {
         </div>
       </section>
 
-      <section className="bg-slate-900 text-white py-14">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-xl sm:text-2xl font-bold">{p.ctaTitle}</h2>
-          <p className="text-slate-400 mt-2 text-sm">{p.ctaSubtitle}</p>
-          <div className="flex flex-wrap justify-center gap-3 mt-6">
-            <Link to="/" className="btn-primary text-sm">{p.openMap}</Link>
-            <Link to="/downloads" className="inline-flex items-center px-5 py-2.5 rounded-xl text-sm font-medium border border-white/25 hover:bg-white/10">
-              {m.nav.reports}
-            </Link>
-          </div>
-        </div>
-      </section>
+      <MarketingCta title={p.ctaTitle} subtitle={p.ctaSubtitle}>
+        <MarketingCtaLink to="/" variant="primary">
+          {p.openMap}
+        </MarketingCtaLink>
+        <MarketingCtaLink to="/downloads">{m.nav.reports}</MarketingCtaLink>
+      </MarketingCta>
 
       <SubscribeCheckoutModal
         open={checkoutPlanId !== null}
         requiresAccount={!user}
         defaultPhone={user?.phone || ''}
         defaultEmail={user?.email || ''}
-        planLabel={checkoutPlan ? `${checkoutPlan.name} · ${formatPrice(checkoutPlan)}` : undefined}
+        planLabel={
+          checkoutPlan
+            ? `${localizedPlanName(checkoutPlan, locale)} · ${formatPlanPriceLabel(checkoutPlan, currency, rate)}`
+            : undefined
+        }
+        planPriceHint={
+          checkoutPlan ? <CheckoutPriceHint amountTzs={Number(checkoutPlan.price)} /> : undefined
+        }
         title={user ? p.checkoutTitle : p.subscribeModalTitle}
         description={p.subscribeModalDesc}
         confirmLabel={user ? p.payNow : p.continueToPayment}
@@ -442,13 +492,24 @@ export default function SubscriptionsPage() {
           otpExpiresIn: p.otpExpiresIn,
           back: p.back,
           mobileMoney: p.mobileMoney,
-          cardInternational: p.cardInternational,
+          card: p.card,
           mobileMoneyHint: p.mobileMoneyHint,
-          cardHint: p.cardHint,
+          cardDetailsSubtitle: p.cardDetailsSubtitle,
+          continueToSecurePayment: p.continueToSecurePayment,
+          mobileMoneyNumber: p.mobileMoneyNumber,
+          mobileMoneyPlaceholder: p.mobileMoneyPlaceholder,
+          selectCardType: p.selectCardType,
+          cardDetailsTitle: p.cardDetailsTitle,
+          nameOnCard: p.nameOnCard,
+          billingEmail: p.billingEmail,
+          visa: p.visa,
+          mastercard: p.mastercard,
+          continue: p.continueToPayment,
           authEmailHint: p.authEmailHint,
           otpSentTo: p.otpSentTo,
           passwordCreate: p.passwordCreate,
           passwordSignIn: p.passwordSignIn,
+          cancel: p.cancel,
         }}
         loading={checkout.isPending}
         error={checkoutError}

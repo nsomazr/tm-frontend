@@ -21,20 +21,20 @@ export default function CompliancePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Compliance</h1>
+      <h1 className="text-2xl font-bold text-app-text mb-6">Compliance</h1>
 
       <div className="card mb-8">
-        <h2 className="font-bold mb-4">B2B License Agreements</h2>
+        <h2 className="font-bold text-app-text mb-4">B2B License Agreements</h2>
         {!licenses?.results.length ? (
-          <p className="text-sm text-gray-500">No license agreements.</p>
+          <p className="text-sm text-app-muted">No license agreements.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="app-divide-y">
             {licenses.results.map((l) => (
-              <div key={l.id} className="border-b pb-3 flex justify-between items-start">
+              <div key={l.id} className="pb-3 flex justify-between items-start not-first:pt-3">
                 <div>
-                  <p className="font-medium">{l.company_name}</p>
-                  <p className="text-sm text-gray-500">{l.contact_email}</p>
-                  <p className="text-xs text-gray-400 capitalize">Status: {l.status}</p>
+                  <p className="font-medium text-app-text">{l.company_name}</p>
+                  <p className="text-sm text-app-muted">{l.contact_email}</p>
+                  <p className="text-xs text-app-text-muted capitalize">Status: {l.status}</p>
                 </div>
                 {l.status === 'pending' && (
                   <button
@@ -51,24 +51,24 @@ export default function CompliancePage() {
       </div>
 
       <div className="card">
-        <h2 className="font-bold mb-4">Audit Logs</h2>
+        <h2 className="font-bold text-app-text mb-4">Audit Logs</h2>
         <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-xs">
+          <table className="admin-table">
             <thead>
-              <tr className="border-b text-left">
-                <th className="pb-2">Time</th>
-                <th className="pb-2">Actor</th>
-                <th className="pb-2">Action</th>
-                <th className="pb-2">Resource</th>
+              <tr>
+                <th>Time</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Resource</th>
               </tr>
             </thead>
             <tbody>
               {logs?.results.map((log) => (
-                <tr key={log.id} className="border-b">
-                  <td className="py-1.5">{new Date(log.created_at).toLocaleString()}</td>
-                  <td className="py-1.5">{log.actor_name || 'N/A'}</td>
-                  <td className="py-1.5">{log.action}</td>
-                  <td className="py-1.5">{log.resource_type}</td>
+                <tr key={log.id}>
+                  <td>{new Date(log.created_at).toLocaleString()}</td>
+                  <td>{log.actor_name || 'N/A'}</td>
+                  <td>{log.action}</td>
+                  <td>{log.resource_type}</td>
                 </tr>
               ))}
             </tbody>

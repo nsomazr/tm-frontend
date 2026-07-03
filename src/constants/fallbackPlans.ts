@@ -12,6 +12,8 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     currency: 'TZS',
     included_minerals: [],
     included_mineral_names: ['Gold', 'Graphite', 'Tanzanite'],
+    included_report_downloads: 3,
+    included_assistant_credits: 3000,
   },
   {
     id: 0,
@@ -23,5 +25,7 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     currency: 'TZS',
     included_minerals: [],
     included_mineral_names: ['Gold', 'Graphite', 'Tanzanite'],
+    included_report_downloads: 10,
+    included_assistant_credits: 5000,
   },
 ]

@@ -9,10 +9,10 @@ export default function MapSearchBar({ search, onSearchChange }: MapSearchBarPro
   const { m } = useTranslation()
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 w-[min(100%,28rem)] px-3 pointer-events-none">
+    <div className="absolute top-2 sm:top-3 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-1rem)] max-w-md pointer-events-none">
       <div className="relative pointer-events-auto">
         <svg
-          className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 pointer-events-none"
+          className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 map-text-muted pointer-events-none"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -25,7 +25,7 @@ export default function MapSearchBar({ search, onSearchChange }: MapSearchBarPro
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={m.map.searchPlaceholder}
-          className="w-full h-12 pl-11 pr-4 text-sm font-medium bg-white border border-slate-200 rounded-full shadow-lg placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:border-terra-500 focus:ring-2 focus:ring-terra-500/25"
+          className="map-chrome-input h-9 sm:h-11 pl-10 sm:pl-11 pr-3 sm:pr-4 text-sm"
         />
       </div>
     </div>

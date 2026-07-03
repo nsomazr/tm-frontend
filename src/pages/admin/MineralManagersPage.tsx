@@ -46,13 +46,13 @@ export default function MineralManagersPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Mineral Managers</h1>
-      <p className="text-gray-600 text-sm mb-6">
+      <h1 className="text-2xl font-bold text-app-text mb-6">Mineral Managers</h1>
+      <p className="text-app-muted text-sm mb-6">
         Assign managers to specific minerals. Managers can only edit layers and coordinates for their assigned minerals.
       </p>
 
       <div className="card mb-8">
-        <h2 className="font-bold mb-4">Assign Manager</h2>
+        <h2 className="font-bold text-app-text mb-4">Assign Manager</h2>
         <div className="grid sm:grid-cols-3 gap-4">
           <select value={userId} onChange={(e) => setUserId(e.target.value)} className="input">
             <option value="">Select User</option>
@@ -83,31 +83,31 @@ export default function MineralManagersPage() {
       </div>
 
       <div className="card">
-        <h2 className="font-bold mb-4">Current Assignments</h2>
+        <h2 className="font-bold text-app-text mb-4">Current Assignments</h2>
         {!assignments?.results.length ? (
-          <p className="text-gray-500 text-sm">No assignments yet.</p>
+          <p className="text-app-muted text-sm">No assignments yet.</p>
         ) : (
-          <table className="w-full text-sm">
+          <table className="admin-table">
             <thead>
-              <tr className="border-b text-left">
-                <th className="pb-2">Manager</th>
-                <th className="pb-2">Mineral</th>
-                <th className="pb-2">Can Publish</th>
-                <th className="pb-2">Assigned</th>
-                <th className="pb-2"></th>
+              <tr>
+                <th>Manager</th>
+                <th>Mineral</th>
+                <th>Can Publish</th>
+                <th>Assigned</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {assignments.results.map((a) => (
-                <tr key={a.id} className="border-b">
-                  <td className="py-2">{a.user_detail.username}</td>
-                  <td className="py-2">{a.mineral_name}</td>
-                  <td className="py-2">{a.can_publish ? 'Yes' : 'No'}</td>
-                  <td className="py-2">{new Date(a.assigned_at).toLocaleDateString()}</td>
-                  <td className="py-2">
+                <tr key={a.id}>
+                  <td className="text-app-text">{a.user_detail.username}</td>
+                  <td>{a.mineral_name}</td>
+                  <td>{a.can_publish ? 'Yes' : 'No'}</td>
+                  <td>{new Date(a.assigned_at).toLocaleDateString()}</td>
+                  <td>
                     <button
                       onClick={() => remove.mutate(a.id)}
-                      className="text-red-600 text-xs hover:underline"
+                      className="text-red-600 dark:text-red-400 text-xs hover:underline"
                     >
                       Remove
                     </button>

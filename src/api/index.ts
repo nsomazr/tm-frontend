@@ -1,12 +1,16 @@
 import api from './client'
 import type {
   AdminRevenueSummary,
+  AssistantChatResponse,
+  AssistantMessage,
   AuditLog,
   AreaInsight,
   Invoice,
   LicenseAgreement,
   MapFeature,
   MapLayer,
+  LayerUpload,
+  LayerVersion,
   Mineral,
   MineralManagerAssignment,
   MineralSearchInsight,
@@ -17,6 +21,7 @@ import type {
   SubscriptionPlan,
   User,
   UserSubscription,
+  MyReport,
 } from '../types'
 
 export const authApi = {
@@ -65,12 +70,17 @@ export const mapsApi = {
     api.get(`/maps/layers/${slug}/sample_shapefile/`, { responseType: 'blob' }),
   createLayer: (data: Partial<MapLayer>) => api.post('/maps/layers/', data),
   updateLayer: (slug: string, data: Partial<MapLayer>) => api.patch(`/maps/layers/${slug}/`, data),
+  deleteLayer: (slug: string) => api.delete(`/maps/layers/${slug}/`),
+  versions: (params?: Record<string, string | number>) =>
+    api.get<PaginatedResponse<LayerVersion>>('/maps/versions/', { params }),
+  uploads: (params?: Record<string, string | number>) =>
+    api.get<PaginatedResponse<LayerUpload>>('/maps/uploads/', { params }),
 }
 
 export const subscriptionsApi = {
   plans: () => api.get<PaginatedResponse<SubscriptionPlan>>('/subscriptions/plans/'),
   me: () => api.get<UserSubscription>('/subscriptions/me/'),
-  purchases: () => api.get('/subscriptions/purchases/'),
+  purchases: () => api.get<MyReport[]>('/subscriptions/purchases/'),
 }
 
 export const paymentsApi = {
@@ -81,6 +91,9 @@ export const paymentsApi = {
     license_id?: number
     msisdn?: string
     payment_method?: 'mobile_money' | 'card'
+    card_brand?: 'visa' | 'mastercard'
+    cardholder_name?: string
+    billing_email?: string
   }) => api.post('/payments/checkout/', data),
   orderStatus: (reference: string) => api.get<PaymentOrder>(`/payments/orders/${reference}/status/`),
   invoices: () => api.get<Invoice[]>('/payments/invoices/'),
@@ -92,14 +105,35 @@ export const paymentsApi = {
   completeOrder: (reference: string) => api.post<PaymentOrder>(`/payments/admin/orders/${reference}/complete/`),
 }
 
+export interface ReportAiDraftResponse {
+  executive_summary: string
+  key_findings: string[]
+  assistant_reply: string
+  model_used: string
+}
+
 export const reportsApi = {
   list: (params?: Record<string, string>) =>
     api.get<PaginatedResponse<Report>>('/reports/', { params }),
   get: (slug: string) => api.get<Report>(`/reports/${slug}/`),
   download: (slug: string) => api.get(`/reports/${slug}/download/`, { responseType: 'blob' }),
   adminList: () => api.get<PaginatedResponse<Report>>('/reports/admin/'),
-  create: (data: FormData) =>
-    api.post('/reports/admin/', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  adminGet: (slug: string) => api.get<Report>(`/reports/admin/${slug}/`),
+  create: (data: FormData | Record<string, unknown>) =>
+    data instanceof FormData
+      ? api.post('/reports/admin/', data, { headers: { 'Content-Type': 'multipart/form-data' } })
+      : api.post('/reports/admin/', data),
+  adminUpdate: (slug: string, data: FormData | Record<string, unknown>) =>
+    data instanceof FormData
+      ? api.patch(`/reports/admin/${slug}/`, data, { headers: { 'Content-Type': 'multipart/form-data' } })
+      : api.patch(`/reports/admin/${slug}/`, data),
+  adminDelete: (slug: string) => api.delete(`/reports/admin/${slug}/`),
+  adminAiAssist: (data: FormData) =>
+    api.post<ReportAiDraftResponse>('/reports/admin/ai-assist/', data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  adminGeneratePdf: (slug: string, force = false) =>
+    api.post(`/reports/admin/${slug}/generate-pdf/`, { force }),
 }
 
 export const geographyApi = {
@@ -122,7 +156,8 @@ export const adminApi = {
     api.post('/minerals/managers/', data),
   removeManager: (id: number) => api.delete(`/minerals/managers/${id}/`),
   subscriptions: () => api.get('/subscriptions/admin/list/'),
-  auditLogs: () => api.get<PaginatedResponse<AuditLog>>('/compliance/audit-logs/'),
+  auditLogs: (params?: Record<string, string>) =>
+    api.get<PaginatedResponse<AuditLog>>('/compliance/audit-logs/', { params }),
   licenses: () => api.get<PaginatedResponse<LicenseAgreement>>('/compliance/licenses/'),
   updateLicense: (id: number, data: Partial<LicenseAgreement>) =>
     api.patch(`/compliance/licenses/${id}/`, data),
@@ -135,6 +170,63 @@ export const analyticsApi = {
   adminPlatform: () => api.get<import('../types').AdminPlatformAnalytics>('/analytics/admin/'),
   searchInsights: (q: string) =>
     api.get<{ results: MineralSearchInsight[] }>('/analytics/search-insights/', { params: { q } }),
-  areaInsights: (lat: number, lng: number, zoom: number) =>
-    api.get<AreaInsight>('/analytics/area-insights/', { params: { lat, lng, zoom } }),
+  searchContextInsights: (params: { mineral_slug?: string; region_id?: number }) =>
+    api.get<AreaInsight>('/analytics/search-context-insights/', { params }),
+  areaInsights: (lat: number, lng: number, zoom: number, featureIds?: number[]) =>
+    api.get<AreaInsight>('/analytics/area-insights/', {
+      params: {
+        lat,
+        lng,
+        zoom,
+        ...(featureIds?.length ? { feature_ids: featureIds.join(',') } : {}),
+      },
+    }),
+  assistantCredits: () =>
+    api.get<{ assistant_credits: import('../types').AssistantCredits }>('/analytics/assistant/credits/'),
+  assistantHistory: (params: {
+    mode?: 'map' | 'account'
+    thread_key?: string
+    lat?: number
+    lng?: number
+    zoom?: number
+    mineralSlug?: string
+    regionId?: number
+  }) =>
+    api.get<{
+      thread_key: string
+      chat_history: boolean
+      messages: AssistantMessage[]
+    }>('/analytics/assistant/history/', {
+      params: {
+        mode: params.mode,
+        thread_key: params.thread_key,
+        lat: params.lat,
+        lng: params.lng,
+        zoom: params.zoom,
+        mineral_slug: params.mineralSlug,
+        region_id: params.regionId,
+      },
+    }),
+  assistantChat: (payload: {
+    question: string
+    messages: AssistantMessage[]
+    mode?: 'map' | 'account'
+    lat?: number
+    lng?: number
+    zoom?: number
+    featureIds?: number[]
+    mineralSlug?: string
+    regionId?: number
+    threadKey?: string
+  }) =>
+    api.post<AssistantChatResponse>('/analytics/assistant/chat/', {
+      question: payload.question,
+      messages: payload.messages,
+      mode: payload.mode || 'map',
+      ...(payload.lat != null ? { lat: payload.lat, lng: payload.lng, zoom: payload.zoom ?? 8 } : {}),
+      ...(payload.featureIds?.length ? { feature_ids: payload.featureIds } : {}),
+      ...(payload.mineralSlug ? { mineral_slug: payload.mineralSlug } : {}),
+      ...(payload.regionId != null ? { region_id: payload.regionId } : {}),
+      ...(payload.threadKey ? { thread_key: payload.threadKey } : {}),
+    }),
 }

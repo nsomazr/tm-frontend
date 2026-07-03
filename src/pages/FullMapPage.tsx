@@ -4,10 +4,13 @@ import { analyticsApi, mapsApi } from '../api'
 import MapViewer, { type MapFocusTarget } from '../components/map/MapViewer'
 import MapSidebar from '../components/map/MapSidebar'
 import MapSearchBar from '../components/map/MapSearchBar'
+import TerraAssistantButton from '../components/map/TerraAssistantButton'
+import type { TerraAssistantMapContext } from '../components/assistant/TerraAssistantPanel'
 import { useAuth } from '../auth/AuthContext'
 import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
 import type { AreaInsight, MineralSearchInsight } from '../types'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 import { defaultVisibleLayerIds } from '../components/map/mapUtils'
 
 export default function FullMapPage() {
@@ -22,8 +25,10 @@ export default function FullMapPage() {
   const [areaInsight, setAreaInsight] = useState<AreaInsight | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set())
-  const [analysisActive, setAnalysisActive] = useState(false)
   const [panelDismissed, setPanelDismissed] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantMapContext, setAssistantMapContext] = useState<TerraAssistantMapContext | null>(null)
+  const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -41,6 +46,7 @@ export default function FullMapPage() {
     queryFn: () =>
       mapsApi.layers(mineral ? { mineral_slug: mineral } : {}).then((r) => r.data),
     placeholderData: (prev) => prev,
+    staleTime: 5 * 60 * 1000,
   })
 
   const searchResults = searchData?.results || []
@@ -49,11 +55,12 @@ export default function FullMapPage() {
   const showResultsPanel = useMemo(
     () =>
       !panelDismissed &&
-      (debouncedSearch.length >= 2 ||
+      (assistantOpen ||
+        debouncedSearch.length >= 2 ||
         !!selectedResult ||
         !!areaInsight ||
         insightLoading),
-    [panelDismissed, debouncedSearch, selectedResult, areaInsight, insightLoading]
+    [panelDismissed, assistantOpen, debouncedSearch, selectedResult, areaInsight, insightLoading]
   )
 
   const layerIdsKey = useMemo(
@@ -66,30 +73,95 @@ export default function FullMapPage() {
     setVisibleLayers(defaultVisibleLayerIds(layers))
   }, [mineral, layerIdsKey, layers])
 
-  const focusOn = useCallback((lat: number, lng: number, zoom = 11, radiusM = 12000) => {
-    setMapFocus({ lat, lng, zoom, radiusM, key: Date.now() })
+  const focusOn = useCallback((lat: number, lng: number, zoom = 11) => {
+    setMapFocus((prev) => {
+      if (
+        prev &&
+        Math.abs(prev.lat - lat) < 0.02 &&
+        Math.abs(prev.lng - lng) < 0.02 &&
+        prev.zoom === zoom
+      ) {
+        return prev
+      }
+      return { lat, lng, zoom, key: Date.now() }
+    })
   }, [])
 
-  const handleAreaInspect = useCallback(async (lat: number, lng: number, zoom: number) => {
-    setPanelDismissed(false)
-    setAnalysisActive(true)
-    setInsightLoading(true)
-    focusOn(lat, lng, Math.max(zoom, 11), 8000)
-    try {
-      const { data } = await analyticsApi.areaInsights(lat, lng, zoom)
-      setAreaInsight(data)
-    } catch {
-      setAreaInsight(null)
-    } finally {
-      setInsightLoading(false)
-    }
-  }, [focusOn])
+  const handleAreaInspect = useCallback(
+    async (lat: number, lng: number, zoom: number, featureIds?: number[]) => {
+      setPanelDismissed(false)
+      setInsightLoading(true)
+      setAssistantMapContext({ lat, lng, zoom, featureIds })
+      setAssistantOpen(true)
+      const inspectZoom = isMobile ? Math.min(zoom, 7) : Math.max(zoom, 10)
+      focusOn(lat, lng, inspectZoom)
+      try {
+        const { data } = await analyticsApi.areaInsights(lat, lng, zoom, featureIds)
+        setAreaInsight(data)
+      } catch {
+        setAreaInsight(null)
+      } finally {
+        setInsightLoading(false)
+      }
+    },
+    [focusOn, isMobile]
+  )
 
-  const handleSelectResult = (item: MineralSearchInsight) => {
+  const openAssistantPanel = useCallback(() => {
+    setAssistantOpen(true)
+    setPanelDismissed(false)
+    setAssistantMapContext((prev) =>
+      prev ?? { lat: -6.369, lng: 34.888, zoom: 6 }
+    )
+  }, [])
+
+  const handleAskTerraAboutSearch = useCallback(
+    async (item: MineralSearchInsight) => {
+      setPanelDismissed(false)
+      setAssistantOpen(true)
+      setInsightLoading(true)
+      setAreaInsight(null)
+
+      const lat = item.center?.lat ?? -6.369
+      const lng = item.center?.lng ?? 34.888
+      const zoom = item.zoom ?? 9
+      const searchLabel = displayName(item)
+
+      setAssistantMapContext({
+        lat,
+        lng,
+        zoom,
+        mineralSlug: item.type === 'mineral' ? item.slug : undefined,
+        regionId: item.type === 'region' ? item.id : undefined,
+        searchLabel,
+      })
+
+      if (item.center) {
+        focusOn(lat, lng, zoom)
+      }
+
+      try {
+        const params =
+          item.type === 'mineral' ? { mineral_slug: item.slug } : { region_id: item.id }
+        const { data } = await analyticsApi.searchContextInsights(params)
+        setAreaInsight(data)
+      } catch {
+        setAreaInsight(null)
+      } finally {
+        setInsightLoading(false)
+      }
+    },
+    [displayName, focusOn]
+  )
+
+  const handleSelectResult = useCallback((item: MineralSearchInsight) => {
     setPanelDismissed(false)
     setSelectedResult(item)
     setSearch('')
     setDebouncedSearch('')
+    setAreaInsight(null)
+    setAssistantOpen(false)
+    setAssistantMapContext(null)
 
     if (item.type === 'region') {
       setMineral('')
@@ -98,27 +170,44 @@ export default function FullMapPage() {
     }
 
     if (item.center) {
-      focusOn(item.center.lat, item.center.lng, item.zoom ?? 9, item.type === 'region' ? 18000 : 12000)
+      focusOn(item.center.lat, item.center.lng, item.zoom ?? 9)
     }
-  }
+  }, [focusOn])
+
+  useEffect(() => {
+    if (debouncedSearch.length < 2 || searchLoading || searchResults.length !== 1) return
+    const item = searchResults[0]
+    const q = debouncedSearch.toLowerCase()
+    const name = item.name.toLowerCase()
+    const nameSw = item.name_sw?.toLowerCase() ?? ''
+    if (name === q || name.startsWith(q) || nameSw.startsWith(q)) {
+      handleSelectResult(item)
+    }
+  }, [debouncedSearch, searchLoading, searchResults, handleSelectResult])
 
   const handleClearFilter = () => {
     setMineral('')
     setSelectedResult(null)
     setMapFocus(null)
     setPanelDismissed(false)
+    setAssistantOpen(false)
+    setAreaInsight(null)
+    setAssistantMapContext(null)
   }
 
   const handleClosePanel = () => {
+    setAssistantOpen(false)
     setPanelDismissed(true)
     setSearch('')
     setDebouncedSearch('')
     setMineral('')
     setSelectedResult(null)
     setAreaInsight(null)
-    setAnalysisActive(false)
     setMapFocus(null)
+    setAssistantMapContext(null)
   }
+
+  const askTerraFromSearch = insightLoading && assistantOpen && !!assistantMapContext?.searchLabel
 
   const toggleLayer = (id: number) => {
     setVisibleLayers((prev) => {
@@ -145,9 +234,18 @@ export default function FullMapPage() {
   const initialLoad = isLoading && layers.length === 0
 
   return (
-    <div className="flex h-full relative">
+    <div className="flex h-full min-h-0 w-full min-w-0 overflow-hidden relative">
       {showResultsPanel && (
-        <MapSidebar
+        <>
+          {!assistantOpen && (
+            <button
+              type="button"
+              aria-label={m.map.closePanel}
+              className="fixed inset-0 z-30 bg-black/25 sm:hidden"
+              onClick={handleClosePanel}
+            />
+          )}
+          <MapSidebar
           debouncedSearch={debouncedSearch}
           searchResults={searchResults}
           searchLoading={searchLoading}
@@ -155,14 +253,20 @@ export default function FullMapPage() {
           mineralFilter={mineral}
           onSelectMineral={handleSelectResult}
           onClearFilter={handleClearFilter}
+          onAskTerra={handleAskTerraAboutSearch}
+          askTerraLoading={askTerraFromSearch}
           areaInsight={areaInsight}
           insightLoading={insightLoading}
-          hasDetailAccess={hasPaidAccess || !!areaInsight?.has_detail_access}
+          hasPaidAccess={hasPaidAccess}
+          mapContext={assistantMapContext}
+          assistantOpen={assistantOpen}
+          isMobile={isMobile}
           onClose={handleClosePanel}
         />
+        </>
       )}
 
-      <div className="flex-1 min-w-0 relative">
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col">
         <MapSearchBar
           search={search}
           onSearchChange={(v) => {
@@ -171,17 +275,20 @@ export default function FullMapPage() {
           }}
         />
 
-        {mineral && selectedResult && selectedResult.type !== 'region' && panelDismissed && (
-          <div className="absolute top-[4.25rem] left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-full shadow-sm text-sm">
+        {selectedResult && panelDismissed && (
+          <div className="absolute top-[4.25rem] left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 map-chrome rounded-full text-sm">
             <span
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ backgroundColor: selectedResult.color }}
             />
-            <span className="text-slate-700 font-medium">{displayName(selectedResult)}</span>
+            <span className="map-text-secondary font-medium">{displayName(selectedResult)}</span>
+            {selectedResult.type === 'region' && (
+              <span className="map-text-muted text-xs">({m.map.region})</span>
+            )}
             <button
               type="button"
               onClick={handleClearFilter}
-              className="text-slate-400 hover:text-slate-700 ml-1"
+              className="map-text-muted hover:text-app-secondary ml-1"
               aria-label={m.map.showAllMinerals}
             >
               ×
@@ -205,12 +312,21 @@ export default function FullMapPage() {
             className="h-full w-full"
             mapFocus={mapFocus}
             onAreaInspect={handleAreaInspect}
-            continuousInspect={analysisActive}
+            onOpenAssistant={openAssistantPanel}
+            assistantActive={showResultsPanel && (assistantOpen || !!areaInsight || insightLoading)}
           />
         )}
         {isFetching && !initialLoad && (
           <div className="absolute top-16 right-3 z-20 h-6 w-6 animate-spin rounded-full border-2 border-terra-600 border-t-transparent bg-white/80" />
         )}
+
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none max-md:hidden">
+          <TerraAssistantButton
+            active={showResultsPanel && (assistantOpen || !!areaInsight || insightLoading)}
+            onClick={openAssistantPanel}
+            className="pointer-events-auto"
+          />
+        </div>
       </div>
     </div>
   )

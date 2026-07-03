@@ -19,7 +19,15 @@ export default function DashboardOverview() {
 
   const { data: purchases } = useQuery({
     queryKey: ['purchases'],
-    queryFn: () => subscriptionsApi.purchases().then((r) => r.data),
+    queryFn: () =>
+      subscriptionsApi.purchases().then((r) => {
+        const data = r.data
+        if (Array.isArray(data)) return data
+        if (data && typeof data === 'object' && 'results' in data && Array.isArray((data as { results: unknown }).results)) {
+          return (data as { results: unknown[] }).results
+        }
+        return []
+      }),
   })
 
   const { data: hotspots } = useQuery({
@@ -55,31 +63,31 @@ export default function DashboardOverview() {
       <div className="grid sm:grid-cols-2 gap-3">
         <Link
           to="/dashboard/subscription"
-          className="rounded-xl bg-white border border-slate-200 p-4 hover:border-terra-300 hover:shadow-sm transition-all"
+          className="card p-4 hover:border-terra-300 hover:shadow-sm transition-all"
         >
-          <p className="font-medium text-slate-900 text-sm">Manage subscription</p>
-          <p className="text-xs text-slate-500 mt-1">View plan status and renewal</p>
+          <p className="font-medium text-app-text text-sm">Manage subscription</p>
+          <p className="text-xs text-app-muted mt-1">View plan status and renewal</p>
         </Link>
         <Link
           to="/"
-          className="rounded-xl bg-white border border-slate-200 p-4 hover:border-terra-300 hover:shadow-sm transition-all"
+          className="card p-4 hover:border-terra-300 hover:shadow-sm transition-all"
         >
-          <p className="font-medium text-slate-900 text-sm">Explore the map</p>
-          <p className="text-xs text-slate-500 mt-1">Search minerals and view layers</p>
+          <p className="font-medium text-app-text text-sm">Explore the map</p>
+          <p className="text-xs text-app-muted mt-1">Search minerals and view layers</p>
         </Link>
         <Link
           to="/downloads"
-          className="rounded-xl bg-white border border-slate-200 p-4 hover:border-terra-300 hover:shadow-sm transition-all"
+          className="card p-4 hover:border-terra-300 hover:shadow-sm transition-all"
         >
-          <p className="font-medium text-slate-900 text-sm">Browse reports</p>
-          <p className="text-xs text-slate-500 mt-1">Pay-per-download prospectivity PDFs</p>
+          <p className="font-medium text-app-text text-sm">Browse reports</p>
+          <p className="text-xs text-app-muted mt-1">Pay-per-download prospectivity PDFs</p>
         </Link>
         <Link
           to="/dashboard/analytics"
-          className="rounded-xl bg-white border border-slate-200 p-4 hover:border-terra-300 hover:shadow-sm transition-all"
+          className="card p-4 hover:border-terra-300 hover:shadow-sm transition-all"
         >
-          <p className="font-medium text-slate-900 text-sm">View analytics</p>
-          <p className="text-xs text-slate-500 mt-1">Regional mineral hotspots</p>
+          <p className="font-medium text-app-text text-sm">View analytics</p>
+          <p className="text-xs text-app-muted mt-1">Regional mineral hotspots</p>
         </Link>
       </div>
 

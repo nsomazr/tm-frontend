@@ -84,9 +84,6 @@ export default function MapInsightsPanel({
 
             {insight!.ai_insight ? (
               <div className="pt-2 border-t border-slate-100">
-                {hasMapped && (
-                  <p className="text-xs text-terra-700 font-medium mb-1">{m.map.aiAnalysis}</p>
-                )}
                 <p className="text-slate-700 text-xs leading-relaxed whitespace-pre-line">
                   {insight!.ai_insight}
                 </p>

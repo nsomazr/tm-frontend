@@ -60,8 +60,8 @@ export default function UsersPage() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold">User Management</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-app-text">User Management</h1>
+          <p className="text-sm text-app-muted mt-1">
             {isSuperAdmin
               ? 'Super admins can create and manage platform administrators.'
               : 'Admins can manage subscribers and mineral managers.'}
@@ -75,16 +75,16 @@ export default function UsersPage() {
       </div>
 
       {isLoading ? (
-        <p>Loading…</p>
+        <p className="text-sm text-app-muted">Loading…</p>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="admin-table">
             <thead>
-              <tr className="border-b text-left">
-                <th className="pb-2 pr-4">Username</th>
-                <th className="pb-2 pr-4">Email</th>
-                <th className="pb-2 pr-4">Role</th>
-                <th className="pb-2">Actions</th>
+              <tr>
+                <th className="pr-4">Username</th>
+                <th className="pr-4">Email</th>
+                <th className="pr-4">Role</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -92,13 +92,13 @@ export default function UsersPage() {
                 const options = roleOptionsForActor(isSuperAdmin, u)
                 const isSelf = u.id === currentUser?.id
                 return (
-                  <tr key={u.id} className="border-b">
-                    <td className="py-2 pr-4">{u.username}</td>
-                    <td className="py-2 pr-4">{u.email}</td>
-                    <td className="py-2 pr-4 capitalize">{u.role.replace('_', ' ')}</td>
-                    <td className="py-2">
+                  <tr key={u.id}>
+                    <td className="pr-4 text-app-text">{u.username}</td>
+                    <td className="pr-4">{u.email}</td>
+                    <td className="pr-4 capitalize">{u.role.replace('_', ' ')}</td>
+                    <td>
                       {isSelf ? (
-                        <span className="text-xs text-slate-400">Current account</span>
+                        <span className="text-xs text-app-text-muted">Current account</span>
                       ) : options.length > 0 ? (
                         <select
                           value={u.role}
@@ -112,7 +112,7 @@ export default function UsersPage() {
                           ))}
                         </select>
                       ) : (
-                        <span className="text-xs text-slate-400 capitalize">{u.role.replace('_', ' ')}</span>
+                        <span className="text-xs text-app-text-muted capitalize">{u.role.replace('_', ' ')}</span>
                       )}
                     </td>
                   </tr>
@@ -126,9 +126,9 @@ export default function UsersPage() {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md">
-            <h2 className="text-lg font-bold mb-4">Create admin account</h2>
+            <h2 className="text-lg font-bold text-app-text mb-4">Create admin account</h2>
             {createError && (
-              <p className="text-sm text-red-600 mb-3">{createError}</p>
+              <p className="text-sm text-red-600 dark:text-red-400 mb-3">{createError}</p>
             )}
             <div className="space-y-3">
               <input

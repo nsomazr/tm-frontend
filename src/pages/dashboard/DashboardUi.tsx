@@ -7,17 +7,17 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description }: PageHeaderProps) {
   return (
-    <div className="mb-8">
-      <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{title}</h1>
-      {description && <p className="text-slate-500 mt-1 text-sm">{description}</p>}
+    <div className="mb-8 animate-fade-in">
+      <h1 className="text-2xl font-bold text-app-text tracking-tight">{title}</h1>
+      {description && <p className="text-app-muted mt-1 text-sm">{description}</p>}
     </div>
   )
 }
 
 export function EmptyState({ message, action }: { message: string; action?: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center">
-      <p className="text-sm text-slate-500">{message}</p>
+    <div className="rounded-2xl border border-dashed border-app-border bg-app-surface px-6 py-10 text-center transition-colors duration-300">
+      <p className="text-sm text-app-muted">{message}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   )
@@ -33,10 +33,10 @@ export function StatCard({
   hint?: string
 }) {
   return (
-    <div className="rounded-xl bg-white border border-slate-200 p-5">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="text-xl font-semibold text-slate-900 mt-1">{value}</p>
-      {hint && <p className="text-xs text-slate-500 mt-1">{hint}</p>}
+    <div className="rounded-2xl bg-app-surface p-5 transition-all duration-300 ease-in-out hover:shadow-soft dark:hover:shadow-soft-dark">
+      <p className="text-xs font-medium uppercase tracking-wide text-app-muted">{label}</p>
+      <p className="text-xl font-semibold text-app-text mt-1">{value}</p>
+      {hint && <p className="text-xs text-app-muted mt-1">{hint}</p>}
     </div>
   )
 }

@@ -48,48 +48,73 @@ export default function CoordinatesEditor() {
 
   const deleteFeature = useMutation({
     mutationFn: (id: number) => mapsApi.deleteFeature(id),
-    onSuccess: () => refetch(),
+    onSuccess: () => {
+      refetch()
+      qc.invalidateQueries({ queryKey: ['admin-layers'] })
+    },
   })
 
   const layerList = layers?.results || []
   const selectedLayer = layerList.find((l) => l.id === selectedLayerId)
+  const featureCount = features?.results.length ?? 0
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Coordinate Editor</h1>
-      <p className="text-gray-600 text-sm mb-6">
-        Add and manage map coordinates (points, polygons) for each layer.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-app-text">Coordinate editor</h1>
+        <p className="text-app-muted text-sm mt-1 max-w-2xl">
+          Pick a layer, preview it on the map, then add point coordinates or remove existing features.
+        </p>
+      </div>
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div>
-          <label className="block mb-4">
-            <span className="text-sm text-gray-600">Select Layer</span>
-            <select
-              value={selectedLayerId || ''}
-              onChange={(e) => setSelectedLayerId(Number(e.target.value) || null)}
-              className="input mt-1"
-            >
-              <option value="">Choose a layer</option>
-              {layerList.map((l) => (
-                <option key={l.id} value={l.id}>{displayName(l)} ({l.layer_type})</option>
-              ))}
-            </select>
-          </label>
+      <section className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
+        <label className="block max-w-md">
+          <span className="text-sm font-medium text-app-text-secondary">Layer</span>
+          <select
+            value={selectedLayerId || ''}
+            onChange={(e) => setSelectedLayerId(Number(e.target.value) || null)}
+            className="input mt-1.5"
+          >
+            <option value="">Choose a layer…</option>
+            {layerList.map((l) => (
+              <option key={l.id} value={l.id}>
+                {displayName(l)} ({l.layer_type})
+              </option>
+            ))}
+          </select>
+        </label>
 
-          {selectedLayer && (
-            <MapViewer
-              layers={[selectedLayer]}
-              className="h-[400px] w-full rounded-lg shadow mb-4"
-            />
-          )}
+        {selectedLayer && (
+          <p className="text-xs text-app-text-muted mt-2">
+            {selectedLayer.mineral_name}
+            {selectedLayer.region_name ? ` · ${selectedLayer.region_name}` : ''}
+            {' · '}
+            {featureCount} feature{featureCount === 1 ? '' : 's'}
+          </p>
+        )}
+      </section>
 
-          {selectedLayerId && (
-            <div className="card">
-              <h3 className="font-bold mb-3">Add Point Coordinate</h3>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+      {selectedLayer ? (
+        <div className="grid xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-6 items-start">
+          <div className="space-y-4 min-w-0">
+            <div className="rounded-xl border border-app-border overflow-hidden bg-app-subtle">
+              <MapViewer
+                key={selectedLayer.id}
+                layers={[selectedLayer]}
+                minimalChrome
+                showLayerPanel={false}
+                className="h-[min(52vh,480px)] w-full"
+              />
+            </div>
+
+            <div className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
+              <h2 className="font-semibold text-app-text mb-1">Add point</h2>
+              <p className="text-xs text-app-text-muted mb-4">
+                Enter WGS84 coordinates (EPSG:4326). Polygon layers can still store point markers.
+              </p>
+              <div className="grid sm:grid-cols-2 gap-3 mb-3">
                 <label>
-                  <span className="text-xs text-gray-500">Latitude</span>
+                  <span className="text-xs text-app-text-muted">Latitude</span>
                   <input
                     value={form.latitude}
                     onChange={(e) => setForm({ ...form, latitude: e.target.value })}
@@ -98,7 +123,7 @@ export default function CoordinatesEditor() {
                   />
                 </label>
                 <label>
-                  <span className="text-xs text-gray-500">Longitude</span>
+                  <span className="text-xs text-app-text-muted">Longitude</span>
                   <input
                     value={form.longitude}
                     onChange={(e) => setForm({ ...form, longitude: e.target.value })}
@@ -107,50 +132,65 @@ export default function CoordinatesEditor() {
                   />
                 </label>
               </div>
-              <label className="block mb-3">
-                <span className="text-xs text-gray-500">Label</span>
+              <label className="block mb-4">
+                <span className="text-xs text-app-text-muted">Label</span>
                 <input
                   value={form.label}
                   onChange={(e) => setForm({ ...form, label: e.target.value })}
                   className="input mt-1"
+                  placeholder="Prospect name or ID"
                 />
               </label>
               <button
+                type="button"
                 onClick={() => createFeature.mutate()}
                 disabled={!form.latitude || !form.longitude || createFeature.isPending}
                 className="btn-primary text-sm"
               >
-                Add Coordinate
+                {createFeature.isPending ? 'Adding…' : 'Add coordinate'}
               </button>
             </div>
-          )}
-        </div>
-
-        <div className="card">
-          <h3 className="font-bold mb-3">Features ({features?.results.length || 0})</h3>
-          <div className="max-h-[600px] overflow-y-auto space-y-2">
-            {features?.results.map((f) => (
-              <div key={f.id} className="flex justify-between items-start border-b pb-2 text-sm">
-                <div>
-                  <p className="font-medium">{f.label || `Feature #${f.id}`}</p>
-                  <p className="text-xs text-gray-500">
-                    {f.latitude}, {f.longitude}
-                  </p>
-                </div>
-                <button
-                  onClick={() => deleteFeature.mutate(f.id)}
-                  className="text-red-600 text-xs hover:underline"
-                >
-                  Delete
-                </button>
-              </div>
-            ))}
-            {!features?.results.length && selectedLayerId && (
-              <p className="text-gray-500 text-sm">No features in this layer.</p>
-            )}
           </div>
+
+          <aside className="rounded-xl border border-app-border bg-app-surface overflow-hidden min-w-0 xl:sticky xl:top-4">
+            <div className="px-4 py-3 border-b app-divider">
+              <h2 className="font-semibold text-app-text">Features</h2>
+              <p className="text-xs text-app-text-muted mt-0.5">{featureCount} in this layer</p>
+            </div>
+            <div className="max-h-[min(60vh,520px)] overflow-y-auto divide-y divide-app-border/35">
+              {features?.results.map((f) => (
+                <div key={f.id} className="flex justify-between items-start gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium text-app-text truncate">
+                      {f.label || `Feature #${f.id}`}
+                    </p>
+                    <p className="text-xs text-app-text-muted mt-0.5 tabular-nums">
+                      {f.latitude}, {f.longitude}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => deleteFeature.mutate(f.id)}
+                    disabled={deleteFeature.isPending}
+                    className="text-red-500 hover:text-red-600 text-xs font-medium shrink-0"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))}
+              {featureCount === 0 && (
+                <p className="text-app-text-muted text-sm px-4 py-8 text-center">
+                  No features in this layer yet.
+                </p>
+              )}
+            </div>
+          </aside>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-app-border-strong bg-app-subtle/50 px-6 py-12 text-center">
+          <p className="text-sm text-app-text-secondary">Select a layer to preview the map and edit coordinates.</p>
+        </div>
+      )}
     </div>
   )
 }

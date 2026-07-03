@@ -15,6 +15,8 @@ chmod +x start.sh
 
 Open http://localhost:3085
 
+The dev server proxies API requests to the backend (default `http://127.0.0.1:8085`). Start `tm-backend` first.
+
 ## Demo login (development)
 
 After running `python manage.py seed_data` in `tm-backend`:
@@ -25,6 +27,8 @@ After running `python manage.py seed_data` in `tm-backend`:
 | Free | `testfree@5ggeology.com` | `test123` |
 | Paid | `testpaid@5ggeology.com` | `test123` |
 | Manager | `testmanager@5ggeology.com` | `test123` |
+
+With `PAYMENTS_SIMULATE=true` on the backend, subscription and report checkout completes instantly without Snippe.
 
 ## Production deploy (PM2)
 
@@ -43,6 +47,11 @@ pm2 logs terra-meta-frontend
 ## Manual build
 
 ```bash
+npm install
 VITE_API_URL=https://api.terrameta.5ggeology.com/api/v1 npm run build
 npm run preview -- --host 0.0.0.0 --port 3085
 ```
+
+## Payments
+
+Checkout modals call `POST /api/v1/payments/checkout/`. Mobile money shows a callback page at `/payment/callback` while the order status is polled; card payments redirect to Snippe’s hosted page and return to the same callback URL.

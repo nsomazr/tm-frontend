@@ -2,13 +2,25 @@ import { useEffect, useRef, useState } from 'react'
 import OtpInput from '../auth/OtpInput'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
-import { CardBadges, MobileMoneyBadges } from './PaymentBrandBadges'
+import {
+  CardBrandOption,
+  CardBrandLogos,
+  MobileMoneyBadges,
+  PaymentMethodOption,
+} from './PaymentBrandBadges'
+import { safeRedirect } from '../../utils/safeRedirect'
+import type { ReactNode } from 'react'
 
 export type PaymentMethod = 'mobile_money' | 'card'
+export type CardBrand = 'visa' | 'mastercard'
+type PaymentSubStep = 'method' | 'mobile' | 'card_brand' | 'card_details'
 
 export interface SubscribeCheckoutPayload {
   paymentMethod: PaymentMethod
   msisdn?: string
+  cardBrand?: CardBrand
+  cardholderName?: string
+  billingEmail?: string
 }
 
 type AuthStep = 'email' | 'otp' | 'password' | 'payment'
@@ -21,13 +33,24 @@ export interface SubscribeCheckoutLabels {
   otpExpiresIn: string
   back: string
   mobileMoney: string
-  cardInternational: string
+  card: string
   mobileMoneyHint: string
-  cardHint: string
+  cardDetailsSubtitle: string
+  continueToSecurePayment: string
+  mobileMoneyNumber: string
+  mobileMoneyPlaceholder: string
+  selectCardType: string
+  cardDetailsTitle: string
+  nameOnCard: string
+  billingEmail: string
+  visa: string
+  mastercard: string
+  continue: string
   authEmailHint: string
   otpSentTo: string
   passwordCreate: string
   passwordSignIn: string
+  cancel: string
 }
 
 interface SubscribeCheckoutModalProps {
@@ -36,6 +59,7 @@ interface SubscribeCheckoutModalProps {
   defaultPhone?: string
   defaultEmail?: string
   planLabel?: string
+  planPriceHint?: ReactNode
   title: string
   description: string
   confirmLabel: string
@@ -49,7 +73,6 @@ interface SubscribeCheckoutModalProps {
   onConfirm: (payload: SubscribeCheckoutPayload) => void
 }
 
-
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
@@ -60,6 +83,7 @@ export default function SubscribeCheckoutModal({
   defaultPhone = '',
   defaultEmail = '',
   planLabel,
+  planPriceHint,
   title,
   description,
   confirmLabel,
@@ -73,11 +97,14 @@ export default function SubscribeCheckoutModal({
   onConfirm,
 }: SubscribeCheckoutModalProps) {
   const [step, setStep] = useState<AuthStep>('email')
+  const [paymentSubStep, setPaymentSubStep] = useState<PaymentSubStep>('method')
   const [email, setEmail] = useState(defaultEmail)
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mobile_money')
   const [msisdn, setMsisdn] = useState(defaultPhone)
+  const [cardBrand, setCardBrand] = useState<CardBrand | null>(null)
+  const [cardholderName, setCardholderName] = useState('')
+  const [billingEmail, setBillingEmail] = useState(defaultEmail)
   const [localError, setLocalError] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
   const autoVerifyRef = useRef(false)
@@ -86,19 +113,29 @@ export default function SubscribeCheckoutModal({
   useEffect(() => {
     if (open) {
       setStep(requiresAccount ? 'email' : 'payment')
+      setPaymentSubStep('method')
       setEmail(defaultEmail)
       setCode('')
       setPassword('')
       setMsisdn(defaultPhone)
-      setPaymentMethod('mobile_money')
+      setCardBrand(null)
+      setCardholderName('')
+      setBillingEmail(defaultEmail || email)
       setLocalError('')
       autoVerifyRef.current = false
     }
   }, [open, requiresAccount, defaultEmail, defaultPhone])
 
+  const emailNormalized = email.trim().toLowerCase()
+
+  useEffect(() => {
+    if (step === 'payment' && !billingEmail && emailNormalized) {
+      setBillingEmail(emailNormalized)
+    }
+  }, [step, emailNormalized, billingEmail])
+
   const displayError = error || localError
   const busy = loading || authBusy
-  const emailNormalized = email.trim().toLowerCase()
 
   const handleSendOtp = async () => {
     if (!isValidEmail(email)) {
@@ -137,6 +174,8 @@ export default function SubscribeCheckoutModal({
 
   const advanceToPayment = () => {
     setLocalError('')
+    setPaymentSubStep('method')
+    setBillingEmail(emailNormalized || defaultEmail)
     setStep('payment')
   }
 
@@ -191,20 +230,70 @@ export default function SubscribeCheckoutModal({
     }
   }
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
+  const handleMobileSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (paymentMethod === 'mobile_money' && !msisdn.trim()) {
-      setLocalError('Enter your mobile money number')
+    if (!msisdn.trim()) {
+      setLocalError('Enter your phone number')
+      return
+    }
+    setLocalError('')
+    onConfirm({ paymentMethod: 'mobile_money', msisdn: msisdn.trim() })
+  }
+
+  const handleCardBrandContinue = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cardBrand) {
+      setLocalError('Select Visa or Mastercard')
+      return
+    }
+    setLocalError('')
+    setPaymentSubStep('card_details')
+  }
+
+  const handleCardSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cardBrand) {
+      setLocalError('Select Visa or Mastercard')
+      return
+    }
+    if (!cardholderName.trim()) {
+      setLocalError('Enter the name on your card')
+      return
+    }
+    if (!isValidEmail(billingEmail)) {
+      setLocalError('Enter a valid email address')
       return
     }
     setLocalError('')
     onConfirm({
-      paymentMethod,
-      msisdn: paymentMethod === 'mobile_money' ? msisdn.trim() : undefined,
+      paymentMethod: 'card',
+      cardBrand,
+      cardholderName: cardholderName.trim(),
+      billingEmail: billingEmail.trim().toLowerCase(),
     })
   }
 
+  const paymentBack = () => {
+    setLocalError('')
+    if (paymentSubStep === 'mobile' || paymentSubStep === 'card_brand') {
+      setPaymentSubStep('method')
+      return
+    }
+    if (paymentSubStep === 'card_details') {
+      setPaymentSubStep('card_brand')
+    }
+  }
+
   if (!open) return null
+
+  const paymentTitle =
+    paymentSubStep === 'mobile'
+      ? labels.mobileMoney
+      : paymentSubStep === 'card_brand'
+        ? labels.selectCardType
+        : paymentSubStep === 'card_details'
+          ? labels.cardDetailsTitle
+          : title
 
   const stepTitle =
     step === 'email'
@@ -213,17 +302,34 @@ export default function SubscribeCheckoutModal({
         ? labels.otpSentTo.replace('{email}', emailNormalized)
         : step === 'password'
           ? labels.passwordCreate
-          : title
+          : paymentTitle
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="card w-full max-w-md max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-bold mb-1">{stepTitle}</h2>
+      <div className="card relative w-full max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h2 className="text-lg font-bold pr-2">{stepTitle}</h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="shrink-0 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 text-xl leading-none p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+            aria-label={labels.cancel}
+          >
+            ×
+          </button>
+        </div>
         {planLabel && step !== 'otp' && (
-          <p className="text-sm font-medium text-terra-700 mb-2">{planLabel}</p>
+          <div className="mb-2">
+            <p className="text-sm font-medium text-terra-700">{planLabel}</p>
+            {planPriceHint}
+          </div>
         )}
         {step === 'email' && (
           <p className="text-sm text-slate-600 mb-4">{description}</p>
+        )}
+
+        {step === 'payment' && paymentSubStep === 'card_details' && (
+          <p className="text-sm text-slate-600 mb-4">{labels.cardDetailsSubtitle}</p>
         )}
 
         {displayError && (
@@ -338,71 +444,142 @@ export default function SubscribeCheckoutModal({
           </form>
         )}
 
-        {step === 'payment' && (
-          <form onSubmit={handlePaymentSubmit} className="space-y-4 mt-2">
-            <fieldset className="space-y-2">
-              <legend className="text-sm font-medium text-slate-700 mb-2">Payment method</legend>
-              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer has-[:checked]:border-terra-500 has-[:checked]:bg-terra-50">
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="mobile_money"
-                  checked={paymentMethod === 'mobile_money'}
-                  onChange={() => setPaymentMethod('mobile_money')}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-slate-900">{labels.mobileMoney}</span>
-                  <span className="block text-xs text-slate-500 mt-0.5">{labels.mobileMoneyHint}</span>
-                  <MobileMoneyBadges />
-                </span>
-              </label>
-              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer has-[:checked]:border-terra-500 has-[:checked]:bg-terra-50">
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="card"
-                  checked={paymentMethod === 'card'}
-                  onChange={() => setPaymentMethod('card')}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-slate-900">{labels.cardInternational}</span>
-                  <span className="block text-xs text-slate-500 mt-0.5">{labels.cardHint}</span>
-                  <CardBadges />
-                </span>
-              </label>
-            </fieldset>
-
-            {paymentMethod === 'mobile_money' && (
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Mobile money number
-                </label>
-                <input
-                  type="tel"
-                  value={msisdn}
-                  onChange={(e) => setMsisdn(e.target.value)}
-                  placeholder="2557XXXXXXXX or 07XXXXXXXX"
-                  className="input w-full"
-                  autoComplete="tel"
-                />
-              </div>
-            )}
-
+        {step === 'payment' && paymentSubStep === 'method' && (
+          <div className="space-y-3 mt-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <PaymentMethodOption
+                title={labels.mobileMoney}
+                onClick={() => {
+                  setLocalError('')
+                  setPaymentSubStep('mobile')
+                }}
+              >
+                <MobileMoneyBadges variant="compact" />
+              </PaymentMethodOption>
+              <PaymentMethodOption
+                title={labels.card}
+                onClick={() => {
+                  setLocalError('')
+                  setCardBrand(null)
+                  setPaymentSubStep('card_brand')
+                }}
+              >
+                <CardBrandLogos variant="compact" />
+              </PaymentMethodOption>
+            </div>
             <div className="flex gap-3 justify-end pt-1">
-              {!requiresAccount && (
+              {requiresAccount ? (
+                <button type="button" onClick={() => setStep('email')} className="btn-secondary text-sm">
+                  {labels.back}
+                </button>
+              ) : (
                 <button type="button" onClick={onCancel} className="btn-secondary text-sm">
                   Cancel
                 </button>
               )}
-              {requiresAccount && (
-                <button type="button" onClick={() => setStep('email')} className="btn-secondary text-sm">
-                  {labels.back}
-                </button>
-              )}
+            </div>
+          </div>
+        )}
+
+        {step === 'payment' && paymentSubStep === 'mobile' && (
+          <form onSubmit={handleMobileSubmit} className="space-y-3 mt-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                {labels.mobileMoneyNumber}
+              </label>
+              <input
+                type="tel"
+                value={msisdn}
+                onChange={(e) => setMsisdn(e.target.value)}
+                placeholder={labels.mobileMoneyPlaceholder}
+                className="input w-full"
+                autoComplete="tel"
+                autoFocus
+              />
+              <p className="text-xs text-slate-500 mt-1">{labels.mobileMoneyHint}</p>
+              <div className="mt-3">
+                <MobileMoneyBadges />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <button type="button" onClick={paymentBack} className="btn-secondary text-sm">
+                {labels.back}
+              </button>
               <button type="submit" disabled={busy} className="btn-primary text-sm disabled:opacity-50">
                 {busy ? 'Processing…' : confirmLabel}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 'payment' && paymentSubStep === 'card_brand' && (
+          <form onSubmit={handleCardBrandContinue} className="space-y-3 mt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <CardBrandOption
+                brand="visa"
+                label={labels.visa}
+                selected={cardBrand === 'visa'}
+                onSelect={() => {
+                  setCardBrand('visa')
+                  setLocalError('')
+                }}
+              />
+              <CardBrandOption
+                brand="mastercard"
+                label={labels.mastercard}
+                selected={cardBrand === 'mastercard'}
+                onSelect={() => {
+                  setCardBrand('mastercard')
+                  setLocalError('')
+                }}
+              />
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <button type="button" onClick={paymentBack} className="btn-secondary text-sm">
+                {labels.back}
+              </button>
+              <button type="submit" disabled={!cardBrand} className="btn-primary text-sm disabled:opacity-50">
+                {labels.continue}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 'payment' && paymentSubStep === 'card_details' && (
+          <form onSubmit={handleCardSubmit} className="space-y-3 mt-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">{labels.nameOnCard}</label>
+              <input
+                type="text"
+                value={cardholderName}
+                onChange={(e) => setCardholderName(e.target.value)}
+                placeholder="Jane Doe"
+                className="input w-full"
+                autoComplete="cc-name"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">{labels.billingEmail}</label>
+              <input
+                type="email"
+                value={billingEmail}
+                onChange={(e) => setBillingEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="input w-full"
+                autoComplete="email"
+              />
+            </div>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="submit"
+                disabled={busy}
+                className="btn-primary w-full shrink-0 whitespace-nowrap text-sm disabled:opacity-50"
+              >
+                {busy ? 'Processing…' : labels.continueToSecurePayment || 'Continue securely'}
+              </button>
+              <button type="button" onClick={paymentBack} className="btn-secondary w-full text-sm">
+                {labels.back}
               </button>
             </div>
           </form>
@@ -411,7 +588,7 @@ export default function SubscribeCheckoutModal({
         {step !== 'payment' && step !== 'otp' && step !== 'password' && (
           <div className="flex justify-end mt-4">
             <button type="button" onClick={onCancel} className="btn-secondary text-sm">
-              Cancel
+              {labels.cancel}
             </button>
           </div>
         )}
@@ -427,11 +604,11 @@ export function handleCheckoutResponse(data: {
   merchant_reference?: string
 }) {
   if (data.redirect_url) {
-    window.location.href = data.redirect_url
+    safeRedirect(data.redirect_url, '/dashboard')
     return
   }
-  if (data.payment_provider === 'selcom' && data.merchant_reference) {
-    window.location.href = `/payment/callback?ref=${data.merchant_reference}`
+  if (data.payment_provider === 'snippe' && data.merchant_reference) {
+    window.location.href = `/payment/callback?ref=${encodeURIComponent(data.merchant_reference)}`
     return
   }
   window.location.href = '/dashboard'

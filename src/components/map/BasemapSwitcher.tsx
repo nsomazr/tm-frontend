@@ -36,20 +36,20 @@ export default function BasemapSwitcher({ value, onChange, embedded, current: cu
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="w-full px-3 py-2.5 flex items-center gap-2 text-left hover:bg-slate-50/80"
+          className="w-full px-3 py-2.5 flex items-center gap-2 text-left hover:bg-app-subtle/80"
         >
           <span
-            className="w-8 h-8 rounded-lg border border-slate-200 shrink-0"
+            className="w-8 h-8 rounded-lg border border-app-border shrink-0"
             style={{ background: current.preview }}
           />
           <span className="flex-1 min-w-0">
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400">{m.map.basemapLabel}</span>
-            <span className="block text-sm font-medium text-slate-900">{current.label}</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-wider map-text-muted">{m.map.basemapLabel}</span>
+            <span className="block text-sm font-medium map-text">{current.label}</span>
           </span>
-          <span className="text-slate-400 text-sm shrink-0">{open ? '−' : '+'}</span>
+          <span className="map-text-muted text-sm shrink-0">{open ? '−' : '+'}</span>
         </button>
         {open && (
-          <ul className="p-1.5 max-h-44 overflow-y-auto border-t border-slate-100">
+          <ul className="p-1.5 max-h-44 overflow-y-auto border-t app-divider">
             {BASEMAPS.map((bm) => (
               <li key={bm.id}>
                 <button
@@ -59,7 +59,7 @@ export default function BasemapSwitcher({ value, onChange, embedded, current: cu
                     saveBasemapPreference(bm.id)
                   }}
                   className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-sm ${
-                    bm.id === value ? 'bg-terra-50 text-terra-800 font-medium' : 'hover:bg-slate-50 text-slate-700'
+                    bm.id === value ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300 font-medium' : 'hover:bg-app-subtle map-text-secondary'
                   }`}
                 >
                   <span className="w-6 h-6 rounded border border-slate-200 shrink-0" style={{ background: bm.preview }} />
@@ -78,13 +78,13 @@ export default function BasemapSwitcher({ value, onChange, embedded, current: cu
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-sm font-medium text-slate-800 hover:border-terra-300 transition-colors"
+        className="flex items-center gap-2 map-chrome rounded-xl px-3 py-2 text-sm font-medium map-text hover:border-terra-400 transition-colors"
       >
-        <span className="w-6 h-6 rounded-md border border-slate-200 shrink-0" style={{ background: current.preview }} />
+        <span className="w-6 h-6 rounded-md border border-app-border shrink-0" style={{ background: current.preview }} />
         <span className="hidden sm:inline">{current.label}</span>
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-56 map-chrome rounded-xl overflow-hidden">
           <ul className="p-1.5">
             {BASEMAPS.map((bm) => (
               <li key={bm.id}>
@@ -95,8 +95,8 @@ export default function BasemapSwitcher({ value, onChange, embedded, current: cu
                     saveBasemapPreference(bm.id)
                     setOpen(false)
                   }}
-                  className={`w-full px-2.5 py-2 rounded-lg text-left text-sm ${
-                    bm.id === value ? 'bg-terra-50 font-medium' : 'hover:bg-slate-50'
+                  className={`w-full px-2.5 py-2 rounded-lg text-left text-sm map-text-secondary ${
+                    bm.id === value ? 'bg-app-accent-soft font-medium' : 'hover:bg-app-subtle'
                   }`}
                 >
                   {bm.label}

@@ -6,6 +6,8 @@ import type { MapLayer } from '../../types'
 interface LegendPanelProps {
   layers: MapLayer[]
   embedded?: boolean
+  sheetMode?: boolean
+  defaultOpen?: boolean
 }
 
 const TYPE_SYMBOL: Record<string, { render: (color: string) => ReactNode }> = {
@@ -18,8 +20,16 @@ const TYPE_SYMBOL: Record<string, { render: (color: string) => ReactNode }> = {
     ),
   },
   line: {
-    render: () => (
-      <span className="w-4 h-0.5 bg-neutral-700 shrink-0 mt-2 rounded-full opacity-70" />
+    render: (color) => (
+      <span
+        className="w-4 h-4 shrink-0 flex items-center justify-center rounded border border-app-border-strong bg-app-surface shadow-sm"
+        aria-hidden
+      >
+        <span
+          className="block w-3 h-[3px] rounded-full"
+          style={{ backgroundColor: color === '#888' ? '#1f2937' : color }}
+        />
+      </span>
     ),
   },
   point: {
@@ -32,10 +42,10 @@ const TYPE_SYMBOL: Record<string, { render: (color: string) => ReactNode }> = {
   },
 }
 
-export default function LegendPanel({ layers, embedded }: LegendPanelProps) {
+export default function LegendPanel({ layers, embedded, sheetMode, defaultOpen = true }: LegendPanelProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(defaultOpen)
 
   const entries = useMemo(() => {
     return [...layers]
@@ -50,34 +60,56 @@ export default function LegendPanel({ layers, embedded }: LegendPanelProps) {
 
   const count = entries.length
 
+  if (sheetMode) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        {count === 0 ? (
+          <p className="py-2 text-xs leading-relaxed map-text-muted">{m.map.legendEmpty}</p>
+        ) : (
+          <ul className="space-y-0.5 text-xs">
+            {entries.map((entry) => {
+              const sym = TYPE_SYMBOL[entry.type] ?? TYPE_SYMBOL.polygon
+              return (
+                <li key={entry.id} className="flex items-center gap-2 rounded-md px-1 py-1">
+                  {sym.render(entry.color)}
+                  <span className="min-w-0 leading-snug map-text">{entry.name}</span>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className={embedded ? 'w-full' : 'absolute bottom-12 right-3 z-10 w-64 bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200'}>
+    <div className={embedded ? 'w-full' : 'absolute bottom-12 right-3 z-10 w-64 map-chrome rounded-xl'}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full px-3 py-2.5 font-semibold text-sm text-slate-800 flex justify-between items-center gap-2 hover:bg-slate-50/80"
+        className="w-full px-3 py-2.5 font-semibold text-sm map-text flex justify-between items-center gap-2 hover:bg-app-subtle/80"
       >
         <span className="text-left">
           {m.map.legendTitle}
           {count > 0 && (
-            <span className="ml-1.5 text-xs font-normal text-slate-400">({count})</span>
+            <span className="ml-1.5 text-xs font-normal map-text-muted">({count})</span>
           )}
         </span>
-        <span className="text-slate-400 shrink-0">{open ? '−' : '+'}</span>
+        <span className="map-text-muted shrink-0">{open ? '−' : '+'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-slate-100">
+        <div className="border-t app-divider">
           {count === 0 ? (
-            <p className="text-xs text-slate-500 px-3 py-3 leading-relaxed">{m.map.legendEmpty}</p>
+            <p className="text-xs map-text-muted px-3 py-3 leading-relaxed">{m.map.legendEmpty}</p>
           ) : (
             <ul className="max-h-[min(42vh,320px)] overflow-y-auto p-2 space-y-1 text-xs">
               {entries.map((entry) => {
                 const sym = TYPE_SYMBOL[entry.type] ?? TYPE_SYMBOL.polygon
                 return (
-                  <li key={entry.id} className="flex items-start gap-2 px-1.5 py-1 rounded-lg hover:bg-slate-50">
+                  <li key={entry.id} className="flex items-start gap-2 px-1.5 py-1 rounded-lg hover:bg-app-subtle">
                     {sym.render(entry.color)}
-                    <span className="text-slate-800 leading-snug break-words min-w-0">{entry.name}</span>
+                    <span className="map-text leading-snug break-words min-w-0">{entry.name}</span>
                   </li>
                 )
               })}

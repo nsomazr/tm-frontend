@@ -98,14 +98,12 @@ export function isImageryBasemap(id: BasemapId): boolean {
 
 const STORAGE_KEY = 'tm-basemap'
 
-export function loadBasemapPreference(): BasemapId {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY) as BasemapId | null
-    if (v && BASEMAPS.some((b) => b.id === v)) return v
-  } catch {
-    /* ignore */
-  }
-  return 'light'
+export function themeDefaultBasemap(theme: 'light' | 'dark'): BasemapId {
+  return theme === 'dark' ? 'dark' : 'light'
+}
+
+export function loadBasemapPreference(theme: 'light' | 'dark' = 'light'): BasemapId {
+  return themeDefaultBasemap(theme)
 }
 
 export function saveBasemapPreference(id: BasemapId) {

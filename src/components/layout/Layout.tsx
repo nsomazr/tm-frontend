@@ -4,12 +4,12 @@ import { useTranslation } from '../../i18n/LocaleContext'
 import Logo from '../brand/Logo'
 import CompanyCredit from '../brand/CompanyCredit'
 import LanguageSwitch from './LanguageSwitch'
+import MobileMenu from './MobileMenu'
+import ThemeToggle from './ThemeToggle'
 import WorkspaceTabs, { isWorkspaceRoute } from './WorkspaceTabs'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `text-sm font-medium px-3 py-2 rounded-lg transition-colors ${
-    isActive ? 'bg-terra-50 text-terra-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-  }`
+  `nav-link ${isActive ? 'nav-link-active' : ''}`
 
 function UserMenu() {
   const { user, logout, loading } = useAuth()
@@ -19,11 +19,8 @@ function UserMenu() {
   if (user) {
     return (
       <div className="flex items-center gap-2 sm:gap-3">
-        <span className="hidden lg:inline text-sm text-slate-500 truncate max-w-[120px]">{user.username}</span>
-        <button
-          onClick={logout}
-          className="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50"
-        >
+        <span className="hidden lg:inline text-sm text-app-muted truncate max-w-[120px]">{user.username}</span>
+        <button onClick={logout} className="nav-link text-xs sm:text-sm whitespace-nowrap px-2">
           {m.nav.logout}
         </button>
       </div>
@@ -32,7 +29,7 @@ function UserMenu() {
 
   return (
     <div className="flex items-center gap-2">
-      <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-50">
+      <Link to="/login" className="nav-link">
         {m.nav.signIn}
       </Link>
       <Link to="/register" className="btn-primary text-sm !py-2 !px-4">
@@ -43,13 +40,12 @@ function UserMenu() {
 }
 
 function HeaderNav({ className }: { className?: string }) {
-  const { hasPaidAccess } = useAuth()
   const { m } = useTranslation()
   const links = [
     { to: '/', label: m.nav.map },
-    ...(hasPaidAccess ? [{ to: '/downloads', label: m.nav.reports }] : []),
-    { to: '/subscriptions', label: m.nav.pricing },
     { to: '/about', label: m.nav.about },
+    { to: '/subscriptions', label: m.nav.pricing },
+    { to: '/downloads', label: m.nav.reports },
   ]
 
   return (
@@ -69,37 +65,42 @@ export default function Layout() {
   const location = useLocation()
   const isMapPage = location.pathname === '/' || location.pathname === '/maps'
   const isWorkspace = isWorkspaceRoute(location.pathname)
+  const desktopControlsClass = isMapPage ? 'hidden lg:flex' : 'hidden md:flex'
+  const mobileMenuClass = isMapPage ? 'lg:hidden' : 'md:hidden'
 
   const header = (
-    <header className="shrink-0 bg-white border-b border-slate-200 shadow-sm z-20">
-      <div className="max-w-7xl mx-auto h-16 px-4 sm:px-6 flex items-center gap-4">
+    <header className={`app-header w-full max-w-[100vw] overflow-x-clip ${isMapPage ? 'map-page-header shrink-0' : ''}`}>
+      <div
+        className={`w-full flex items-center gap-1.5 sm:gap-4 min-w-0 ${
+          isMapPage ? 'px-2 sm:px-6' : 'max-w-7xl mx-auto px-3 sm:px-6'
+        } ${isMapPage ? 'h-12 md:h-16' : 'h-16'}`}
+      >
         <Link to="/" className="shrink-0 flex items-center">
-          <Logo variant="icon" className="h-10 w-10 md:hidden" />
+          <Logo variant="icon" className={`${isMapPage ? 'h-8 w-8 sm:h-9 sm:w-9' : 'h-10 w-10'} md:hidden`} />
           <Logo variant="wordmark" className="hidden md:block h-11 w-auto" />
         </Link>
-        <HeaderNav className="hidden md:flex items-center gap-1 flex-1 justify-center" />
-        <div className="ml-auto flex items-center gap-2 sm:gap-3">
+        <HeaderNav
+          className={`hidden items-center gap-1 flex-1 justify-center min-w-0 ${isMapPage ? 'lg:flex' : 'md:flex'}`}
+        />
+        <div className={`ml-auto items-center gap-1 sm:gap-2 min-w-0 shrink ${desktopControlsClass}`}>
+          <ThemeToggle compact />
           <LanguageSwitch compact />
-          {user && (
-            <div className="hidden sm:block">
-              <WorkspaceTabs compact />
-            </div>
-          )}
+          {user && <WorkspaceTabs compact />}
           <UserMenu />
         </div>
-      </div>
-      <div className="md:hidden border-t border-slate-100 px-4 py-2 flex items-center gap-3">
-        {user && <WorkspaceTabs compact />}
-        <HeaderNav className="flex gap-1 overflow-x-auto scrollbar-hide flex-1" />
+        <div className={`ml-auto flex shrink-0 items-center gap-1 ${mobileMenuClass}`}>
+          {isMapPage && <ThemeToggle compact />}
+          <MobileMenu />
+        </div>
       </div>
     </header>
   )
 
   if (isMapPage || isWorkspace) {
     return (
-      <div className="h-screen flex flex-col bg-slate-100">
+      <div className="h-[100dvh] w-full max-w-[100vw] flex flex-col overflow-hidden bg-app-bg">
         {header}
-        <main className="flex-1 min-h-0 overflow-auto">
+        <main className="flex-1 min-h-0 min-w-0 w-full overflow-hidden">
           <Outlet />
         </main>
       </div>
@@ -107,12 +108,14 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="app-shell">
       {header}
       <main className="flex-1"><Outlet /></main>
-      <footer className="border-t border-slate-200 bg-white py-8 px-4 text-center space-y-2">
-        <div className="text-sm text-slate-500">
-          <Link to="/about" className="text-terra-600 hover:text-terra-700 font-medium">{m.footer.about}</Link>
+      <footer className="app-footer">
+        <div className="text-sm text-app-muted">
+          <Link to="/about" className="text-terra-600 dark:text-terra-400 hover:text-terra-700 dark:hover:text-terra-300 font-medium transition-colors duration-300">
+            {m.footer.about}
+          </Link>
           <span className="mx-2">·</span>
           {m.footer.tagline}
         </div>

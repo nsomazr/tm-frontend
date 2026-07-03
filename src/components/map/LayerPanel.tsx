@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapLayer } from '../../types'
+import LayerTypeSymbol from './LayerTypeSymbol'
 
 interface LayerPanelProps {
   layers: MapLayer[]
@@ -26,7 +27,9 @@ export default function LayerPanel({
 }: LayerPanelProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(min-width: 768px)').matches : false
+  )
   const [dragIndex, setDragIndex] = useState<number | null>(null)
 
   const typeLabels: Record<string, string> = {
@@ -67,78 +70,83 @@ export default function LayerPanel({
 
   return (
     <div
-      className={`absolute top-3 left-3 z-10 bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 w-72 text-sm ${className}`}
+      className={`absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-3 left-3 w-72 hidden md:flex ${
+        open ? 'bottom-3' : ''
+      } ${className}`}
     >
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full px-3 py-2.5 font-semibold text-slate-800 text-left flex justify-between items-center gap-2 hover:bg-slate-50/80"
+        className="w-full shrink-0 px-3 py-2.5 font-semibold map-text text-left flex justify-between items-center gap-2 hover:bg-app-subtle/80"
       >
         <span>
           {m.map.layersTitle}
           {layerCount > 0 && (
-            <span className="ml-1.5 text-xs font-normal text-slate-400">({layerCount})</span>
+            <span className="ml-1.5 text-xs font-normal map-text-muted">({layerCount})</span>
           )}
         </span>
-        <span className="text-slate-400 shrink-0">{open ? '−' : '+'}</span>
+        <span className="map-text-muted shrink-0">{open ? '−' : '+'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-slate-100 overflow-y-auto max-h-[min(58vh,480px)] p-2 space-y-3">
+        <div className="border-t border-app-border min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-2 pb-4 pr-1 space-y-3 scrollbar-pane">
           {grouped.map(({ type, layers: typeLayers }) => {
             const allOn = typeAllVisible(type, typeLayers)
             return (
-              <div key={type}>
-                <div className="flex items-center justify-between px-1 mb-1 gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                    {typeLabels[type] || type}
-                    {type === 'line' && (
-                      <span className="ml-1 font-normal normal-case text-slate-400">{m.map.linesOffByDefault}</span>
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onToggleType(type, !allOn)}
-                    className="text-[10px] text-terra-600 hover:text-terra-800 font-medium shrink-0"
-                  >
-                    {allOn ? m.map.hideAll : m.map.showAll}
-                  </button>
+              <div key={type} className="not-first:pt-3 not-first:border-t not-first:app-divider">
+                <div className="px-1 mb-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wide map-text">
+                      {typeLabels[type] || type}
+                      <span className="ml-1 font-normal normal-case tracking-normal text-app-muted">
+                        ({typeLayers.length})
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleType(type, !allOn)}
+                      className="text-xs text-terra-700 hover:text-terra-900 dark:text-terra-400 dark:hover:text-terra-300 font-semibold shrink-0 whitespace-nowrap"
+                    >
+                      {allOn ? m.map.hideAll : m.map.showAll}
+                    </button>
+                  </div>
+                  {type === 'line' && (
+                    <p className="text-xs map-text-secondary mt-1 leading-snug">{m.map.linesOffByDefault}</p>
+                  )}
                 </div>
                 <ul className="space-y-0.5">
-                  {typeLayers.map((layer, index) => (
-                    <li
-                      key={layer.id}
-                      draggable={allowReorder}
-                      onDragStart={() => allowReorder && setDragIndex(index)}
-                      onDragOver={(e) => allowReorder && e.preventDefault()}
-                      onDrop={() => allowReorder && handleDrop(index)}
-                      className={`flex items-start gap-2 px-1.5 py-1 rounded-lg hover:bg-slate-50 ${allowReorder ? 'cursor-grab' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleLayers.has(layer.id)}
-                        onChange={() => onToggle(layer.id)}
-                        className="rounded border-slate-300 mt-0.5 shrink-0"
-                      />
-                      <span
-                        className="w-3 h-3 rounded-sm shrink-0 border border-black/10 mt-0.5"
-                        style={{
-                          backgroundColor: (layer.style?.fill as string) || '#E87722',
-                          height: layer.layer_type === 'line' ? 2 : 12,
-                          marginTop: layer.layer_type === 'line' ? 8 : undefined,
-                        }}
-                      />
-                      <span className="flex-1 min-w-0 text-slate-700 text-xs leading-snug break-words">
-                        {displayName(layer)}
-                      </span>
-                    </li>
-                  ))}
+                  {typeLayers.map((layer, index) => {
+                    const isVisible = visibleLayers.has(layer.id)
+                    return (
+                      <li
+                        key={layer.id}
+                        draggable={allowReorder}
+                        onDragStart={() => allowReorder && setDragIndex(index)}
+                        onDragOver={(e) => allowReorder && e.preventDefault()}
+                        onDrop={() => allowReorder && handleDrop(index)}
+                        className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-app-subtle ${
+                          allowReorder ? 'cursor-grab' : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isVisible}
+                          onChange={() => onToggle(layer.id)}
+                          className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5"
+                        />
+                        <LayerTypeSymbol layer={layer} />
+                        <span className="flex-1 min-w-0 map-text text-sm font-medium leading-snug break-words">
+                          {displayName(layer)}
+                        </span>
+                      </li>
+                    )
+                  })}
                 </ul>
               </div>
             )
           })}
           {layers.length === 0 && (
-            <p className="text-xs text-slate-500 px-2 py-3 leading-relaxed">{m.map.noLayers}</p>
+            <p className="text-xs map-text-muted px-2 py-3 leading-relaxed">{m.map.noLayers}</p>
           )}
         </div>
       )}

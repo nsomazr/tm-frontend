@@ -7,11 +7,7 @@ export default function LanguageSwitch({ compact }: { compact?: boolean }) {
     <button
       type="button"
       onClick={() => setLocale(code)}
-      className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
-        locale === code
-          ? 'bg-white text-terra-800 shadow-sm'
-          : 'text-slate-500 hover:text-slate-800'
-      }`}
+      className={`segmented-btn px-2.5 py-1 ${locale === code ? 'segmented-btn-active' : ''}`}
       aria-pressed={locale === code}
     >
       {label}
@@ -20,7 +16,7 @@ export default function LanguageSwitch({ compact }: { compact?: boolean }) {
 
   if (compact) {
     return (
-      <div className="flex items-center rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Language">
+      <div className="segmented min-w-0 shrink" role="group" aria-label="Language">
         {btn('en', 'EN')}
         {btn('sw', 'SW')}
       </div>
@@ -28,7 +24,7 @@ export default function LanguageSwitch({ compact }: { compact?: boolean }) {
   }
 
   return (
-    <div className="flex items-center rounded-lg bg-slate-100 p-1 gap-0.5" role="group" aria-label="Language">
+    <div className="segmented p-1 gap-0.5" role="group" aria-label="Language">
       {btn('en', 'English')}
       {btn('sw', 'Kiswahili')}
     </div>

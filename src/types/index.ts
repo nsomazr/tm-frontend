@@ -9,6 +9,7 @@ export interface User {
   organization: string
   profile_complete: boolean
   has_paid_access?: boolean
+  assistant_credits?: AssistantCredits | null
   created_at: string
 }
 
@@ -44,6 +45,43 @@ export interface MapLayer {
   style: Record<string, unknown>
   description: string
   feature_count: number
+  current_version?: number
+  created_by?: number | null
+  created_by_name?: string | null
+  last_uploaded_by_name?: string | null
+  last_uploaded_at?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface LayerVersion {
+  id: number
+  layer: number
+  layer_name: string
+  layer_slug: string
+  mineral_name: string
+  version_number: number
+  changelog: string
+  uploaded_by: number | null
+  uploaded_by_name: string | null
+  feature_count: number
+  created_at: string
+}
+
+export interface LayerUpload {
+  id: number
+  layer: number
+  layer_name: string
+  layer_slug: string
+  mineral_name: string
+  filename: string
+  file_type: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  error_message: string
+  uploaded_by: number | null
+  uploaded_by_name: string | null
+  uploaded_by_role: string | null
+  created_at: string
 }
 
 export interface MapFeature {
@@ -63,10 +101,34 @@ export interface SubscriptionPlan {
   slug: string
   description: string
   billing_cycle: 'monthly' | 'annual'
+  billing_cycle_label?: string
   price: string
   currency: string
   included_minerals: number[]
   included_mineral_names: string[]
+  included_report_downloads?: number
+  included_assistant_credits?: number
+  includes_chat_history?: boolean
+}
+
+export interface AssistantCredits {
+  limit: number | null
+  used: number
+  remaining: number | null
+  period_end: string | null
+  period_label: 'monthly' | 'annual' | 'session' | null
+  tier: 'free' | 'paid' | 'anonymous' | 'unlimited'
+  unlimited?: boolean
+  chat_history?: boolean
+}
+
+export interface DownloadQuota {
+  limit: number | null
+  used: number
+  remaining: number | null
+  period_end: string | null
+  billing_cycle: 'monthly' | 'annual' | null
+  unlimited?: boolean
 }
 
 export interface UserSubscription {
@@ -79,6 +141,8 @@ export interface UserSubscription {
   auto_renew: boolean
   is_active: boolean
   days_until_expiry: number | null
+  download_quota?: DownloadQuota | null
+  assistant_credits?: AssistantCredits | null
 }
 
 export interface Report {
@@ -93,8 +157,13 @@ export interface Report {
   preview_image: string | null
   price: string
   currency: string
+  is_active?: boolean
   is_purchased: boolean
   has_full_access?: boolean
+  has_pdf?: boolean
+  summary_preview?: string
+  can_download?: boolean
+  download_source?: 'purchase' | 'subscription' | 'admin' | null
   key_findings_count?: number
   ai_summary?: {
     summary: string
@@ -103,6 +172,17 @@ export interface Report {
     model_used?: string
     is_preview?: boolean
   }
+}
+
+export interface MyReport {
+  id: number
+  report: number
+  report_slug: string
+  report_title: string
+  source: 'purchase' | 'subscription'
+  purchased_at: string
+  amount_paid?: string | null
+  currency?: string | null
 }
 
 export interface Invoice {
@@ -126,7 +206,7 @@ export interface PaymentOrder {
   status: 'pending' | 'completed' | 'failed' | 'cancelled'
   merchant_reference: string
   order_tracking_id: string
-  payment_provider: 'selcom' | 'simulated'
+  payment_provider: 'snippe' | 'simulated'
   msisdn: string
   gateway_response?: Record<string, unknown>
   created_at: string
@@ -179,6 +259,7 @@ export interface AuditLog {
   action: string
   resource_type: string
   resource_id: string
+  details?: Record<string, unknown>
   created_at: string
 }
 
@@ -201,6 +282,7 @@ export interface MineralSearchInsight {
   layer_count: number
   total_layer_count: number
   top_regions: { region: string; count: number }[]
+  top_minerals?: { slug: string; name: string; name_sw?: string; color: string; count: number }[]
   center: { lat: number; lng: number } | null
   zoom?: number
   has_full_data: boolean
@@ -221,6 +303,23 @@ export interface AreaInsight {
   has_detail_access?: boolean
   requires_subscription?: boolean
   upgrade_message?: string
+  follow_up_limit?: number | null
+  follow_ups_remaining?: number | null
+  assistant_credits?: AssistantCredits | null
+}
+
+export interface AssistantMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface AssistantChatResponse {
+  reply: string
+  ai_model: string
+  assistant_credits: AssistantCredits
+  requires_subscription?: boolean
+  thread_key?: string
+  chat_history?: boolean
 }
 
 export interface AdminPlatformAnalytics {

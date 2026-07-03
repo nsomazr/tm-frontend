@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
 import MarketingHero from '../components/marketing/MarketingHero'
+import MarketingCta, { MarketingCtaLink } from '../components/marketing/MarketingCta'
 import { useTranslation } from '../i18n/LocaleContext'
 
 const PILLAR_ACCENTS = [
@@ -16,13 +16,10 @@ export default function AboutPage() {
   return (
     <div className="animate-fade-in">
       <MarketingHero eyebrow={a.eyebrow} title={a.heroTitle} subtitle={a.heroSubtitle}>
-        <Link to="/" className="btn-primary text-sm">{a.openMap}</Link>
-        <Link
-          to="/subscriptions"
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm border border-white/25 text-white hover:bg-white/10 transition-colors"
-        >
-          {a.seePlans}
-        </Link>
+        <MarketingCtaLink to="/" variant="primary">
+          {a.openMap}
+        </MarketingCtaLink>
+        <MarketingCtaLink to="/subscriptions">{a.seePlans}</MarketingCtaLink>
       </MarketingHero>
 
       <section className="border-b border-slate-200 bg-white">
@@ -115,7 +112,7 @@ export default function AboutPage() {
           <div className="grid md:grid-cols-3 gap-8">
             {a.steps.map((s) => (
               <div key={s.step}>
-                <span className="text-4xl font-bold text-terra-100">{s.step}</span>
+                <span className="text-4xl font-bold text-terra-500">{s.step}</span>
                 <h3 className="font-semibold text-slate-900 mt-2">{s.title}</h3>
                 <p className="text-slate-500 text-sm mt-2 leading-relaxed">{s.desc}</p>
               </div>
@@ -139,16 +136,12 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="bg-slate-900 text-white py-16 sm:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold">{a.valuesTitle}</h2>
-          <p className="text-slate-300 mt-4 max-w-3xl mx-auto leading-relaxed">{a.valuesBody}</p>
-          <div className="mt-10 flex flex-wrap justify-center gap-3">
-            <Link to="/" className="btn-primary text-sm">{a.tryFree}</Link>
-            <Link to="/register" className="btn-secondary text-sm">{a.createAccount}</Link>
-          </div>
-        </div>
-      </section>
+      <MarketingCta title={a.valuesTitle} subtitle={a.valuesBody}>
+        <MarketingCtaLink to="/" variant="primary">
+          {a.tryFree}
+        </MarketingCtaLink>
+        <MarketingCtaLink to="/register">{a.createAccount}</MarketingCtaLink>
+      </MarketingCta>
     </div>
   )
 }

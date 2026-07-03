@@ -5,7 +5,8 @@ import { paymentsApi } from '../api'
 
 export default function PaymentCallbackPage() {
   const [params] = useSearchParams()
-  const ref = params.get('ref') || ''
+  const refParam = params.get('ref') || ''
+  const ref = /^[a-f0-9]{32}$/i.test(refParam) ? refParam : ''
   const [attempts, setAttempts] = useState(0)
 
   const { data: order, refetch } = useQuery({

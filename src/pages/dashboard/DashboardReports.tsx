@@ -1,25 +1,73 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { subscriptionsApi } from '../../api'
+import { reportsApi, subscriptionsApi } from '../../api'
+import type { MyReport } from '../../types'
 import { EmptyState, PageHeader } from './DashboardUi'
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+
+function normalizePurchases(data: unknown): MyReport[] {
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object' && 'results' in data && Array.isArray((data as { results: unknown }).results)) {
+    return (data as { results: MyReport[] }).results
+  }
+  return []
+}
+
 export default function DashboardReports() {
-  const { data: purchases, isLoading } = useQuery({
+  const [downloading, setDownloading] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['purchases'],
-    queryFn: () => subscriptionsApi.purchases().then((r) => r.data),
+    queryFn: () => subscriptionsApi.purchases().then((r) => normalizePurchases(r.data)),
   })
 
-  const list = (purchases ?? []) as { report_title: string; purchased_at?: string }[]
+  const list = data ?? []
+
+  const handleDownload = async (slug: string) => {
+    setDownloading(slug)
+    setDownloadError(null)
+    try {
+      const { data: blob } = await reportsApi.download(slug)
+      downloadBlob(new Blob([blob]), `${slug}.pdf`)
+    } catch {
+      setDownloadError('Download failed. Open the report preview and try again.')
+    } finally {
+      setDownloading(null)
+    }
+  }
 
   return (
     <>
-      <PageHeader title="My reports" description="Reports you have purchased and can download." />
+      <PageHeader title="My reports" description="Reports you have purchased or downloaded with your subscription." />
+
+      {downloadError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{downloadError}</div>
+      )}
 
       {isLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
+      ) : isError ? (
+        <EmptyState
+          message="Could not load your reports. Please refresh the page."
+          action={
+            <Link to="/downloads" className="btn-primary text-sm">
+              Browse report catalog
+            </Link>
+          }
+        />
       ) : list.length === 0 ? (
         <EmptyState
-          message="You haven't purchased any reports yet."
+          message="You haven't purchased or downloaded any reports yet."
           action={
             <Link to="/downloads" className="btn-primary text-sm">
               Browse report catalog
@@ -28,20 +76,58 @@ export default function DashboardReports() {
         />
       ) : (
         <>
-          <ul className="rounded-xl bg-white border border-slate-200 divide-y divide-slate-100">
-            {list.map((p, i) => (
-              <li key={i} className="px-5 py-4 text-sm">
-                <p className="font-medium text-slate-900">{p.report_title}</p>
-                {p.purchased_at && (
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Purchased {new Date(p.purchased_at).toLocaleDateString()}
-                  </p>
-                )}
+          <ul className="card !p-0 overflow-hidden app-divide-y">
+            {list.map((item) => (
+              <li key={`${item.source}-${item.id}`} className="px-5 py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-app-text">{item.report_title}</p>
+                      <span
+                        className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full ${
+                          item.source === 'purchase'
+                            ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                            : 'bg-sky-50 text-sky-700 ring-1 ring-sky-600/20'
+                        }`}
+                      >
+                        {item.source === 'purchase' ? 'Purchased' : 'Subscription'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {item.source === 'purchase' && item.amount_paid
+                        ? `${Number(item.amount_paid).toLocaleString()} ${item.currency ?? 'TZS'} · `
+                        : ''}
+                      {item.purchased_at
+                        ? new Date(item.purchased_at).toLocaleDateString(undefined, {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : ''}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <Link
+                      to={`/downloads/${item.report_slug}`}
+                      className="btn-secondary text-xs py-2 px-3"
+                    >
+                      Open
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleDownload(item.report_slug)}
+                      disabled={downloading === item.report_slug}
+                      className="btn-primary text-xs py-2 px-3 disabled:opacity-50"
+                    >
+                      {downloading === item.report_slug ? 'Downloading…' : 'Download PDF'}
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
           <Link to="/downloads" className="inline-block mt-4 text-sm text-terra-600 hover:text-terra-700 font-medium">
-            Download from catalog →
+            Browse more reports →
           </Link>
         </>
       )}
