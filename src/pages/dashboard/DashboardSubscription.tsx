@@ -1,0 +1,69 @@
+import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { subscriptionsApi } from '../../api'
+import { EmptyState, PageHeader } from './DashboardUi'
+
+export default function DashboardSubscription() {
+  const { data: subscription, isLoading } = useQuery({
+    queryKey: ['my-subscription'],
+    queryFn: () => subscriptionsApi.me().then((r) => r.data).catch(() => null),
+  })
+
+  return (
+    <>
+      <PageHeader title="Subscription" description="Your current plan and access level." />
+
+      {isLoading ? (
+        <p className="text-sm text-slate-500">Loading…</p>
+      ) : subscription?.is_active ? (
+        <div className="rounded-xl bg-white border border-slate-200 p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-lg font-semibold text-terra-700">{subscription.plan_detail.name}</p>
+              <p className="text-sm text-slate-500 capitalize mt-1">Status: {subscription.status}</p>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20">
+              Active
+            </span>
+          </div>
+          {subscription.end_date && (
+            <dl className="grid sm:grid-cols-2 gap-4 text-sm pt-4 border-t border-slate-100">
+              <div>
+                <dt className="text-slate-400 text-xs uppercase tracking-wide">Renews / expires</dt>
+                <dd className="font-medium text-slate-900 mt-0.5">{subscription.end_date}</dd>
+              </div>
+              {subscription.days_until_expiry != null && (
+                <div>
+                  <dt className="text-slate-400 text-xs uppercase tracking-wide">Days remaining</dt>
+                  <dd className="font-medium text-slate-900 mt-0.5">{subscription.days_until_expiry}</dd>
+                </div>
+              )}
+              <div>
+                <dt className="text-slate-400 text-xs uppercase tracking-wide">Billing</dt>
+                <dd className="font-medium text-slate-900 mt-0.5 capitalize">
+                  {subscription.plan_detail.billing_cycle}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-400 text-xs uppercase tracking-wide">Auto-renew</dt>
+                <dd className="font-medium text-slate-900 mt-0.5">{subscription.auto_renew ? 'Yes' : 'No'}</dd>
+              </div>
+            </dl>
+          )}
+          <Link to="/subscriptions" className="inline-block text-sm text-terra-600 hover:text-terra-700 font-medium">
+            Change or upgrade plan →
+          </Link>
+        </div>
+      ) : (
+        <EmptyState
+          message="You are on Explorer: unlimited AI map highlights and report previews. Upgrade for full datasets, report depth, analytics, and support."
+          action={
+            <Link to="/subscriptions" className="btn-primary text-sm">
+              View subscription plans
+            </Link>
+          }
+        />
+      )}
+    </>
+  )
+}

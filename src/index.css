@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 bg-gradient-to-r from-terra-600 to-terra-700
+      hover:from-terra-700 hover:to-terra-800 text-white px-5 py-2.5 rounded-xl font-medium
+      shadow-md shadow-terra-600/25 hover:shadow-lg hover:shadow-terra-600/30
+      transition-all duration-200 active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700
+      border border-slate-200 px-5 py-2.5 rounded-xl font-medium shadow-sm
+      hover:shadow transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl shadow-sm border border-slate-100/80 p-6
+      hover:shadow-md transition-shadow duration-300;
+  }
+
+  .card-flat {
+    @apply bg-white rounded-2xl border border-slate-100 p-6;
+  }
+
+  .input {
+    @apply w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-slate-900
+      placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-terra-500/30
+      focus:border-terra-500 transition-all duration-200;
+  }
+
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10;
+  }
+
+  .page-title {
+    @apply text-3xl sm:text-4xl font-bold tracking-tight text-slate-900;
+  }
+
+  .page-subtitle {
+    @apply text-slate-500 mt-2 text-base sm:text-lg max-w-2xl;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-terra {
+    @apply badge bg-terra-50 text-terra-700 ring-1 ring-terra-600/20;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-terra-700 via-terra-600 to-gold-500 bg-clip-text text-transparent;
+  }
+}
