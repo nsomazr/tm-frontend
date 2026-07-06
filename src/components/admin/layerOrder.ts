@@ -32,22 +32,47 @@ export function applyGroupOrder(
 ): MapLayer[] {
   const typeOrder = ['polygon', 'line', 'point'] as const
   const groups = new Map<string, MapLayer[]>()
+  const assigned = new Set<number>()
 
   for (const type of typeOrder) {
     if (type === groupType) {
-      groups.set(type, [...orderedTopToBottom].reverse())
+      const ordered = [...orderedTopToBottom].reverse()
+      groups.set(type, ordered)
+      ordered.forEach((layer) => assigned.add(layer.id))
     } else {
-      groups.set(type, sortLayersBottomToTop(layers.filter((layer) => layer.layer_type === type)))
+      const bucket = sortLayersBottomToTop(
+        layers.filter((layer) => layer.layer_type === type)
+      )
+      groups.set(type, bucket)
+      bucket.forEach((layer) => assigned.add(layer.id))
     }
   }
 
-  const merged = typeOrder.flatMap((type) => groups.get(type) ?? [])
+  const leftovers = sortLayersBottomToTop(layers.filter((layer) => !assigned.has(layer.id)))
+  const merged: MapLayer[] = []
+  const seen = new Set<number>()
+  for (const layer of [...typeOrder.flatMap((type) => groups.get(type) ?? []), ...leftovers]) {
+    if (seen.has(layer.id)) continue
+    seen.add(layer.id)
+    merged.push(layer)
+  }
   return merged.map((layer, index) => ({ ...layer, z_index: index }))
+}
+
+export function uniqueLayerIds(ids: number[]): number[] {
+  const seen = new Set<number>()
+  const unique: number[] = []
+  for (const id of ids) {
+    if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue
+    seen.add(id)
+    unique.push(id)
+  }
+  return unique
 }
 
 export function stackPositionLabel(indexFromTop: number, total: number) {
   if (total <= 1) return 'Only layer in group'
-  if (indexFromTop === 0) return 'Top — drawn in front'
-  if (indexFromTop === total - 1) return 'Bottom — drawn behind'
+  if (indexFromTop === 0) return 'Top (drawn in front)'
+  if (indexFromTop === total - 1) return 'Bottom (drawn behind)'
   return `${indexFromTop + 1} of ${total}`
 }

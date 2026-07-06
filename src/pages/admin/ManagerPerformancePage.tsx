@@ -9,7 +9,7 @@ function fmt(n: number) {
 }
 
 function fmtDate(iso: string | null) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -44,7 +44,7 @@ function ManagerRow({ row }: { row: ManagerPerformanceRow }) {
       <td className="px-4 py-3 text-sm">
         <p className="text-app-text">{row.assigned_minerals} commodities</p>
         <p className="text-xs text-app-text-muted mt-0.5 line-clamp-2" title={row.mineral_names.join(', ')}>
-          {row.mineral_names.join(', ') || '—'}
+          {row.mineral_names.join(', ') || '-'}
         </p>
         {row.can_publish && (
           <span className="inline-block mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">

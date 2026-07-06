@@ -91,6 +91,19 @@ export const mapsApi = {
     api.patch<{ coordinate_system: string }>('/maps/settings/', data),
 }
 
+/** Load every page of map layers (admin reorder/arrange needs the full stack). */
+export async function fetchAllMapLayers(params: Record<string, string> = {}): Promise<MapLayer[]> {
+  const items: MapLayer[] = []
+  let page = 1
+  for (;;) {
+    const { data } = await mapsApi.layers({ ...params, page: String(page) })
+    items.push(...data.results)
+    if (!data.next) break
+    page += 1
+  }
+  return items
+}
+
 export const subscriptionsApi = {
   plans: () => api.get<PaginatedResponse<SubscriptionPlan>>('/subscriptions/plans/'),
   me: () => api.get<UserSubscription>('/subscriptions/me/'),

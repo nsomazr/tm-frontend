@@ -91,7 +91,7 @@ export default function MineralColorReference({
       <div className="px-4 py-3 border-b app-divider bg-app-subtle/30">
         <h3 className="text-sm font-semibold text-app-text">Suggested mineral colors</h3>
         <p className="text-xs text-app-text-muted mt-0.5 leading-relaxed">
-          Standard geological colors for every commodity — select one to match global mapping conventions.
+          Standard geological colors for every commodity. Select one to match global mapping conventions.
         </p>
       </div>
 

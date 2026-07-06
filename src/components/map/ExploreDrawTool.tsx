@@ -28,6 +28,9 @@ interface ExploreDrawToolProps {
   embedded?: boolean
 }
 
+const COORD_INPUT_CLASS =
+  'w-full rounded-md border border-app-border bg-app-surface px-2 py-1.5 text-sm map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25'
+
 const MODES: { id: ExplorationMode; label: string; hint: string }[] = [
   { id: 'point', label: 'Point', hint: 'A single location.' },
   { id: 'line', label: 'Line', hint: 'A path / structure (2+ points).' },
@@ -138,7 +141,7 @@ export default function ExploreDrawTool({
               onChange={(e) => setFieldA(e.target.value)}
               inputMode="decimal"
               placeholder="-6.17"
-              className="w-full rounded-md border border-app-border bg-app-surface px-2 py-1.5 text-sm map-text"
+              className={COORD_INPUT_CLASS}
             />
           </label>
           <label className="flex-1">
@@ -148,7 +151,7 @@ export default function ExploreDrawTool({
               onChange={(e) => setFieldB(e.target.value)}
               inputMode="decimal"
               placeholder="35.74"
-              className="w-full rounded-md border border-app-border bg-app-surface px-2 py-1.5 text-sm map-text"
+              className={COORD_INPUT_CLASS}
             />
           </label>
           <button

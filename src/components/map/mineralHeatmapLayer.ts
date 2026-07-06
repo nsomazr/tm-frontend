@@ -39,7 +39,7 @@ export function mineralHeatmapGradient(color: string): string[] {
 /** Mineral vector layers start at 3600; heatmap sits between boundaries (≤3400) and data. */
 export const MINERAL_HEATMAP_Z_INDEX = 3550
 
-/** @deprecated use MINERAL_HEATMAP_Z_INDEX — kept for callers passing min layer z */
+/** @deprecated use MINERAL_HEATMAP_Z_INDEX; kept for callers passing min layer z */
 export function mineralHeatmapZIndex(_minLayerZIndex: number): number {
   return MINERAL_HEATMAP_Z_INDEX
 }

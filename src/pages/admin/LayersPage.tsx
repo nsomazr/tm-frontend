@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, mapsApi } from '../../api'
+import { adminApi, fetchAllMapLayers, mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import FileUploadField from '../../components/ui/FileUploadField'
 import ListPagination from '../../components/ui/ListPagination'
@@ -31,6 +31,7 @@ import {
   sortLayersBottomToTop,
   sortLayersTopToBottom,
   stackPositionLabel,
+  uniqueLayerIds,
 } from '../../components/admin/layerOrder'
 import type { AuditLog, LayerUpload, MapLayer } from '../../types'
 
@@ -164,9 +165,9 @@ export default function LayersPage() {
   const [structureRankTouched, setStructureRankTouched] = useState(false)
   const [layerMode, setLayerMode] = useState<'create' | 'import'>('import')
 
-  const { data: layers } = useQuery({
+  const { data: allLayers = [] } = useQuery({
     queryKey: ['admin-layers'],
-    queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
+    queryFn: () => fetchAllMapLayers({ include_inactive: '1' }),
   })
 
   const { data: managerUploads } = useQuery({
@@ -182,7 +183,6 @@ export default function LayersPage() {
     enabled: isAdmin,
   })
 
-  const allLayers = layers?.results ?? []
   const visibleLayers = showHidden ? allLayers : allLayers.filter((l) => l.is_active)
   const importableLayers = allLayers.filter((l) => l.is_active)
   const stackableLayers = allLayers.filter((l) => l.is_active)
@@ -283,10 +283,11 @@ export default function LayersPage() {
   const persistLayerStack = async (orderedActive: MapLayer[]) => {
     const bottomToTop = sortLayersBottomToTop(orderedActive)
     const inactive = sortLayersBottomToTop(allLayers.filter((layer) => !layer.is_active))
-    const layerIds = [
+    const layerIds = uniqueLayerIds([
       ...bottomToTop.map((layer) => layer.id),
       ...inactive.map((layer) => layer.id),
-    ]
+    ])
+    if (layerIds.length === 0) return
     await mapsApi.reorder(layerIds)
   }
 
@@ -296,8 +297,13 @@ export default function LayersPage() {
       invalidateLayerQueries(qc)
       toast.success('Layer draw order updated')
     },
-    onError: (err: Error) => {
-      toast.error('Could not update layer order', { description: err.message })
+    onError: (err: unknown) => {
+      const detail =
+        (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail ??
+        (err instanceof Error ? err.message : 'Unknown error')
+      toast.error('Could not update layer order', {
+        description: typeof detail === 'string' ? detail : JSON.stringify(detail),
+      })
     },
   })
 
@@ -358,8 +364,8 @@ export default function LayersPage() {
       }
 
       if (res.data?.status === 'completed') {
-        const { data } = await mapsApi.layers({ include_inactive: '1' })
-        const updated = data.results.find((layer) => layer.slug === slug)
+        const updatedList = await fetchAllMapLayers({ include_inactive: '1' })
+        const updated = updatedList.find((layer) => layer.slug === slug)
         const featureCount = updated?.feature_count ?? 0
         toast.success('Upload successful', {
           description: `Imported ${featureCount.toLocaleString()} features into "${layerName}" from ${filename}.`,
@@ -771,7 +777,7 @@ export default function LayersPage() {
                               ))}
                             </select>
                           ) : (
-                            <span className="text-app-text-muted">—</span>
+                            <span className="text-app-text-muted">-</span>
                           )}
                         </td>
                         <td className="text-right">

@@ -32,7 +32,7 @@ const ADD_LABELS: Record<ExplorationMode, string> = {
 
 const ADD_HINTS: Record<ExplorationMode, string> = {
   point: 'Click the map or enter WGS84 latitude/longitude, then save.',
-  line: 'Add connected vertices in order — each point links to the previous one (minimum 2).',
+  line: 'Add connected vertices in order. Each point links to the previous one (minimum 2).',
   polygon:
     'Add connected vertices in order around the boundary. Each point links to the previous; the ring closes back to vertex 1 (minimum 3).',
 }
@@ -322,7 +322,7 @@ export default function CoordinatesEditor() {
                     <p className="text-[11px] text-app-text-muted mb-2">
                       {drawMode === 'polygon'
                         ? drawPoints.length < 3
-                          ? `${drawPoints.length} vertex${drawPoints.length === 1 ? '' : 'es'} — add ${3 - drawPoints.length} more to close the ring`
+                          ? `${drawPoints.length} vertex${drawPoints.length === 1 ? '' : 'es'}. Add ${3 - drawPoints.length} more to close the ring`
                           : `${drawPoints.length} connected vertices · closes ${drawPoints.length} → 1`
                         : `${drawPoints.length} connected vertex${drawPoints.length === 1 ? '' : 'es'}`}
                     </p>

@@ -517,7 +517,7 @@
     box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.16);
   }
 
-  /* Commodity periodic table — keep tile labels readable in dark mode */
+  /* Commodity periodic table: keep tile labels readable in dark mode */
   .periodic-table .periodic-tile-mapped,
   .periodic-table .periodic-tile-mapped span {
     color: inherit;

@@ -38,7 +38,7 @@ export default function AdminMapSettingsPage() {
         <p className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-1">Platform</p>
         <h1 className="text-2xl font-bold text-app-text">Map settings</h1>
         <p className="mt-2 text-sm text-app-muted max-w-xl">
-          Choose the coordinate reference system (CRS) used across the public map — explore area
+          Choose the coordinate reference system (CRS) used across the public map. Explore area
           labels, saved point lists, and coordinate readouts. Map users cannot change this; only
           platform admins can.
         </p>
