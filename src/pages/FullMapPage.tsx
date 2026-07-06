@@ -223,7 +223,13 @@ export default function FullMapPage() {
         let heatmapRes
         try {
           heatmapRes = await analyticsApi.mineralHeatmap(slug, { country: countryCode })
-        } catch {
+        } catch (error: unknown) {
+          const err = error as { response?: { status?: number; data?: { detail?: string } } }
+          if (err.response?.status === 403) {
+            toast.error(err.response.data?.detail || m.map.mineralExplorationBlocked)
+          } else if (err.response?.status !== 404) {
+            toast.error(m.map.mineralHeatmapFailed)
+          }
           heatmapRes = null
         }
         const data = coverageRes.data
@@ -234,7 +240,7 @@ export default function FullMapPage() {
           districtIds: data.district_ids,
           villageIds: data.village_ids,
         })
-        if (heatmapRes?.data) {
+        if (heatmapRes?.data?.points?.length) {
           setMineralHeatmap({
             slug: heatmapRes.data.slug,
             color: heatmapRes.data.color,
@@ -762,12 +768,35 @@ export default function FullMapPage() {
 
   const askTerraFromSearch = insightLoading && assistantOpen && !!assistantMapContext?.searchLabel
 
+  const layerHeatmapSlugRef = useRef<string | null>(null)
+
+  const syncHeatmapFromVisibleLayers = useCallback(
+    (nextVisible: Set<number>) => {
+      if (!hasPaidAccess || selectedResult || catalogMineralSlug) return
+
+      const visible = layers.filter((l) => nextVisible.has(l.id))
+      if (visible.length !== 1) {
+        layerHeatmapSlugRef.current = null
+        setMineralHeatmap(null)
+        setMineralHighlight(null)
+        return
+      }
+
+      const slug = visible[0].mineral_slug
+      if (!slug || slug === layerHeatmapSlugRef.current) return
+      layerHeatmapSlugRef.current = slug
+      void loadMineralMapOverlay(slug)
+    },
+    [hasPaidAccess, selectedResult, catalogMineralSlug, layers, loadMineralMapOverlay]
+  )
+
   const toggleLayer = (id: number) => {
     if (!hasPaidAccess) return
     setVisibleLayers((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      syncHeatmapFromVisibleLayers(next)
       return next
     })
   }
@@ -782,6 +811,7 @@ export default function FullMapPage() {
           else next.delete(layer.id)
         }
       }
+      syncHeatmapFromVisibleLayers(next)
       return next
     })
   }

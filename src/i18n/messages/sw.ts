@@ -104,6 +104,7 @@ export const sw: Messages = {
     showAllMinerals: 'Onyesha madini yote',
     mineralExplorationBlocked:
       'Uchunguzi wa kina wa madini haujumuishwi kwenye kifurushi chako, au umeisha tumia madini yote kwa mwezi huu. Boresha kifurushi ili kuchunguza zaidi.',
+    mineralHeatmapFailed: 'Ramani ya joto haikupakiwa. Jaribu tena baada ya muda mfupi.',
     mineralExplorationQuota: 'Madini {used} kati ya {limit} yamechunguzwa mwezi huu',
     mineralExplorationQuotaUnlimited: 'Madini {used} yamechunguzwa mwezi huu (kifurushi bila kikomo)',
     mineralExplorationFree: 'Uchunguzi wa kina wa madini unahitaji kifurushi cha malipo',

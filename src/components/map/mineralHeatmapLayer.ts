@@ -44,7 +44,7 @@ export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: bool
     radius: mobile ? 8 : 11,
     weight: (feature) => Number(feature.get('weight') ?? 1),
     gradient: mineralHeatmapGradient(spec.color),
-    zIndex: 3450,
+    zIndex: 4520,
     opacity: 0.88,
     properties: { mineralHeatmap: spec.slug },
   })

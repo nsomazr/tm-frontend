@@ -93,6 +93,7 @@ export const en = {
     showAllMinerals: 'Show all minerals',
     mineralExplorationBlocked:
       'Mineral exploration is not included on your plan, or you have used all minerals for this month. Upgrade to explore more.',
+    mineralHeatmapFailed: 'Could not load the mineral heatmap. Try again in a moment.',
     mineralExplorationQuota: '{used} of {limit} minerals explored this month',
     mineralExplorationQuotaUnlimited: '{used} minerals explored this month (unlimited plan)',
     mineralExplorationFree: 'Mineral deep-explore requires a paid plan',

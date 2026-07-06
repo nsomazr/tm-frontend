@@ -36,6 +36,23 @@ export const DEFAULT_COUNTRY_CODE = 'TZ'
 export const COUNTRY_FOCUS_STORAGE_KEY = 'terra-map-country'
 export const DEFAULT_COUNTRY_FOCUS = PRESETS.TZ
 
+function boundsSpan(bounds: CountryFocus['bounds']) {
+  const lng = bounds.east - bounds.west
+  const lat = bounds.north - bounds.south
+  return lng > 0 && lat > 0 ? { lng, lat } : null
+}
+
+/** Ignore corrupt API bboxes (e.g. a ward saved as country extent). */
+function boundsLookValid(code: string, bounds: CountryFocus['bounds']): boolean {
+  const span = boundsSpan(bounds)
+  if (!span) return false
+  const preset = PRESETS[code.toUpperCase()]
+  if (!preset) return span.lng >= 0.5 && span.lat >= 0.5
+  const presetSpan = boundsSpan(preset.bounds)
+  if (!presetSpan) return span.lng >= 2 && span.lat >= 2
+  return span.lng >= presetSpan.lng * 0.25 && span.lat >= presetSpan.lat * 0.25
+}
+
 export function clientCountryFocus(code: string): CountryFocus {
   return PRESETS[code.toUpperCase()] ?? DEFAULT_COUNTRY_FOCUS
 }
@@ -45,7 +62,7 @@ export function resolveCountryFocus(
   apiFocus?: CountryFocus | null,
   country?: Country | null
 ): CountryFocus {
-  if (apiFocus?.bounds) return apiFocus
+  if (apiFocus?.bounds && boundsLookValid(code, apiFocus.bounds)) return apiFocus
   const preset = PRESETS[code.toUpperCase()]
   if (preset) return preset
   if (country?.bounds && country.center_lat != null && country.center_lng != null) {
