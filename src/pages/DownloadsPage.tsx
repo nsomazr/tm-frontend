@@ -1,6 +1,7 @@
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { reportsApi, subscriptionsApi } from '../api'
+import { geographyApi, mineralsApi, reportsApi, subscriptionsApi } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import { ReportQuotaBanner } from '../components/reports/ReportQuotaBanner'
 import { ReportCatalogTeaser } from '../components/reports/ReportPreviewContent'
@@ -11,10 +12,29 @@ export default function DownloadsPage() {
   const { user, hasPaidAccess } = useAuth()
   const { m } = useTranslation()
   const r = m.reports
+  const [mineralFilter, setMineralFilter] = useState('')
+  const [regionFilter, setRegionFilter] = useState('')
+
+  const { data: minerals } = useQuery({
+    queryKey: ['minerals'],
+    queryFn: () => mineralsApi.list().then((res) => res.data),
+  })
+
+  const { data: regions } = useQuery({
+    queryKey: ['regions'],
+    queryFn: () => geographyApi.regions().then((res) => res.data),
+  })
+
+  const listParams = useMemo(() => {
+    const params: Record<string, string> = {}
+    if (mineralFilter) params.mineral = mineralFilter
+    if (regionFilter) params.region = regionFilter
+    return params
+  }, [mineralFilter, regionFilter])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['reports'],
-    queryFn: () => reportsApi.list().then((res) => res.data),
+    queryKey: ['reports', listParams],
+    queryFn: () => reportsApi.list(listParams).then((res) => res.data),
   })
 
   const { data: subscription } = useQuery({
@@ -43,6 +63,33 @@ export default function DownloadsPage() {
           {r.supportNote}
         </div>
       )}
+
+      <div className="mb-6 flex flex-col sm:flex-row gap-3">
+        <select
+          value={mineralFilter}
+          onChange={(e) => setMineralFilter(e.target.value)}
+          className="input max-w-xs text-sm"
+        >
+          <option value="">{r.filterAllMinerals}</option>
+          {(minerals?.results ?? []).map((mineral) => (
+            <option key={mineral.id} value={String(mineral.id)}>
+              {mineral.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={regionFilter}
+          onChange={(e) => setRegionFilter(e.target.value)}
+          className="input max-w-xs text-sm"
+        >
+          <option value="">{r.filterAllRegions}</option>
+          {(regions?.results ?? []).map((region) => (
+            <option key={region.id} value={String(region.id)}>
+              {region.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {!hasPaidAccess && (
         <div className="mb-8 rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

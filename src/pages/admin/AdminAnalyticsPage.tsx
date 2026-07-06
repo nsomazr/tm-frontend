@@ -310,84 +310,6 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
         </div>
       </Section>
 
-      {(data.geology.layers?.length || data.geology.minerals.length > 0) && (
-        <Section title="Geological coverage" description="Prospects, layers, and regional distribution on the map.">
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div>
-              <p className="text-xs font-medium text-app-muted mb-3 uppercase tracking-wide">
-                {data.geology.layers?.length ? 'Zones by uploaded layer' : 'Prospects by mineral'}
-              </p>
-              <DonutChart
-                data={
-                  data.geology.layers?.length
-                    ? data.geology.layers.map((layer) => ({
-                        name: layer.name,
-                        value: layer.feature_count,
-                        color: layer.color,
-                      }))
-                    : data.geology.minerals.map((m) => ({
-                        name: m.name,
-                        value: m.feature_count,
-                        color: m.color,
-                      }))
-                }
-                height={280}
-              />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-app-muted mb-3 uppercase tracking-wide">Top regions</p>
-              <BarChart
-                items={data.geology.hotspots_by_region.slice(0, 8).map((r) => ({
-                  region: r.region,
-                  count: r.count,
-                }))}
-                labelKey="region"
-                valueKey="count"
-                color="#f59e0b"
-                layout="horizontal"
-              />
-            </div>
-          </div>
-          {data.geology.layer_by_type.length > 0 && (
-            <div className="mt-6 pt-4 border-t app-divider">
-              <p className="text-xs font-medium text-app-muted mb-3 uppercase tracking-wide">Layer geometry</p>
-              <BarChart
-                items={data.geology.layer_by_type.map((l) => ({
-                  layer_type: l.layer_type,
-                  count: l.count,
-                }))}
-                labelKey="layer_type"
-                valueKey="count"
-                color="#8b5cf6"
-              />
-            </div>
-          )}
-          <Link
-            to="/admin/coverage"
-            className="inline-block mt-4 text-sm text-terra-600 dark:text-terra-400 hover:underline"
-          >
-            Full coverage details →
-          </Link>
-        </Section>
-      )}
-
-      {!data.geology.layers?.length && !data.geology.minerals.length && (
-      <section className="rounded-xl bg-app-surface px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="font-semibold text-app-text text-sm">Geological coverage</h2>
-          <p className="text-sm text-app-text-secondary mt-0.5">
-            {fmt(data.geology.total_prospects)} prospects · {data.geology.regions_covered} regions · {data.geology.total_layers} layers
-          </p>
-        </div>
-        <Link
-          to="/admin/coverage"
-          className="shrink-0 text-sm font-medium text-terra-600 dark:text-terra-400 px-4 py-2 rounded-lg bg-app-elevated hover:bg-app-subtle transition-colors"
-        >
-          View coverage →
-        </Link>
-      </section>
-      )}
-
       <div className="grid lg:grid-cols-2 gap-6">
         <Section title="Report sales" description="Pay-per-download prospectivity reports.">
           <div className="grid grid-cols-3 gap-3 mb-5">
@@ -455,9 +377,24 @@ export default function AdminAnalyticsPage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-app-text">Platform analytics</h1>
+        <h1 className="text-2xl font-bold text-app-text">Business analytics</h1>
         <p className="text-app-muted text-sm mt-1">
           Users, conversions, revenue, subscriptions, and commercial performance.
+        </p>
+        <p className="text-app-text-muted text-xs mt-2">
+          For map coverage see{' '}
+          <Link to="/admin/coverage" className="text-terra-600 dark:text-terra-400 hover:underline">
+            Coverage
+          </Link>
+          , for mineral trends{' '}
+          <Link to="/admin/mineral-analytics" className="text-terra-600 dark:text-terra-400 hover:underline">
+            Mineral analytics
+          </Link>
+          , and for user behaviour{' '}
+          <Link to="/admin/user-activity" className="text-terra-600 dark:text-terra-400 hover:underline">
+            User activity
+          </Link>
+          .
         </p>
       </div>
 

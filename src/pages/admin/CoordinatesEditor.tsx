@@ -21,6 +21,8 @@ import {
   type ExplorationMode,
 } from '../../components/map/explorationGeometry'
 import ListPagination from '../../components/ui/ListPagination'
+import { toast } from '../../components/ui/toast'
+import { layerDisplayColor } from '../../components/admin/layerColors'
 import { usePagination } from '../../hooks/usePagination'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapFeature, MapLayer } from '../../types'
@@ -38,8 +40,44 @@ const ADD_HINTS: Record<ExplorationMode, string> = {
     'Add connected vertices in order around the boundary. Each point links to the previous; the ring closes back to vertex 1 (minimum 3).',
 }
 
+function MapPlaceholderIcon() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      className="text-app-text-muted/50"
+      aria-hidden
+    >
+      <path
+        d="M8 10h32v28H8V10Z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14 30l8-10 6 7 10-14"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="18" cy="18" r="2" fill="currentColor" />
+    </svg>
+  )
+}
+
 function layerDrawMode(layer: MapLayer): ExplorationMode {
   return layerTypeToDrawMode(layer.layer_type)
+}
+
+function layerOptionLabel(layer: MapLayer, displayName: (layer: MapLayer) => string) {
+  const parts = [displayName(layer)]
+  if (layer.mineral_name) parts.push(layer.mineral_name)
+  parts.push(layer.layer_type)
+  if (!layer.is_active) parts.push('hidden')
+  return parts.join(' · ')
 }
 
 function boundsFromFeatures(features: MapFeature[]): AdminFitBounds | null {
@@ -194,8 +232,20 @@ export default function CoordinatesEditor() {
       setMapRefreshKey((key) => key + 1)
       refetch()
       qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
+      toast.success('Feature deleted')
     },
+    onError: () => toast.error('Could not delete feature'),
   })
+
+  const handleDeleteFeature = (feature: MapFeature) => {
+    const typeLabel = geometryTypeLabel(feature.geometry)
+    toast.confirm(`Delete ${typeLabel} #${feature.id}?`, {
+      description: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => deleteFeature.mutate(feature.id),
+    })
+  }
 
   const featureList = features?.results ?? []
   const featurePagination = usePagination(featureList)
@@ -205,58 +255,98 @@ export default function CoordinatesEditor() {
     [featureList]
   )
 
+  const sortedLayerList = useMemo(
+    () =>
+      [...layerList].sort((a, b) => {
+        if (a.is_active !== b.is_active) return a.is_active ? -1 : 1
+        return displayName(a).localeCompare(displayName(b))
+      }),
+    [layerList, displayName]
+  )
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-app-text">Coordinate editor</h1>
         <p className="text-app-muted text-sm mt-1 max-w-2xl">
-          Pick an existing layer, draw or type coordinates on the map, then add points, structures
-          (lines), or polygons matching that layer type.
+          Pick a map layer, preview it on the map, then draw or type coordinates to add features.
         </p>
       </div>
 
-      <section className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
-        <label className="block max-w-md">
-          <span className="text-sm font-medium text-app-text-secondary">Layer</span>
-          <select
-            value={selectedLayerId || ''}
-            onChange={(e) => setSelectedLayerId(Number(e.target.value) || null)}
-            className="input mt-1.5"
-            disabled={layersLoading}
-          >
-            <option value="">
-              {layersLoading ? 'Loading layers…' : 'Choose a layer…'}
-            </option>
-            {layerList.map((l) => (
-              <option key={l.id} value={l.id}>
-                {displayName(l)} ({l.layer_type})
+      <div className="card !p-0 overflow-hidden">
+        <div className="px-5 py-4 border-b app-divider flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="font-bold text-app-text">Map layer</h2>
+            <p className="text-sm text-app-muted mt-1">
+              Choose a layer to preview geometry and add points, lines, or polygons.
+            </p>
+          </div>
+          <label className="block w-full lg:max-w-md shrink-0">
+            <span className="sr-only">Layer</span>
+            <select
+              value={selectedLayerId || ''}
+              onChange={(e) => setSelectedLayerId(Number(e.target.value) || null)}
+              className="input w-full"
+              disabled={layersLoading}
+            >
+              <option value="">
+                {layersLoading ? 'Loading layers…' : 'Select layer…'}
               </option>
-            ))}
-          </select>
-        </label>
+              {sortedLayerList.map((layer) => (
+                <option key={layer.id} value={layer.id}>
+                  {layerOptionLabel(layer, displayName)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
 
         {selectedLayer && (
-          <p className="text-xs text-app-text-muted mt-2">
-            {selectedLayer.mineral_name}
-            {selectedLayer.region_name ? ` · ${selectedLayer.region_name}` : ''}
-            {' · '}
-            {featureCount} feature{featureCount === 1 ? '' : 's'}
-            {' · '}
-            <span className="capitalize">{selectedLayer.layer_type}</span> layer
-            {!selectedLayer.is_active && (
-              <span className="text-amber-700 dark:text-amber-400"> · inactive (hidden on public map)</span>
+          <div className="px-5 py-3 border-b app-divider bg-app-subtle/40 flex flex-wrap items-center gap-2 text-xs">
+            <span
+              className="w-3 h-3 rounded-full shrink-0 border border-app-border/50"
+              style={{ backgroundColor: layerDisplayColor(selectedLayer) }}
+            />
+            <span className="font-medium text-app-text">{displayName(selectedLayer)}</span>
+            <span className="text-app-text-muted capitalize">{selectedLayer.layer_type}</span>
+            {selectedLayer.mineral_name && (
+              <span className="text-app-text-muted">· {selectedLayer.mineral_name}</span>
             )}
-          </p>
+            {selectedLayer.region_name && (
+              <span className="text-app-text-muted">· {selectedLayer.region_name}</span>
+            )}
+            <span className="text-app-text-muted">
+              · {featureCount} feature{featureCount === 1 ? '' : 's'}
+            </span>
+            {!selectedLayer.is_active && (
+              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25">
+                Hidden
+              </span>
+            )}
+            {featureCount === 0 && (
+              <span className="text-amber-700 dark:text-amber-300">
+                · No geometry yet — draw below or check upload status in Layers
+              </span>
+            )}
+          </div>
         )}
-        {selectedLayer && featureCount === 0 && (
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
-            No geometry in this layer yet. If you uploaded a file, check Layers → upload status (pending/failed).
-          </p>
-        )}
-      </section>
 
-      {selectedLayer ? (
-        <div className="grid xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-6 items-start">
+        {!selectedLayer ? (
+          <div className="px-6 py-16 sm:py-20 flex flex-col items-center justify-center text-center min-h-[min(42vh,320px)] bg-app-subtle/30">
+            <MapPlaceholderIcon />
+            <h3 className="font-semibold text-app-text mt-4">No layer selected</h3>
+            <p className="text-sm text-app-muted mt-2 max-w-md">
+              Select a layer from the dropdown above to preview the map and add features.
+            </p>
+            {!layersLoading && sortedLayerList.length === 0 && (
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-4">
+                No layers available yet. Create one in Layers first.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="p-5">
+            <div className="grid xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-6 items-start">
           <div className="space-y-4 min-w-0">
             <div className="rounded-xl border border-app-border overflow-hidden bg-app-subtle">
               <MapViewer
@@ -391,7 +481,7 @@ export default function CoordinatesEditor() {
                 <FeatureRow
                   key={f.id}
                   feature={f}
-                  onDelete={() => deleteFeature.mutate(f.id)}
+                  onDelete={() => handleDeleteFeature(f)}
                   deleting={deleteFeature.isPending}
                 />
               ))}
@@ -410,14 +500,10 @@ export default function CoordinatesEditor() {
               className="px-4 pb-4"
             />
           </aside>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-app-border-strong bg-app-subtle/50 px-6 py-12 text-center">
-          <p className="text-sm text-app-text-secondary">
-            Select a layer to preview the map and add features.
-          </p>
-        </div>
-      )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

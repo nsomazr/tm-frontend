@@ -93,6 +93,7 @@ export default function MineralManagersPage() {
   const [userId, setUserId] = useState('')
   const [selectedMineralIds, setSelectedMineralIds] = useState<number[]>([])
   const [canPublish, setCanPublish] = useState(false)
+  const [mineralSearch, setMineralSearch] = useState('')
   const [editingGroup, setEditingGroup] = useState<ManagerGroup | null>(null)
 
   const { data: assignments } = useQuery({
@@ -118,6 +119,7 @@ export default function MineralManagersPage() {
       setUserId('')
       setSelectedMineralIds([])
       setCanPublish(false)
+      setMineralSearch('')
       setEditingGroup(null)
       toast.success('Manager assignments updated')
     },
@@ -125,6 +127,18 @@ export default function MineralManagersPage() {
   })
 
   const mineralList = minerals?.results ?? []
+
+  const filteredMinerals = useMemo(() => {
+    const query = mineralSearch.trim().toLowerCase()
+    if (!query) return mineralList
+    return mineralList.filter((mineral) => {
+      const label = displayName(mineral).toLowerCase()
+      const sw = (mineral.name_sw || '').toLowerCase()
+      return label.includes(query) || sw.includes(query)
+    })
+  }, [displayName, mineralList, mineralSearch])
+
+  const selectedUser = users?.results.find((user) => String(user.id) === userId)
 
   const managerGroups = useMemo(() => {
     const byUser = new Map<number, ManagerGroup>()
@@ -156,6 +170,14 @@ export default function MineralManagersPage() {
     )
   }
 
+  const selectAllFiltered = () => {
+    setSelectedMineralIds((current) =>
+      Array.from(new Set([...current, ...filteredMinerals.map((mineral) => mineral.id)]))
+    )
+  }
+
+  const clearSelection = () => setSelectedMineralIds([])
+
   const handleAssign = () => {
     if (!userId || selectedMineralIds.length === 0) return
     const existing = managerGroups.find((group) => group.user.id === Number(userId))
@@ -177,55 +199,145 @@ export default function MineralManagersPage() {
         coordinates, and manage reports only for the commodities you select below.
       </p>
 
-      <div className="card mb-8">
-        <h2 className="font-bold text-app-text mb-4">Assign manager</h2>
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-4">
-          <select value={userId} onChange={(e) => setUserId(e.target.value)} className="input">
-            <option value="">Select user</option>
-            {users?.results.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.username} ({u.email})
-              </option>
-            ))}
-          </select>
-          <div className="rounded-lg border border-app-border max-h-40 overflow-y-auto divide-y divide-app-border/60">
-            {mineralList.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-app-muted">No minerals available.</p>
-            ) : (
-              mineralList.map((mineral) => (
-                <label
-                  key={mineral.id}
-                  className="flex items-center gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-app-subtle"
+      <section className="card mb-8 overflow-hidden">
+        <div className="px-5 py-4 border-b app-divider">
+          <h2 className="font-semibold text-app-text">Assign manager</h2>
+          <p className="text-sm text-app-text-muted mt-1">
+            Pick a user, choose the commodities they can manage, then save the assignment.
+          </p>
+        </div>
+
+        <div className="px-5 py-5 space-y-6">
+          <label className="block max-w-md">
+            <span className="text-sm font-medium text-app-text-secondary">Manager</span>
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="input mt-1.5 w-full"
+            >
+              <option value="">Select user…</option>
+              {users?.results.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.username} · {user.email}
+                </option>
+              ))}
+            </select>
+            {selectedUser && (
+              <p className="text-xs text-app-text-muted mt-1.5">
+                Role: {selectedUser.role.replace(/_/g, ' ')}
+              </p>
+            )}
+          </label>
+
+          <div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <p className="text-sm font-medium text-app-text-secondary">Commodities</p>
+                <p className="text-xs text-app-text-muted mt-0.5">
+                  {selectedMineralIds.length === 0
+                    ? 'Select one or more commodities'
+                    : `${selectedMineralIds.length} selected`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllFiltered}
+                  disabled={filteredMinerals.length === 0}
+                  className="text-xs text-terra-600 dark:text-terra-400 hover:underline disabled:opacity-40"
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedMineralIds.includes(mineral.id)}
-                    onChange={() => toggleNewMineral(mineral.id)}
-                  />
-                  <span>{displayName(mineral)}</span>
-                </label>
-              ))
+                  Select all
+                </button>
+                <span className="text-app-border">·</span>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  disabled={selectedMineralIds.length === 0}
+                  className="text-xs text-app-text-muted hover:text-app-text disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {mineralList.length > 6 && (
+              <input
+                type="search"
+                value={mineralSearch}
+                onChange={(e) => setMineralSearch(e.target.value)}
+                placeholder="Search commodities…"
+                className="input w-full max-w-md mb-3"
+              />
+            )}
+
+            {mineralList.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-app-border px-4 py-8 text-center text-sm text-app-text-muted">
+                No commodities available yet.
+              </p>
+            ) : filteredMinerals.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-app-border px-4 py-8 text-center text-sm text-app-text-muted">
+                No commodities match your search.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {filteredMinerals.map((mineral) => {
+                  const selected = selectedMineralIds.includes(mineral.id)
+                  return (
+                    <button
+                      key={mineral.id}
+                      type="button"
+                      onClick={() => toggleNewMineral(mineral.id)}
+                      aria-pressed={selected}
+                      className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                        selected
+                          ? 'border-terra-600 bg-terra-600 text-white shadow-sm'
+                          : 'border-app-border bg-app-surface text-app-text hover:border-terra-500/40 hover:bg-app-subtle'
+                      }`}
+                    >
+                      {displayName(mineral)}
+                    </button>
+                  )
+                })}
+              </div>
             )}
           </div>
-          <div className="flex flex-col gap-3 lg:items-end">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={canPublish}
-                onChange={(e) => setCanPublish(e.target.checked)}
-              />
-              Can publish
-            </label>
-            <button
-              onClick={handleAssign}
-              disabled={!userId || selectedMineralIds.length === 0 || sync.isPending}
-              className="btn-primary text-sm whitespace-nowrap"
-            >
-              {sync.isPending ? 'Saving…' : 'Assign commodities'}
-            </button>
-          </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-app-border px-4 py-3 cursor-pointer hover:bg-app-subtle/40">
+            <input
+              type="checkbox"
+              checked={canPublish}
+              onChange={(e) => setCanPublish(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block text-sm font-medium text-app-text">Can publish layers</span>
+              <span className="block text-xs text-app-text-muted mt-0.5">
+                Lets this manager make uploaded layers visible on the public map.
+              </span>
+            </span>
+          </label>
         </div>
-      </div>
+
+        <div className="px-5 py-4 border-t app-divider flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-xs text-app-text-muted">
+            {!userId
+              ? 'Choose a manager to continue.'
+              : selectedMineralIds.length === 0
+                ? 'Select at least one commodity.'
+                : `Ready to assign ${selectedMineralIds.length} ${
+                    selectedMineralIds.length === 1 ? 'commodity' : 'commodities'
+                  } to ${selectedUser?.username ?? 'this user'}.`}
+          </p>
+          <button
+            type="button"
+            onClick={handleAssign}
+            disabled={!userId || selectedMineralIds.length === 0 || sync.isPending}
+            className="btn-primary text-sm shrink-0 self-end sm:self-auto disabled:opacity-50"
+          >
+            {sync.isPending ? 'Saving…' : 'Assign manager'}
+          </button>
+        </div>
+      </section>
 
       <div className="card">
         <h2 className="font-bold text-app-text mb-4">Managers and commodities</h2>

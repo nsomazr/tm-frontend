@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { reportsApi } from '../../api'
+import { reportPreviewText } from '../../components/reports/reportEditorText'
 import { useAuth } from '../../auth/AuthContext'
 import ListPagination from '../../components/ui/ListPagination'
 import { toast } from '../../components/ui/toast'
@@ -11,8 +12,6 @@ import type { Report } from '../../types'
 
 const DOCUMENT_ACCEPT =
   '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
-type ReportRowMode = 'write' | 'upload'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob)
@@ -124,9 +123,6 @@ function ReportTableRow({
   onInvalidate: () => void
 }) {
   const isVisible = report.is_active !== false
-  const hasWritten =
-    (report.summary_preview?.trim().length ?? 0) > 0 || report.ai_summary?.model_used === 'manual'
-  const [mode, setMode] = useState<ReportRowMode>(report.has_pdf && !hasWritten ? 'upload' : 'write')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const uploadDocument = useMutation({
@@ -172,14 +168,13 @@ function ReportTableRow({
   const lifecyclePending = toggleVisible.isPending || deleteReport.isPending
 
   function handleDelete() {
-    if (
-      !window.confirm(
-        `Permanently delete "${report.title}"? Purchases and download history for this report will also be removed. This cannot be undone.`,
-      )
-    ) {
-      return
-    }
-    deleteReport.mutate()
+    toast.confirm(`Delete "${report.title}"?`, {
+      description:
+        'Purchases and download history for this report will also be removed. This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => deleteReport.mutate(),
+    })
   }
 
   const downloadReport = async () => {
@@ -197,7 +192,9 @@ function ReportTableRow({
       <td className="min-w-[12rem] max-w-[18rem]">
         <div className="font-medium text-app-text leading-snug">{report.title}</div>
         {report.summary_preview && (
-          <p className="text-xs text-app-text-muted mt-0.5 line-clamp-2">{report.summary_preview}</p>
+          <p className="text-xs text-app-text-muted mt-0.5 line-clamp-2">
+            {reportPreviewText(report.summary_preview, 200) || report.summary_preview}
+          </p>
         )}
         <div className="flex flex-wrap items-center gap-1.5 mt-1">
           {!isVisible && (
@@ -209,6 +206,22 @@ function ReportTableRow({
             <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-sky-50 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300 border border-sky-600/20">
               Written
             </span>
+          )}
+          {report.access_type && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300 border border-violet-600/20">
+              {report.access_type.replace(/_/g, ' ')}
+            </span>
+          )}
+          {report.report_format && report.report_format !== 'pdf' && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300 border border-indigo-600/20">
+              {report.report_format.replace(/_/g, ' ')}
+            </span>
+          )}
+          {(report.location_tags?.length ?? 0) > 0 && (
+            <span className="text-[10px] text-app-text-muted">{report.location_tags!.length} locations</span>
+          )}
+          {(report.linked_layers?.length ?? 0) > 0 && (
+            <span className="text-[10px] text-app-text-muted">{report.linked_layers!.length} layers</span>
           )}
         </div>
       </td>
@@ -232,26 +245,6 @@ function ReportTableRow({
       </td>
       <td className="text-right whitespace-nowrap">
         <div className="inline-flex items-center justify-end gap-2">
-          <div className="segmented" role="tablist" aria-label="Report edit mode">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'write'}
-              onClick={() => setMode('write')}
-              className={`segmented-btn px-2 py-1 text-[11px] ${mode === 'write' ? 'segmented-btn-active' : ''}`}
-            >
-              Write
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === 'upload'}
-              onClick={() => setMode('upload')}
-              className={`segmented-btn px-2 py-1 text-[11px] ${mode === 'upload' ? 'segmented-btn-active' : ''}`}
-            >
-              Upload
-            </button>
-          </div>
           <input
             ref={fileInputRef}
             type="file"
@@ -264,27 +257,21 @@ function ReportTableRow({
             }}
           />
           <ReportRowMenu label={`Actions for ${report.title}`}>
-            {mode === 'write' ? (
-              <>
-                <ReportRowMenuItem to={`/admin/reports/${report.slug}/edit?mode=write`}>Editor</ReportRowMenuItem>
-                <ReportRowMenuItem
-                  onClick={() => generatePdf.mutate(!!report.has_pdf)}
-                  disabled={generatePdf.isPending}
-                >
-                  {generatePdf.isPending ? 'Generating…' : report.has_pdf ? 'Regen PDF' : 'Gen PDF'}
-                </ReportRowMenuItem>
-              </>
-            ) : (
-              <ReportRowMenuItem
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadDocument.isPending}
-              >
-                {uploadDocument.isPending ? 'Uploading…' : 'Choose file'}
-              </ReportRowMenuItem>
-            )}
+            <ReportRowMenuItem to={`/admin/reports/${report.slug}/edit`}>Editor</ReportRowMenuItem>
+            <ReportRowMenuItem
+              onClick={() => generatePdf.mutate(!!report.has_pdf)}
+              disabled={generatePdf.isPending}
+            >
+              {generatePdf.isPending ? 'Generating…' : report.has_pdf ? 'Regen PDF' : 'Gen PDF'}
+            </ReportRowMenuItem>
+            <ReportRowMenuItem
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadDocument.isPending}
+            >
+              {uploadDocument.isPending ? 'Uploading…' : 'Upload file'}
+            </ReportRowMenuItem>
             <ReportRowMenuItem to={`/downloads/${report.slug}`}>Preview</ReportRowMenuItem>
             <ReportRowMenuItem onClick={() => void downloadReport()}>Download</ReportRowMenuItem>
-            <ReportRowMenuItem to={`/admin/reports/${report.slug}/edit`}>Details</ReportRowMenuItem>
             <ReportRowMenuItem
               onClick={() => toggleVisible.mutate(!isVisible)}
               disabled={lifecyclePending}
@@ -306,7 +293,6 @@ function ReportTableRow({
 export default function ReportsPage() {
   const qc = useQueryClient()
   const { isAdmin } = useAuth()
-  const [newReportMode, setNewReportMode] = useState<ReportRowMode>('write')
   const [showHidden, setShowHidden] = useState(true)
 
   const notify = (msg: string, kind: 'success' | 'error' = 'error') => {
@@ -332,48 +318,18 @@ export default function ReportsPage() {
     <div>
       <h1 className="text-2xl font-bold text-app-text mb-2">Reports</h1>
       <p className="text-sm text-app-muted mb-6">
-        Write reports with the AI assistant or upload a PDF / Word document. Word files convert to PDF automatically.
+        Draft reports in the editor, then publish. You can also upload a PDF or Word file from the row menu.
       </p>
 
       <div className="card !p-0 overflow-hidden mb-8">
         <div className="px-5 py-4 border-b app-divider flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2 className="font-bold text-app-text">Add report</h2>
-            <p className="text-sm text-app-muted mt-1">
-              {newReportMode === 'write'
-                ? 'Draft with AI, review, then publish.'
-                : 'Attach a PDF or Word document.'}
-            </p>
+            <p className="text-sm text-app-muted mt-1">Set up a layer, draft in the editor, then publish.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <div className="segmented" role="tablist" aria-label="New report mode">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={newReportMode === 'write'}
-                onClick={() => setNewReportMode('write')}
-                className={`segmented-btn px-3 py-1.5 text-xs ${
-                  newReportMode === 'write' ? 'segmented-btn-active' : ''
-                }`}
-              >
-                Write
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={newReportMode === 'upload'}
-                onClick={() => setNewReportMode('upload')}
-                className={`segmented-btn px-3 py-1.5 text-xs ${
-                  newReportMode === 'upload' ? 'segmented-btn-active' : ''
-                }`}
-              >
-                Upload
-              </button>
-            </div>
-            <Link to={`/admin/reports/new?mode=${newReportMode}`} className="btn-primary text-sm py-2 px-3">
-              Continue
-            </Link>
-          </div>
+          <Link to="/admin/reports/new" className="btn-primary text-sm py-2 px-3 shrink-0">
+            New report
+          </Link>
         </div>
       </div>
 

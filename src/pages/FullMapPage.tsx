@@ -40,6 +40,7 @@ import { parseCoordinateQuery } from '../components/map/parseCoordinate'
 import type { TerraAssistantMapContext } from '../components/assistant/TerraAssistantPanel'
 import { useAuth } from '../auth/AuthContext'
 import { toast } from '../components/ui/toast'
+import InputDialog from '../components/ui/InputDialog'
 import { canExploreMineral } from '../lib/mineralExploration'
 import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
@@ -233,25 +234,49 @@ export default function FullMapPage() {
   const savedExplorations = savedExplorationsData?.results ?? []
 
   const [savingExploration, setSavingExploration] = useState(false)
-  const handleSaveExploration = useCallback(async () => {
+  const [saveExplorationOpen, setSaveExplorationOpen] = useState(false)
+
+  const handleSaveExploration = useCallback(() => {
     if (!drawPoints.length) return
-    const name = window.prompt('Name this exploration:')?.trim()
-    if (!name) return
-    setSavingExploration(true)
-    try {
-      await mapsApi.createSavedExploration({ name, mode: drawMode, points: drawPoints })
-      await queryClient.invalidateQueries({ queryKey: ['saved-explorations'] })
-    } finally {
-      setSavingExploration(false)
-    }
-  }, [drawMode, drawPoints, queryClient])
+    setSaveExplorationOpen(true)
+  }, [drawPoints.length])
+
+  const confirmSaveExploration = useCallback(
+    async (name: string) => {
+      setSaveExplorationOpen(false)
+      setSavingExploration(true)
+      try {
+        await mapsApi.createSavedExploration({ name, mode: drawMode, points: drawPoints })
+        await queryClient.invalidateQueries({ queryKey: ['saved-explorations'] })
+        toast.success('Exploration saved', { description: name })
+      } catch {
+        toast.error('Could not save exploration')
+      } finally {
+        setSavingExploration(false)
+      }
+    },
+    [drawMode, drawPoints, queryClient],
+  )
 
   const handleDeleteExploration = useCallback(
-    async (id: number) => {
-      await mapsApi.deleteSavedExploration(id)
-      await queryClient.invalidateQueries({ queryKey: ['saved-explorations'] })
+    (id: number) => {
+      const item = savedExplorations.find((s) => s.id === id)
+      toast.confirm(`Delete "${item?.name ?? 'this exploration'}"?`, {
+        description: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        destructive: true,
+        onConfirm: async () => {
+          try {
+            await mapsApi.deleteSavedExploration(id)
+            await queryClient.invalidateQueries({ queryKey: ['saved-explorations'] })
+            toast.success('Exploration deleted')
+          } catch {
+            toast.error('Could not delete exploration')
+          }
+        },
+      })
     },
-    [queryClient]
+    [savedExplorations, queryClient],
   )
 
   useEffect(() => {
@@ -1122,6 +1147,17 @@ export default function FullMapPage() {
           )}
         </div>
       </div>
+
+      <InputDialog
+        open={saveExplorationOpen}
+        title="Name this exploration"
+        description="Give your drawn area a name so you can load it again later."
+        label="Name"
+        placeholder="e.g. Mererani prospect zone"
+        confirmLabel="Save"
+        onConfirm={confirmSaveExploration}
+        onCancel={() => setSaveExplorationOpen(false)}
+      />
     </div>
   )
 }

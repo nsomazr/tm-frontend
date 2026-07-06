@@ -5,6 +5,7 @@ import { DonutChart, VerticalBarChart } from '../../components/analytics/Charts'
 import { LayerTypeGrid } from '../../components/analytics/AnalyticsViz'
 import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
+import { useAuth } from '../../auth/AuthContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import { formatAreaKm2 } from '../../components/map/mapFormat'
 
@@ -26,6 +27,7 @@ type LayerHotspotRow = {
 }
 
 export default function AdminCoveragePage() {
+  const { isAdmin } = useAuth()
   const displayName = useDisplayName()
   const { data: hotspots, isLoading: hotspotsLoading } = useQuery({
     queryKey: ['hotspots'],
@@ -87,10 +89,22 @@ export default function AdminCoveragePage() {
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-app-text">Geological coverage</h1>
+        <h1 className="text-2xl font-bold text-app-text">Map coverage</h1>
         <p className="text-sm text-app-muted mt-1">
           Prospect zones, uploaded layers, and regional distribution on the map.
         </p>
+        {isAdmin && (
+          <p className="text-xs text-app-text-muted mt-2">
+            Related:{' '}
+            <Link to="/admin/mineral-analytics" className="text-terra-600 dark:text-terra-400 hover:underline">
+              Mineral analytics
+            </Link>
+            {' · '}
+            <Link to="/admin/user-activity" className="text-terra-600 dark:text-terra-400 hover:underline">
+              User activity
+            </Link>
+          </p>
+        )}
       </div>
 
       {isLoading ? (

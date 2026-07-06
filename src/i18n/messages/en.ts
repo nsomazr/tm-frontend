@@ -85,7 +85,7 @@ export const en = {
     viewPlans: 'View plans',
     previewOnly: 'Preview data only. Subscribe for all layers and full analytics.',
     subscribeForInsights:
-      'Subscribe for deeper AI insights, full analytics dashboards, and report downloads.',
+      'Subscribe for deeper Terra insights, full analytics dashboards, and report downloads.',
     commodityLayer: 'Commodity layer',
     mapPreviewInsight: 'Map preview',
     moreRegionsLocked: '+{count} more regions with a subscription',
@@ -162,7 +162,7 @@ export const en = {
     browseReportsDesc: 'Prospectivity reports and downloads',
     generating: 'Generating live insight…',
     thinking: 'Thinking…',
-    liveAi: 'Live AI insight from mapped data',
+    liveAi: 'Live Terra insight from mapped data',
     askLabel: 'Follow-up question',
     askPlaceholder: 'Ask a follow-up about this location…',
     askButton: 'Ask',
@@ -182,7 +182,7 @@ export const en = {
     upgradeForMore: 'Subscribe for Terra insights, show-on-map, zone labels, and full analytics.',
     viewPlans: 'View plans',
     mapFreeAsk: 'Ask about the minerals and zones shown above.',
-    clickMapHint: 'Click a mapped zone on the map to generate a live AI insight for that location.',
+    clickMapHint: 'Click a mapped zone on the map to generate a live Terra insight for that location.',
     emptyStateMessage:
       'Tap a colored zone for location insights after subscribing, or ask about Terra Meta below.',
     platformWelcome:
@@ -210,7 +210,7 @@ export const en = {
     exportHideOptions: 'Hide export options',
     exportReportHint: 'Generate a 3-5 page PDF with data tables, regional charts, and your Terra conversation.',
     exportSectionsLabel: 'Include in report',
-    exportSectionOverview: 'AI overview',
+    exportSectionOverview: 'Terra overview',
     exportSectionMinerals: 'Minerals',
     exportSectionRegions: 'Regions',
     exportSectionAnalytics: 'Coverage stats',
@@ -312,7 +312,7 @@ export const en = {
     eyebrow: 'Pricing',
     heroTitle: 'Upgrade your plan',
     heroSubtitle:
-      'Start free on the map. Unlock mineral deep-explores, Terra AI, analytics, and reports when you need more.',
+      'Start free on the map. Unlock mineral deep-explores, Ask Terra, analytics, and reports when you need more.',
     exploreFree: 'Try the map free',
     createAccount: 'Create free account',
     signIn: 'Sign in',
@@ -368,7 +368,7 @@ export const en = {
         '10 unique mineral deep-explores per month',
         '3,000 Ask Terra credits per month',
         '3 included report PDFs per month',
-        'Full AI on map zones and search',
+        'Full insights on map zones and search',
         'Analytics dashboard and layer controls',
         'Watermark-free map with full detail',
       ],
@@ -434,7 +434,7 @@ export const en = {
     plansApiUnavailable:
       'Could not reach the pricing server. Standard plan details are shown below. Sign-in and checkout work once the API is running.',
     freeFeatures: [
-      '10 Ask Terra AI credits per month (general chat and basic search hints)',
+      '10 Ask Terra credits per month (general chat and basic search hints)',
       'Chat works per session (history not saved)',
       'Interactive map with mineral and region search',
       'Fly-to navigation from search results',
@@ -451,7 +451,7 @@ export const en = {
       'Saved Ask Terra chat history across sessions',
       'Commodity table: Terra insights, regional breakdown, and show on map',
       'Watermark-free map with zone labels and full detail on click',
-      'Full-depth AI geological analysis on search and map zones',
+      'Full-depth geological analysis on search and map zones',
       'Full regional breakdown (not limited to top 3)',
       'Individual layer toggles and mineral filter on the map',
       'Full report summaries and key findings unlocked',
@@ -466,7 +466,7 @@ export const en = {
     freeCol: 'Explorer',
     paidCol: 'Subscriber',
     comparison: [
-      { feature: 'Ask Terra AI credits', free: '10 / month', paid: '3,000 / month · 5,000 / month (annual)' },
+      { feature: 'Ask Terra credits', free: '10 / month', paid: '3,000 / month · 5,000 / month (annual)' },
       { feature: 'Saved Ask Terra chat history', free: false, paid: true },
       { feature: 'Interactive map and search', free: true, paid: true },
       { feature: 'Commodity deep-explore (heatmap & show on map)', free: '0', paid: true },
@@ -475,8 +475,8 @@ export const en = {
       { feature: 'Mineral and region search with fly-to', free: true, paid: true },
       { feature: 'Map without preview watermark', free: false, paid: true },
       { feature: 'Zone labels and full detail on click', free: false, paid: true },
-      { feature: 'AI insights on map zone click', free: false, paid: true },
-      { feature: 'Full-depth AI on search and zones', free: 'highlightsOnly', paid: true },
+      { feature: 'Terra insights on map zone click', free: false, paid: true },
+      { feature: 'Full-depth analysis on search and zones', free: 'highlightsOnly', paid: true },
       { feature: 'Regional breakdown (where minerals appear)', free: 'top3Preview', paid: true },
       { feature: 'Report key findings and full summaries', free: false, paid: true },
       { feature: 'Analytics dashboard and regional hotspots', free: false, paid: true },
@@ -493,7 +493,7 @@ export const en = {
     faq: [
       {
         q: 'Is the map really free?',
-        a: 'Yes. Explorer includes map browsing, search, and the commodity table at no cost. Terra insights on commodities, full zone-click AI, regional breakdowns, layer controls, analytics, and included PDF downloads require a Standard subscription.',
+        a: 'Yes. Explorer includes map browsing, search, and the commodity table at no cost. Terra insights on commodities, full zone-click insights, regional breakdowns, layer controls, analytics, and included PDF downloads require a Standard subscription.',
       },
       {
         q: 'What is the commodity table?',
@@ -550,6 +550,12 @@ export const en = {
     downloadFailed: 'Download failed. You may need to subscribe, purchase, or use an included download.',
     openPreview: 'Open preview',
     openFullReport: 'Read full report',
+    readWebArticle: 'Read web article',
+    filterAllMinerals: 'All commodities',
+    filterAllRegions: 'All regions',
+    relatedReports: 'Related reports',
+    reportChatTitle: 'Ask about this PDF',
+    explorationReports: 'Exploration reports',
     backToCatalog: 'Back to reports',
     notFound: 'Report not found.',
     previewEndsTitle: 'The rest of this report is locked',

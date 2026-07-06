@@ -5,7 +5,7 @@ import {
   matchGeologicalColor,
   type GeologicalColorCategory,
 } from '../../constants/geologicalMineralColors'
-import { colorRecordForLayer, formatColorCodes, normalizeHex } from '../../lib/mineralColorUtils'
+import { normalizeHex } from '../../lib/mineralColorUtils'
 
 const CATEGORY_LABELS: Record<GeologicalColorCategory, string> = {
   precious: 'Precious',
@@ -17,13 +17,29 @@ const CATEGORY_LABELS: Record<GeologicalColorCategory, string> = {
   hydro: 'Hydrogeology',
 }
 
+const POPULAR_SLUGS = [
+  'gold',
+  'copper',
+  'iron-ore',
+  'nickel',
+  'lithium',
+  'cobalt',
+  'uranium',
+  'graphite',
+  'tin',
+  'zinc',
+  'diamond',
+  'coal',
+]
+
 interface MineralColorReferenceProps {
   usedColors?: string[]
   selectedColor?: string
   layerName?: string
-  layerType?: string
   onSelect: (hex: string) => void
   className?: string
+  /** inline = compact list for modals; panel = standalone with browse toggle */
+  variant?: 'inline' | 'panel'
 }
 
 function normalizeUsed(colors: string[]) {
@@ -43,16 +59,25 @@ export default function MineralColorReference({
   usedColors = [],
   selectedColor,
   layerName = '',
-  layerType = 'polygon',
   onSelect,
   className = '',
+  variant = 'panel',
 }: MineralColorReferenceProps) {
   const [filter, setFilter] = useState('')
   const [category, setCategory] = useState<GeologicalColorCategory | 'all'>('all')
+  const [browseAll, setBrowseAll] = useState(variant === 'inline')
+
   const used = useMemo(() => normalizeUsed(usedColors), [usedColors])
   const matched = useMemo(() => matchGeologicalColor(layerName), [layerName])
   const selected = normalizeHex(selectedColor || matched?.hex || '#0D9488')
-  const record = colorRecordForLayer(selected, layerType)
+
+  const popular = useMemo(
+    () =>
+      POPULAR_SLUGS.map((slug) => GEOLOGICAL_MINERAL_COLORS.find((e) => e.slug === slug)).filter(
+        Boolean
+      ) as typeof GEOLOGICAL_MINERAL_COLORS,
+    []
+  )
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase()
@@ -65,148 +90,233 @@ export default function MineralColorReference({
         entry.hex.toLowerCase().includes(q) ||
         entry.aliases.some((alias) => alias.includes(q))
       )
-    })
+    }).sort((a, b) => a.label.localeCompare(b.label))
   }, [filter, category])
 
-  const grouped = useMemo(() => {
-    const map = new Map<GeologicalColorCategory, typeof GEOLOGICAL_MINERAL_COLORS>()
-    for (const entry of filtered) {
-      const list = map.get(entry.category) ?? []
-      list.push(entry)
-      map.set(entry.category, list)
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => a.label.localeCompare(b.label))
-    }
-    return MINERAL_COLOR_CATEGORY_ORDER.filter((key) => map.has(key)).map((key) => ({
-      key,
-      entries: map.get(key)!,
-    }))
-  }, [filtered])
+  const showCatalog = browseAll || filter.trim().length > 0
 
   return (
-    <section
-      className={`rounded-xl border border-app-border bg-app-surface shadow-sm overflow-hidden ${className}`}
-    >
-      <div className="px-4 py-3 border-b app-divider bg-app-subtle/30">
-        <h3 className="text-sm font-semibold text-app-text">Suggested mineral colors</h3>
-        <p className="text-xs text-app-text-muted mt-0.5 leading-relaxed">
-          Standard geological colors for every commodity. Select one to match global mapping conventions.
+    <div className={`space-y-3 ${className}`}>
+      {variant === 'panel' && !showCatalog && (
+        <p className="text-xs text-app-text-muted">
+          Pick a standard geological color, or use the color picker above.
         </p>
-      </div>
+      )}
 
-      <div className="px-4 py-3 space-y-3">
-        {matched && (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-terra-500/30 bg-terra-500/8 px-3 py-2.5">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <span
-                className={`h-10 w-10 shrink-0 rounded-lg shadow-sm ${isLightSwatch(matched.hex) ? 'ring-1 ring-inset ring-black/12' : ''}`}
-                style={{ backgroundColor: matched.hex }}
-              />
-              <div className="min-w-0">
-                <p className="text-xs font-semibold text-terra-800 dark:text-terra-300">Suggested for this layer</p>
-                <p className="text-sm font-medium text-app-text truncate">{matched.label}</p>
-                <p className="text-[11px] font-mono text-app-text-muted">{matched.hex}</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onSelect(matched.hex)}
-              className="shrink-0 rounded-lg bg-terra-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-terra-700 dark:bg-terra-500 dark:hover:bg-terra-600 transition-colors"
-            >
-              Use {matched.label}
-            </button>
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-app-border bg-app-subtle/40 px-3 py-2">
-          <span
-            className={`h-8 w-8 shrink-0 rounded-lg ${isLightSwatch(record.hex) ? 'ring-1 ring-inset ring-black/12' : ''}`}
-            style={{ backgroundColor: record.hex }}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-app-text-muted">Current selection</p>
-            <p className="text-xs font-mono text-app-text-secondary truncate">{formatColorCodes(record)}</p>
-          </div>
-        </div>
-
-        <input
-          type="search"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Search minerals…"
-          className="input text-sm w-full"
-        />
-
-        <div className="flex flex-wrap gap-1.5">
-          <CategoryPill active={category === 'all'} onClick={() => setCategory('all')}>
-            All ({GEOLOGICAL_MINERAL_COLORS.length})
-          </CategoryPill>
-          {MINERAL_COLOR_CATEGORY_ORDER.map((key) => {
-            const count = GEOLOGICAL_MINERAL_COLORS.filter((e) => e.category === key).length
-            if (!count) return null
-            return (
-              <CategoryPill key={key} active={category === key} onClick={() => setCategory(key)}>
-                {CATEGORY_LABELS[key]} ({count})
-              </CategoryPill>
-            )
-          })}
-        </div>
-
-        <div className="max-h-[min(22rem,50vh)] overflow-y-auto space-y-4 scrollbar-pane pr-0.5">
-          {grouped.length === 0 ? (
-            <p className="text-sm text-app-text-muted py-6 text-center">No minerals match your search.</p>
-          ) : (
-            grouped.map(({ key, entries }) => (
-              <div key={key}>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-app-text-muted mb-2">
-                  {CATEGORY_LABELS[key]}
-                </p>
-                <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {entries.map((entry) => (
-                    <MineralColorChip
-                      key={entry.slug}
-                      entry={entry}
-                      active={selected.toLowerCase() === entry.hex.toLowerCase()}
-                      taken={used.has(entry.hex.toLowerCase())}
-                      onSelect={() => onSelect(entry.hex)}
-                    />
-                  ))}
-                </ul>
-              </div>
-            ))
+      {matched && (
+        <button
+          type="button"
+          onClick={() => onSelect(matched.hex)}
+          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${
+            selected.toLowerCase() === matched.hex.toLowerCase()
+              ? 'border-terra-500 bg-terra-500/8'
+              : 'border-app-border hover:bg-app-subtle/60'
+          }`}
+        >
+          <ColorDot hex={matched.hex} size="md" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-app-text">{matched.label}</span>
+            <span className="block text-xs text-app-text-muted">Suggested from layer name</span>
+          </span>
+          {selected.toLowerCase() === matched.hex.toLowerCase() && (
+            <span className="text-xs font-medium text-terra-600 dark:text-terra-400">Selected</span>
           )}
-        </div>
+        </button>
+      )}
 
-        {usedColors.length > 0 && (
-          <div className="pt-2 border-t app-divider">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-app-text-muted mb-2">
-              Already on your map
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {usedColors.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => onSelect(color)}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-app-border bg-app-subtle/60 px-2 py-1 text-[10px] font-mono text-app-text-secondary hover:border-terra-500/40 hover:bg-app-subtle transition-colors"
-                >
-                  <span
-                    className={`h-3.5 w-3.5 rounded-full shrink-0 ${isLightSwatch(color) ? 'ring-1 ring-inset ring-black/10' : ''}`}
-                    style={{ backgroundColor: color }}
-                  />
-                  {normalizeHex(color)}
-                </button>
+      {!showCatalog && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-app-text-muted mb-2">
+            Common
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {popular.map((entry) => (
+              <ColorChip
+                key={entry.slug}
+                entry={entry}
+                active={selected.toLowerCase() === entry.hex.toLowerCase()}
+                taken={used.has(entry.hex.toLowerCase())}
+                onSelect={() => onSelect(entry.hex)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {variant === 'panel' && !showCatalog && (
+        <button
+          type="button"
+          onClick={() => setBrowseAll(true)}
+          className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline"
+        >
+          Browse all minerals ({GEOLOGICAL_MINERAL_COLORS.length})
+        </button>
+      )}
+
+      {showCatalog && (
+        <div className="rounded-lg border border-app-border overflow-hidden">
+          <div className="px-3 py-2.5 border-b app-divider bg-app-subtle/30 space-y-2">
+            <input
+              type="search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Search minerals…"
+              className="input text-sm w-full"
+              autoFocus={variant === 'inline'}
+            />
+            <div className="flex flex-wrap gap-1">
+              <FilterChip active={category === 'all'} onClick={() => setCategory('all')}>
+                All
+              </FilterChip>
+              {MINERAL_COLOR_CATEGORY_ORDER.map((key) => (
+                <FilterChip key={key} active={category === key} onClick={() => setCategory(key)}>
+                  {CATEGORY_LABELS[key]}
+                </FilterChip>
               ))}
             </div>
           </div>
-        )}
-      </div>
-    </section>
+
+          <ul className="max-h-52 overflow-y-auto divide-y divide-app-border/40">
+            {filtered.length === 0 ? (
+              <li className="px-3 py-6 text-center text-sm text-app-text-muted">No matches</li>
+            ) : (
+              filtered.map((entry) => (
+                <ColorListRow
+                  key={entry.slug}
+                  entry={entry}
+                  active={selected.toLowerCase() === entry.hex.toLowerCase()}
+                  taken={used.has(entry.hex.toLowerCase())}
+                  onSelect={() => onSelect(entry.hex)}
+                />
+              ))
+            )}
+          </ul>
+
+          {variant === 'panel' && (
+            <div className="px-3 py-2 border-t app-divider">
+              <button
+                type="button"
+                onClick={() => {
+                  setBrowseAll(false)
+                  setFilter('')
+                  setCategory('all')
+                }}
+                className="text-xs text-app-text-muted hover:text-app-text"
+              >
+                Show less
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {usedColors.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-app-text-muted mb-1.5">
+            On your map
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {usedColors.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => onSelect(color)}
+                title={normalizeHex(color)}
+                className={`h-6 w-6 rounded-md border transition-transform hover:scale-110 ${
+                  selected.toLowerCase() === normalizeHex(color).toLowerCase()
+                    ? 'border-terra-500 ring-2 ring-terra-500/30'
+                    : 'border-app-border'
+                } ${isLightSwatch(color) ? 'ring-1 ring-inset ring-black/10' : ''}`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
-function CategoryPill({
+function ColorDot({ hex, size = 'sm' }: { hex: string; size?: 'sm' | 'md' }) {
+  const dim = size === 'md' ? 'h-9 w-9' : 'h-5 w-5'
+  return (
+    <span
+      className={`${dim} shrink-0 rounded-md border border-app-border ${isLightSwatch(hex) ? 'ring-1 ring-inset ring-black/10' : ''}`}
+      style={{ backgroundColor: hex }}
+    />
+  )
+}
+
+function ColorChip({
+  entry,
+  active,
+  taken,
+  onSelect,
+}: {
+  entry: (typeof GEOLOGICAL_MINERAL_COLORS)[number]
+  active: boolean
+  taken: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      title={entry.note}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs transition-colors ${
+        active
+          ? 'border-terra-500 bg-terra-500/10 text-terra-800 dark:text-terra-200'
+          : taken
+            ? 'border-amber-400/60 bg-amber-500/5 text-app-text-secondary'
+            : 'border-app-border bg-app-subtle/50 text-app-text-secondary hover:border-app-border-strong'
+      }`}
+    >
+      <ColorDot hex={entry.hex} />
+      <span className="font-medium">{entry.label}</span>
+    </button>
+  )
+}
+
+function ColorListRow({
+  entry,
+  active,
+  taken,
+  onSelect,
+}: {
+  entry: (typeof GEOLOGICAL_MINERAL_COLORS)[number]
+  active: boolean
+  taken: boolean
+  onSelect: () => void
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        title={entry.note}
+        className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+          active ? 'bg-terra-500/8' : 'hover:bg-app-subtle/60'
+        }`}
+      >
+        <ColorDot hex={entry.hex} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm text-app-text">{entry.label}</span>
+          <span className="block text-[11px] text-app-text-muted">{CATEGORY_LABELS[entry.category]}</span>
+        </span>
+        {taken && !active && (
+          <span className="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            Used
+          </span>
+        )}
+        {active && (
+          <span className="text-xs font-medium text-terra-600 dark:text-terra-400">✓</span>
+        )}
+      </button>
+    </li>
+  )
+}
+
+function FilterChip({
   active,
   onClick,
   children,
@@ -219,60 +329,13 @@ function CategoryPill({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+      className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
         active
           ? 'bg-terra-600 text-white dark:bg-terra-500'
-          : 'bg-app-subtle text-app-text-secondary hover:bg-app-subtle/80 hover:text-app-text border border-app-border/80'
+          : 'bg-app-subtle text-app-text-muted hover:text-app-text'
       }`}
     >
       {children}
     </button>
-  )
-}
-
-function MineralColorChip({
-  entry,
-  active,
-  taken,
-  onSelect,
-}: {
-  entry: (typeof GEOLOGICAL_MINERAL_COLORS)[number]
-  active: boolean
-  taken: boolean
-  onSelect: () => void
-}) {
-  const light = isLightSwatch(entry.hex)
-
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onSelect}
-        title={entry.note}
-        className={`group flex w-full flex-col overflow-hidden rounded-xl border text-left transition-all ${
-          active
-            ? 'border-terra-500 ring-2 ring-terra-500/25 shadow-sm'
-            : taken
-              ? 'border-amber-400/50 hover:border-amber-400/70'
-              : 'border-app-border/80 hover:border-app-border-strong hover:shadow-sm'
-        }`}
-      >
-        <span
-          className={`block h-11 w-full ${light ? 'ring-1 ring-inset ring-black/10' : ''}`}
-          style={{ backgroundColor: entry.hex }}
-        />
-        <span className="flex flex-col gap-0.5 px-2 py-1.5 bg-app-surface">
-          <span className="flex items-start justify-between gap-1">
-            <span className="text-[11px] font-semibold text-app-text leading-tight line-clamp-2">{entry.label}</span>
-            {taken && !active && (
-              <span className="shrink-0 rounded px-1 py-px text-[8px] font-bold uppercase tracking-wide bg-amber-500/15 text-amber-800 dark:text-amber-300">
-                Used
-              </span>
-            )}
-          </span>
-          <span className="text-[10px] font-mono text-app-text-muted">{entry.hex}</span>
-        </span>
-      </button>
-    </li>
   )
 }

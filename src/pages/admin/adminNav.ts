@@ -21,26 +21,41 @@ export const adminNavGroups: AdminNavGroup[] = [
     items: [{ to: '/admin', label: 'Overview', end: true, roles: ['admin', 'manager'] }],
   },
   {
-    title: 'Platform',
-    roles: ['admin'],
+    title: 'Map content',
+    roles: ['admin', 'manager'],
     items: [
-      { to: '/admin/analytics', label: 'Analytics', roles: ['admin'] },
-      { to: '/admin/map-settings', label: 'Map settings', roles: ['admin'] },
-      { to: '/admin/users', label: 'Users', roles: ['admin'] },
-      { to: '/admin/revenue', label: 'Payments', roles: ['admin'] },
-      { to: '/admin/compliance', label: 'Compliance', roles: ['admin'] },
+      { to: '/admin/layers', label: 'Layers', roles: ['admin', 'manager'] },
+      { to: '/admin/minerals', label: 'Commodities', roles: ['admin', 'manager'] },
+      { to: '/admin/coordinates', label: 'Coordinates', roles: ['admin', 'manager'] },
+      { to: '/admin/reports', label: 'Reports', roles: ['admin', 'manager'] },
     ],
   },
   {
-    title: 'Map & geology',
+    title: 'Insights',
     roles: ['admin', 'manager'],
     items: [
       { to: '/admin/coverage', label: 'Coverage', roles: ['admin', 'manager'] },
-      { to: '/admin/boundaries', label: 'Boundary layers', roles: ['admin'] },
-      { to: '/admin/layers', label: 'Layers', roles: ['admin', 'manager'] },
-      { to: '/admin/coordinates', label: 'Coordinates', roles: ['admin', 'manager'] },
-      { to: '/admin/reports', label: 'Reports', roles: ['admin', 'manager'] },
-      { to: '/admin/minerals', label: 'Minerals / Commodities', roles: ['admin', 'manager'] },
+      { to: '/admin/mineral-analytics', label: 'Mineral analytics', roles: ['admin'] },
+      { to: '/admin/user-activity', label: 'User activity', roles: ['admin'] },
+      { to: '/admin/analytics', label: 'Business', roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Map admin',
+    roles: ['admin'],
+    items: [
+      { to: '/admin/boundaries', label: 'Boundaries', roles: ['admin'] },
+      { to: '/admin/map-settings', label: 'Map settings', roles: ['admin'] },
+      { to: '/admin/layer-activity', label: 'Layer activity', roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Platform',
+    roles: ['admin'],
+    items: [
+      { to: '/admin/users', label: 'Users', roles: ['admin'] },
+      { to: '/admin/revenue', label: 'Payments', roles: ['admin'] },
+      { to: '/admin/compliance', label: 'Compliance', roles: ['admin'] },
     ],
   },
   {
@@ -48,7 +63,7 @@ export const adminNavGroups: AdminNavGroup[] = [
     roles: ['admin'],
     items: [
       { to: '/admin/managers', label: 'Mineral managers', roles: ['admin'] },
-      { to: '/admin/manager-performance', label: 'Manager performance', roles: ['admin'] },
+      { to: '/admin/manager-performance', label: 'Performance', roles: ['admin'] },
     ],
   },
 ]

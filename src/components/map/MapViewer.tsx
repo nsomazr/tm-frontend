@@ -559,7 +559,7 @@ export default function MapViewer({
   }, [])
 
   const populateLayerSource = useCallback((layerId: number, layer: MapLayer, source: VectorSource, force = false) => {
-    loadLayerGeojson(layer.slug, force)
+    loadLayerGeojson(layer.slug, force, layer.mineral_slug)
       .then((data) => {
         if (!vectorLayersRef.current.has(layerId)) return
         source.clear()

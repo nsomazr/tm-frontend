@@ -5,6 +5,7 @@ import { paymentsApi, reportsApi, subscriptionsApi } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import PhoneCheckoutModal, { handleCheckoutResponse } from '../components/payments/PhoneCheckoutModal'
 import ReportPreviewContent from '../components/reports/ReportPreviewContent'
+import ReportPdfChat from '../components/reports/ReportPdfChat'
 import { ReportQuotaBanner } from '../components/reports/ReportQuotaBanner'
 import { useTranslation } from '../i18n/LocaleContext'
 
@@ -111,6 +112,22 @@ export default function ReportPreviewPage() {
             onDownload={download}
             purchasePending={purchase.isPending}
             downloadError={downloadError}
+          />
+          {report.has_article && (
+            <Link
+              to={`/downloads/${report.slug}/read`}
+              className="inline-block mt-4 text-sm font-medium text-terra-600 hover:text-terra-700"
+            >
+              {r.readWebArticle}
+            </Link>
+          )}
+          <ReportPdfChat
+            slug={report.slug}
+            enabled={
+              report.source_type === 'uploaded' &&
+              !!report.has_full_access &&
+              !!report.has_pdf
+            }
           />
         </div>
       )}

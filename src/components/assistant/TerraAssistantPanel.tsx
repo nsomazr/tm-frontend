@@ -8,6 +8,7 @@ import { useDisplayName } from '../../i18n/useDisplayName'
 import type { AreaInsight, AssistantCredits, AssistantMessage, AerialAccess } from '../../types'
 import AssistantMessageContent from './AssistantMessageContent'
 import TerraInsightExportControls from './TerraInsightExportControls'
+import RelatedReportsPanel from '../reports/RelatedReportsPanel'
 import { SendArrowIcon, TerraAssistantAvatar } from './AssistantIcons'
 import PhoneCheckoutModal, { handleCheckoutResponse } from '../payments/PhoneCheckoutModal'
 import { EXTENSION_KM2_OPTIONS } from '../map/analysisZoneGeometry'
@@ -545,6 +546,18 @@ export default function TerraAssistantPanel({
                 : ta.zoneHighlightActive.replace('{area}', fmtKm2(currentZoneKm2(aerialAccess)))}
             </p>
           )}
+        </div>
+      )}
+
+      {mode === 'map' && mapContext && (
+        <div className="px-3 sm:px-4">
+          <RelatedReportsPanel
+            compact
+            lat={mapContext.lat}
+            lng={mapContext.lng}
+            mineralSlug={mapContext.mineralSlug}
+            boundaryId={mapContext.boundaryId}
+          />
         </div>
       )}
 

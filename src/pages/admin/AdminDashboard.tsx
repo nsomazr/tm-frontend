@@ -138,6 +138,32 @@ export default function AdminDashboard() {
       </div>
 
       {isAdmin && (
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Link
+            to="/admin/analytics"
+            className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
+          >
+            <p className="text-sm font-medium text-app-text">Business analytics</p>
+            <p className="mt-1 text-xs text-app-muted">Users, revenue, subscriptions</p>
+          </Link>
+          <Link
+            to="/admin/mineral-analytics"
+            className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
+          >
+            <p className="text-sm font-medium text-app-text">Mineral analytics</p>
+            <p className="mt-1 text-xs text-app-muted">Commodity coverage & exploration interest</p>
+          </Link>
+          <Link
+            to="/admin/user-activity"
+            className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
+          >
+            <p className="text-sm font-medium text-app-text">User activity</p>
+            <p className="mt-1 text-xs text-app-muted">Searches, explorations, Ask Terra usage</p>
+          </Link>
+        </div>
+      )}
+
+      {isAdmin && (
         <div className="mb-8 rounded-xl bg-app-surface p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -151,28 +177,6 @@ export default function AdminDashboard() {
               className="shrink-0 rounded-lg bg-terra-500/10 px-4 py-2 text-sm font-medium text-terra-600 transition-colors hover:bg-terra-500/15 dark:text-terra-400"
             >
               Change CRS →
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {isAdmin && (
-        <div className="mb-8 rounded-xl bg-app-surface p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="font-semibold text-app-text">
-                Platform analytics
-              </h2>
-              <p className="mt-0.5 text-sm text-app-muted">
-                Users, conversions, revenue, subscriptions, and B2B pipeline.
-              </p>
-            </div>
-
-            <Link
-              to="/admin/analytics"
-              className="shrink-0 rounded-lg bg-terra-500/10 px-4 py-2 text-sm font-medium text-terra-600 transition-colors hover:bg-terra-500/15 dark:text-terra-400"
-            >
-              Open analytics →
             </Link>
           </div>
         </div>
@@ -197,7 +201,7 @@ export default function AdminDashboard() {
             Write & upload reports
           </p>
           <p className="mt-1 text-xs text-app-muted">
-            Draft with AI or attach PDF / Word documents
+            Draft with the assistant or attach PDF / Word documents
           </p>
         </Link>
 

@@ -181,6 +181,13 @@ export interface Report {
   region: number | null
   region_name: string | null
   description: string
+  source_type?: 'uploaded' | 'ai_generated' | 'user_generated'
+  access_type?: 'free' | 'paid' | 'subscriber_only' | 'subscriber_or_paid'
+  report_format?: 'pdf' | 'web_article' | 'pdf_and_article'
+  bounding_box?: Record<string, number>
+  center_lat?: number | null
+  center_lng?: number | null
+  zoom?: number | null
   preview_image: string | null
   price: string
   currency: string
@@ -188,10 +195,18 @@ export interface Report {
   is_purchased: boolean
   has_full_access?: boolean
   has_pdf?: boolean
+  has_article?: boolean
+  article_body?: ArticleBlock[]
+  linked_layers?: LinkedReportLayer[]
+  location_tags?: ReportLocationTag[]
+  allowed_plan_ids?: number[]
   summary_preview?: string
   can_download?: boolean
-  download_source?: 'purchase' | 'subscription' | 'admin' | null
+  download_source?: 'purchase' | 'subscription' | 'admin' | 'free' | null
   key_findings_count?: number
+  relevance_score?: number
+  linked_layer_slugs?: string[]
+  linked_boundary_names?: string[]
   ai_summary?: {
     summary: string
     key_findings?: string[]
@@ -199,6 +214,46 @@ export interface Report {
     model_used?: string
     is_preview?: boolean
   }
+}
+
+export type ArticleBlock =
+  | { type: 'heading'; level: number; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'list'; items: string[] }
+  | { type: 'callout'; text: string }
+
+export interface LinkedReportLayer {
+  id: number
+  slug: string
+  name: string
+}
+
+export interface ReportLocationTag {
+  id: number
+  name: string
+  level: number
+  level_label: string
+}
+
+export interface ReportChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  model_used?: string
+}
+
+export interface UserExplorationReport {
+  id: number
+  title: string
+  prompt: string
+  status: 'draft' | 'generating' | 'ready' | 'failed'
+  context: Record<string, unknown>
+  revision_notes: string
+  narrative: string
+  sections: Record<string, unknown>
+  pdf_file: string | null
+  error_message: string
+  created_at: string
+  updated_at: string
 }
 
 export interface MyReport {
@@ -589,14 +644,20 @@ export interface AdminPlatformAnalytics {
     download_revenue: number
     top_reports: { title: string; id: number; purchases: number; revenue: number }[]
   }
-  geology: {
+  licenses: { total: number; active: number; pending: number; approved: number }
+}
+
+export interface AdminMineralAnalytics {
+  generated_at: string
+  catalog: { layer_count: number; mapped_layer_count: number }
+  coverage: {
     total_prospects: number
     total_layers: number
     preview_layers: number
     regions_covered: number
     layer_by_type: { layer_type: string; count: number }[]
     hotspots_by_region: { region: string; count: number }[]
-    layers?: {
+    layers: {
       slug: string
       name: string
       color: string
@@ -612,7 +673,35 @@ export interface AdminPlatformAnalytics {
       report_count: number
     }[]
   }
-  licenses: { total: number; active: number; pending: number; approved: number }
+  exploration_interest: {
+    mineral_slug: string
+    explorations: number
+    unique_users: number
+  }[]
+}
+
+export interface AdminUserActivityAnalytics {
+  generated_at: string
+  summary: {
+    explorations_30d: number
+    unique_explorers_30d: number
+    assistant_events_30d: number
+    assistant_credits_30d: number
+    map_insights_30d: number
+    assistant_chats_30d: number
+    report_exports_30d: number
+    active_assistant_users_30d: number
+    chat_threads_total: number
+    chat_threads_active_30d: number
+  }
+  explored_minerals: { mineral_slug: string; explorations: number; unique_users: number }[]
+  explored_minerals_30d: { mineral_slug: string; explorations: number }[]
+  assistant_by_kind: { kind: string; events: number; credits: number }[]
+  exploration_trend: { month: string; count: number }[]
+  assistant_trend: { month: string; count: number }[]
+  top_active_users: { user_id: number; username: string; activity_score: number }[]
+  recent_explorations: { username: string; mineral_slug: string; created_at: string }[]
+  recent_assistant_usage: { username: string; kind: string; credits: number; created_at: string }[]
 }
 
 export interface ManagerPerformanceRow {

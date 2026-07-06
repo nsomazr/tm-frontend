@@ -4,18 +4,23 @@ type GeoJsonPayload = Awaited<ReturnType<typeof mapsApi.geojson>>['data']
 
 const cache = new Map<string, Promise<GeoJsonPayload>>()
 
-export function loadLayerGeojson(slug: string, force = false): Promise<GeoJsonPayload> {
+function cacheKey(slug: string, mineralSlug?: string) {
+  return mineralSlug ? `${mineralSlug}/${slug}` : slug
+}
+
+export function loadLayerGeojson(slug: string, force = false, mineralSlug?: string): Promise<GeoJsonPayload> {
+  const key = cacheKey(slug, mineralSlug)
   if (!force) {
-    const cached = cache.get(slug)
+    const cached = cache.get(key)
     if (cached) return cached
   } else {
-    cache.delete(slug)
+    cache.delete(key)
   }
 
-  const request = mapsApi.geojson(slug).then((response) => response.data)
-  cache.set(slug, request)
+  const request = mapsApi.geojson(slug, mineralSlug).then((response) => response.data)
+  cache.set(key, request)
   request.catch(() => {
-    cache.delete(slug)
+    cache.delete(key)
   })
   return request
 }

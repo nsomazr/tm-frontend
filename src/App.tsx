@@ -6,6 +6,7 @@ import MapExplorerPage from './pages/MapExplorerPage'
 import SubscriptionsPage from './pages/SubscriptionsPage'
 import DownloadsPage from './pages/DownloadsPage'
 import ReportPreviewPage from './pages/ReportPreviewPage'
+import ReportArticlePage from './pages/ReportArticlePage'
 import DashboardLayout from './pages/dashboard/DashboardLayout'
 import DashboardOverview from './pages/dashboard/DashboardOverview'
 import DashboardSubscription from './pages/dashboard/DashboardSubscription'
@@ -13,6 +14,7 @@ import DashboardBilling from './pages/dashboard/DashboardBilling'
 import DashboardAnalytics from './pages/dashboard/DashboardAnalytics'
 import DashboardTerraAssistant from './pages/dashboard/DashboardTerraAssistant'
 import DashboardReports from './pages/dashboard/DashboardReports'
+import ExplorationReportPage from './pages/dashboard/ExplorationReportPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import PaymentCallbackPage from './pages/PaymentCallbackPage'
@@ -28,6 +30,9 @@ import UsersPage from './pages/admin/UsersPage'
 import MineralsPage from './pages/admin/MineralsPage'
 import MineralManagersPage from './pages/admin/MineralManagersPage'
 import ManagerPerformancePage from './pages/admin/ManagerPerformancePage'
+import LayerActivityPage from './pages/admin/LayerActivityPage'
+import AdminMineralAnalyticsPage from './pages/admin/AdminMineralAnalyticsPage'
+import AdminUserActivityPage from './pages/admin/AdminUserActivityPage'
 import LayersPage from './pages/admin/LayersPage'
 import CoordinatesEditor from './pages/admin/CoordinatesEditor'
 import ReportsPage from './pages/admin/ReportsPage'
@@ -44,6 +49,7 @@ export default function App() {
         <Route path="maps" element={<MapExplorerPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="about" element={<AboutPage />} />
+        <Route path="downloads/:slug/read" element={<ReportArticlePage />} />
         <Route path="downloads/:slug" element={<ReportPreviewPage />} />
         <Route path="downloads" element={<DownloadsPage />} />
         <Route
@@ -60,6 +66,7 @@ export default function App() {
           <Route path="analytics" element={<DashboardAnalytics />} />
           <Route path="assistant" element={<DashboardTerraAssistant />} />
           <Route path="reports" element={<DashboardReports />} />
+          <Route path="exploration-reports" element={<ExplorationReportPage />} />
         </Route>
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
@@ -99,6 +106,22 @@ export default function App() {
             }
           />
           <Route
+            path="mineral-analytics"
+            element={
+              <AdminOnly>
+                <AdminMineralAnalyticsPage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="user-activity"
+            element={
+              <AdminOnly>
+                <AdminUserActivityPage />
+              </AdminOnly>
+            }
+          />
+          <Route
             path="analytics"
             element={
               <AdminOnly>
@@ -128,6 +151,14 @@ export default function App() {
             element={
               <AdminOnly>
                 <ManagerPerformancePage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="layer-activity"
+            element={
+              <AdminOnly>
+                <LayerActivityPage />
               </AdminOnly>
             }
           />

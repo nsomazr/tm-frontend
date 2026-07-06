@@ -50,30 +50,42 @@ export const mineralsApi = {
   update: (slug: string, data: Partial<Mineral>) => api.patch(`/minerals/${slug}/`, data),
 }
 
+function layerLookupParams(mineralSlug?: string) {
+  return mineralSlug ? { mineral_slug: mineralSlug } : undefined
+}
+
 export const mapsApi = {
   layers: (params?: Record<string, string>) =>
     api.get<PaginatedResponse<MapLayer>>('/maps/layers/', { params }),
-  layer: (slug: string) => api.get<MapLayer>(`/maps/layers/${slug}/`),
-  geojson: (slug: string) => api.get(`/maps/layers/${slug}/geojson/`),
+  layer: (slug: string, mineralSlug?: string) =>
+    api.get<MapLayer>(`/maps/layers/${slug}/`, { params: layerLookupParams(mineralSlug) }),
+  geojson: (slug: string, mineralSlug?: string) =>
+    api.get(`/maps/layers/${slug}/geojson/`, { params: layerLookupParams(mineralSlug) }),
   reorder: (layerIds: number[]) => api.patch('/maps/layers/reorder/', { layer_ids: layerIds }),
   features: (params?: Record<string, string>) =>
     api.get<PaginatedResponse<MapFeature>>('/maps/features/', { params }),
   createFeature: (data: Partial<MapFeature>) => api.post('/maps/features/', data),
   updateFeature: (id: number, data: Partial<MapFeature>) => api.patch(`/maps/features/${id}/`, data),
   deleteFeature: (id: number) => api.delete(`/maps/features/${id}/`),
-  bulkImport: (slug: string, file: File, fileType?: string) => {
+  bulkImport: (slug: string, file: File, fileType?: string, mineralSlug?: string) => {
     const form = new FormData()
     form.append('file', file)
     if (fileType) form.append('file_type', fileType)
     return api.post(`/maps/layers/${slug}/bulk_import/`, form, {
+      params: layerLookupParams(mineralSlug),
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
-  sampleShapefile: (slug: string) =>
-    api.get(`/maps/layers/${slug}/sample_shapefile/`, { responseType: 'blob' }),
+  sampleShapefile: (slug: string, mineralSlug?: string) =>
+    api.get(`/maps/layers/${slug}/sample_shapefile/`, {
+      params: layerLookupParams(mineralSlug),
+      responseType: 'blob',
+    }),
   createLayer: (data: Partial<MapLayer>) => api.post('/maps/layers/', data),
-  updateLayer: (slug: string, data: Partial<MapLayer>) => api.patch(`/maps/layers/${slug}/`, data),
-  deleteLayer: (slug: string) => api.delete(`/maps/layers/${slug}/`),
+  updateLayer: (slug: string, data: Partial<MapLayer>, mineralSlug?: string) =>
+    api.patch(`/maps/layers/${slug}/`, data, { params: layerLookupParams(mineralSlug) }),
+  deleteLayer: (slug: string, mineralSlug?: string) =>
+    api.delete(`/maps/layers/${slug}/`, { params: layerLookupParams(mineralSlug) }),
   versions: (params?: Record<string, string | number>) =>
     api.get<PaginatedResponse<LayerVersion>>('/maps/versions/', { params }),
   uploads: (params?: Record<string, string | number>) =>
@@ -147,7 +159,17 @@ export const reportsApi = {
   list: (params?: Record<string, string>) =>
     api.get<PaginatedResponse<Report>>('/reports/', { params }),
   get: (slug: string) => api.get<Report>(`/reports/${slug}/`),
+  contextual: (params: Record<string, string>) =>
+    api.get<{ results: Report[] }>('/reports/contextual/', { params }),
   download: (slug: string) => api.get(`/reports/${slug}/download/`, { responseType: 'blob' }),
+  chat: (slug: string) => api.get<{ messages: import('../types').ReportChatMessage[] }>(`/reports/${slug}/chat/`),
+  sendChat: (slug: string, message: string) =>
+    api.post<{
+      reply: string
+      model_used: string
+      citations: { page_number: number; excerpt: string }[]
+      messages: import('../types').ReportChatMessage[]
+    }>(`/reports/${slug}/chat/`, { message }),
   adminList: () => api.get<PaginatedResponse<Report>>('/reports/admin/'),
   adminGet: (slug: string) => api.get<Report>(`/reports/admin/${slug}/`),
   create: (data: FormData | Record<string, unknown>) =>
@@ -160,11 +182,20 @@ export const reportsApi = {
       : api.patch(`/reports/admin/${slug}/`, data),
   adminDelete: (slug: string) => api.delete(`/reports/admin/${slug}/`),
   adminAiAssist: (data: FormData) =>
-    api.post<ReportAiDraftResponse>('/reports/admin/ai-assist/', data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    api.post<ReportAiDraftResponse>('/reports/admin/ai-assist/', data),
   adminGeneratePdf: (slug: string, force = false) =>
     api.post(`/reports/admin/${slug}/generate-pdf/`, { force }),
+  explorationList: () => api.get<PaginatedResponse<import('../types').UserExplorationReport>>('/reports/exploration/'),
+  explorationGet: (id: number) => api.get<import('../types').UserExplorationReport>(`/reports/exploration/${id}/`),
+  explorationGenerate: (data: { prompt: string; title?: string; context?: Record<string, unknown> }) =>
+    api.post<import('../types').UserExplorationReport>('/reports/exploration/generate/', data),
+  explorationRefine: (id: number, revision_notes: string) =>
+    api.post<import('../types').UserExplorationReport>(`/reports/exploration/${id}/refine/`, { revision_notes }),
+  explorationExportPdf: (id: number) =>
+    api.post<import('../types').UserExplorationReport>(`/reports/exploration/${id}/export-pdf/`),
+  explorationDownload: (id: number) =>
+    api.get(`/reports/exploration/${id}/download/`, { responseType: 'blob' }),
+  explorationDelete: (id: number) => api.delete(`/reports/exploration/${id}/`),
 }
 
 function normalizeCountryList(
@@ -284,6 +315,10 @@ export const analyticsApi = {
     api.get('/analytics/hotspots/', { params: mineral ? { mineral } : {} }),
   investor: () => api.get('/analytics/investor/'),
   adminPlatform: () => api.get<import('../types').AdminPlatformAnalytics>('/analytics/admin/'),
+  adminMineralAnalytics: () =>
+    api.get<import('../types').AdminMineralAnalytics>('/analytics/admin/minerals/'),
+  adminUserActivity: () =>
+    api.get<import('../types').AdminUserActivityAnalytics>('/analytics/admin/user-activity/'),
   adminManagerPerformance: () =>
     api.get<import('../types').ManagerPerformanceReview>('/analytics/admin/managers/'),
   mineralExploration: () =>

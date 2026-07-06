@@ -33,7 +33,13 @@ export default function DashboardReports() {
     queryFn: () => subscriptionsApi.purchases().then((r) => normalizePurchases(r.data)),
   })
 
+  const { data: explorationReports } = useQuery({
+    queryKey: ['exploration-reports'],
+    queryFn: () => reportsApi.explorationList().then((r) => r.data.results ?? []),
+  })
+
   const list = data ?? []
+  const explorations = explorationReports ?? []
 
   const handleDownload = async (slug: string) => {
     setDownloading(slug)
@@ -50,7 +56,15 @@ export default function DashboardReports() {
 
   return (
     <>
-      <PageHeader title="My downloads" description="Reports you have purchased or downloaded with your subscription." />
+      <PageHeader
+        title="My downloads"
+        description="Reports you have purchased or downloaded with your subscription."
+      />
+      <div className="mb-5">
+        <Link to="/dashboard/exploration-reports" className="btn-secondary text-sm">
+          Exploration reports
+        </Link>
+      </div>
 
       {isManager && (
         <div className="mb-5 rounded-xl border border-terra-500/25 bg-terra-500/10 px-4 py-3 text-sm text-app-text">
@@ -138,6 +152,25 @@ export default function DashboardReports() {
             Browse more reports →
           </Link>
         </>
+      )}
+
+      {explorations.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold text-app-text mb-3">Your exploration reports</h2>
+          <ul className="card !p-0 overflow-hidden app-divide-y">
+            {explorations.map((item) => (
+              <li key={item.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-app-text">{item.title || `Report #${item.id}`}</p>
+                  <p className="text-xs text-slate-400 capitalize">{item.status}</p>
+                </div>
+                <Link to="/dashboard/exploration-reports" className="btn-secondary text-xs">
+                  Open
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </>
   )

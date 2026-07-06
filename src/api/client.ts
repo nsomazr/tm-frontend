@@ -22,6 +22,9 @@ api.interceptors.request.use((config) => {
   if (locale === 'en' || locale === 'sw') {
     config.headers['Accept-Language'] = locale
   }
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type']
+  }
   return config
 })
 

@@ -11,10 +11,10 @@ export type PaidPlanSlug = (typeof PAID_PLAN_SLUG_ORDER)[number]
 
 export function sortPaidPlans(plans: SubscriptionPlan[]): SubscriptionPlan[] {
   return [...plans].sort((a, b) => {
-    const ai = PAID_PLAN_SLUG_ORDER.indexOf(a.slug as PaidPlanSlug)
-    const bi = PAID_PLAN_SLUG_ORDER.indexOf(b.slug as PaidPlanSlug)
-    const rankA = ai === -1 ? 99 : ai
-    const rankB = bi === -1 ? 99 : bi
+    const aIdx = PAID_PLAN_SLUG_ORDER.indexOf(a.slug as PaidPlanSlug)
+    const bIdx = PAID_PLAN_SLUG_ORDER.indexOf(b.slug as PaidPlanSlug)
+    const rankA = aIdx === -1 ? 99 : aIdx
+    const rankB = bIdx === -1 ? 99 : bIdx
     if (rankA !== rankB) return rankA - rankB
     return Number(a.price) - Number(b.price)
   })
