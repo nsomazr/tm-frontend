@@ -178,6 +178,14 @@ export default function MapBottomControls({
   staticMap = false,
   coordinateSystem,
   onCoordinateSystemChange,
+  assistantOpen,
+  onAssistantToggle,
+  onAssistantClose,
+  areaInsight,
+  insightLoading,
+  hasPaidAccess,
+  assistantMapContext,
+  getMapSnapshot,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()

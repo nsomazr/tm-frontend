@@ -1309,6 +1309,15 @@ export default function MapViewer({
           staticMap={staticMap}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
+          assistantOpen={assistantOpen ?? false}
+          onAssistantToggle={onAssistantToggle ?? (() => {})}
+          onAssistantClose={onAssistantClose ?? (() => {})}
+          areaInsight={areaInsight ?? null}
+          insightLoading={insightLoading ?? false}
+          hasPaidAccess={hasPaidAccess ?? false}
+          assistantMapContext={assistantMapContext ?? null}
+          getMapSnapshot={getMapSnapshot}
+          onCoordinateSystemChange={setCoordinateSystem}
         />
       )}
     </div>
