@@ -36,9 +36,12 @@ export function mineralHeatmapGradient(color: string): string[] {
   ]
 }
 
-/** Place heatmap just beneath the selected mineral's lowest vector layer. */
-export function mineralHeatmapZIndex(minLayerZIndex: number): number {
-  return 3590 + minLayerZIndex
+/** Mineral vector layers start at 3600; heatmap sits between boundaries (≤3400) and data. */
+export const MINERAL_HEATMAP_Z_INDEX = 3550
+
+/** @deprecated use MINERAL_HEATMAP_Z_INDEX — kept for callers passing min layer z */
+export function mineralHeatmapZIndex(_minLayerZIndex: number): number {
+  return MINERAL_HEATMAP_Z_INDEX
 }
 
 const TARGET_HEATMAP_OPACITY = 0.82
@@ -61,6 +64,23 @@ function animateLayerOpacity(layer: Heatmap, from: number, to: number): Promise<
   })
 }
 
+const DATA_LAYER_Z_INDEX = 3600
+
+function insertLayerBelowDataLayers(map: import('ol/Map').default, layer: Heatmap, zIndex: number) {
+  layer.setZIndex(zIndex)
+  const collection = map.getLayers()
+  let insertAt = collection.getLength()
+  for (let i = 0; i < collection.getLength(); i += 1) {
+    const candidate = collection.item(i)
+    const z = candidate.getZIndex?.() ?? 0
+    if (z >= DATA_LAYER_Z_INDEX) {
+      insertAt = i
+      break
+    }
+  }
+  collection.insertAt(insertAt, layer)
+}
+
 export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: boolean): Heatmap {
   const source = new VectorSource()
   for (const point of spec.points) {
@@ -75,11 +95,11 @@ export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: bool
   const hex = normalizeHex(spec.color, '#E87722')
   return new Heatmap({
     source,
-    blur: mobile ? 18 : 22,
-    radius: mobile ? 12 : 16,
+    blur: mobile ? 20 : 26,
+    radius: mobile ? 14 : 20,
     weight: (feature) => Number(feature.get('weight') ?? 1),
     gradient: mineralHeatmapGradient(hex),
-    zIndex: spec.zIndex ?? 3580,
+    zIndex: spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX,
     opacity: 0,
     properties: { mineralHeatmap: spec.slug },
   })
@@ -115,7 +135,7 @@ export async function syncMineralHeatmapLayer(
 
   if (cancelled()) return
   const layer = createMineralHeatmapLayer(spec, mobile)
-  map.addLayer(layer)
+  insertLayerBelowDataLayers(map, layer, spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX)
   layerRef.current = layer
   await animateLayerOpacity(layer, 0, TARGET_HEATMAP_OPACITY)
 }

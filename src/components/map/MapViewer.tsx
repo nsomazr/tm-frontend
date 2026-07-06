@@ -44,7 +44,7 @@ import { useTheme } from '../../theme/ThemeContext'
 import { pickFeatureAtPixel } from './mapHitUtils'
 import Heatmap from 'ol/layer/Heatmap'
 import { loadLayerGeojson } from './mapGeojsonCache'
-import { syncMineralHeatmapLayer, type MineralHeatmapSpec } from './mineralHeatmapLayer'
+import { syncMineralHeatmapLayer, MINERAL_HEATMAP_Z_INDEX, type MineralHeatmapSpec } from './mineralHeatmapLayer'
 import { useTranslation } from '../../i18n/LocaleContext'
 import {
   boundaryLabelZoom,
@@ -1261,6 +1261,11 @@ export default function MapViewer({
       vectorLayersRef.current.set(layer.id, vectorLayer)
       populateLayerSource(layer.id, layer, source)
     })
+
+    const heatmap = heatmapLayerRef.current
+    if (heatmap) {
+      heatmap.setZIndex(MINERAL_HEATMAP_Z_INDEX)
+    }
   }, [layersSignature, layers, styleFn, mapEpoch, populateLayerSource, visibleLayers])
 
   // Reload cached GeoJSON when locale changes (labels are localized server-side).
