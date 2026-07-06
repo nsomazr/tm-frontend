@@ -148,6 +148,13 @@ const TANZANIA_CENTER = fromLonLat([DEFAULT_COUNTRY_FOCUS.center.lng, DEFAULT_CO
 const TANZANIA_EXTENT = boundsToExtent(DEFAULT_COUNTRY_FOCUS.bounds)
 
 function fitAdminBounds(map: OlMap, bounds: AdminFitBounds, mobile: boolean) {
+  const size = map.getSize()
+  if (!size || size[0] === 0 || size[1] === 0) {
+    requestAnimationFrame(() => fitAdminBounds(map, bounds, mobile))
+    return
+  }
+
+  map.updateSize()
   const extent = boundsToExtent(bounds)
   map.getView().fit(extent, {
     padding: mobile ? [112, 16, 100, 16] : [104, 48, 120, 48],
@@ -162,6 +169,13 @@ function fitCountryView(
   mobile: boolean,
   animated = false
 ) {
+  const size = map.getSize()
+  if (!size || size[0] === 0 || size[1] === 0) {
+    requestAnimationFrame(() => fitCountryView(map, focus, mobile, animated))
+    return
+  }
+
+  map.updateSize()
   const view = map.getView()
   const extent = boundsToExtent(focus.bounds)
   const duration = animated ? (mobile ? 500 : 800) : 0

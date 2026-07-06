@@ -199,7 +199,7 @@ export default function MapBottomControls({
   const toolbarCols = 1 + (showLayersBtn ? 1 : 0) + (showLegendBtn ? 1 : 0)
 
   const sheetClass =
-    'pointer-events-auto mb-2 overflow-hidden rounded-2xl map-chrome'
+    'pointer-events-auto mb-2 overflow-hidden rounded-2xl map-chrome bg-app-surface/95 backdrop-blur-sm'
 
   const renderSheet = (content: ReactNode, tall = false) => (
     <div
@@ -220,7 +220,7 @@ export default function MapBottomControls({
         />
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex flex-col px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex max-h-[min(55vh,calc(100vh-5rem))] flex-col overflow-y-auto px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
         {panel === 'layers' &&
           renderSheet(
             <>
