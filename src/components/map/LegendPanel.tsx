@@ -36,8 +36,12 @@ const TYPE_SYMBOL: Record<string, { render: (color: string) => ReactNode }> = {
   point: {
     render: (color) => (
       <span
-        className="w-2.5 h-2.5 rounded-full border border-white shadow shrink-0 mt-1"
-        style={{ backgroundColor: color }}
+        className="w-3 h-2.5 shrink-0 mt-0.5 drop-shadow-sm"
+        style={{
+          backgroundColor: color,
+          clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)',
+          boxShadow: '0 0 0 1px #fff',
+        }}
       />
     ),
   },

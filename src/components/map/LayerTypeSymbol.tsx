@@ -22,8 +22,12 @@ export default function LayerTypeSymbol({ layer }: { layer: MapLayer }) {
   if (layer.layer_type === 'point') {
     return (
       <span
-        className="w-3 h-3 rounded-full shrink-0 border-2 border-white shadow-sm"
-        style={{ backgroundColor: fill }}
+        className="w-3.5 h-3 shrink-0 drop-shadow-sm"
+        style={{
+          backgroundColor: fill,
+          clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)',
+          boxShadow: '0 0 0 2px #fff',
+        }}
         aria-hidden
       />
     )

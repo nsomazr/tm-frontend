@@ -2,6 +2,7 @@ import { useMemo, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
+import { useTheme } from '../../theme/ThemeContext'
 import type { MineralCatalogEntry } from '../../types'
 import {
   buildCommoditySlots,
@@ -37,6 +38,17 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
+/** Pick light or dark label text for a solid tile background. */
+function textColorForBg(hex: string): string {
+  const normalized = hex.replace('#', '')
+  if (normalized.length !== 6) return '#ffffff'
+  const r = parseInt(normalized.slice(0, 2), 16) / 255
+  const g = parseInt(normalized.slice(2, 4), 16) / 255
+  const b = parseInt(normalized.slice(4, 6), 16) / 255
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+  return luminance > 0.58 ? '#0f172a' : '#ffffff'
+}
+
 function slugToLabel(slug: string) {
   return slug
     .split('-')
@@ -60,6 +72,8 @@ export default function MineralPeriodicTable({
 }: MineralPeriodicTableProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
 
   const commodityByZ = useMemo(() => buildCommoditySlots(catalog), [catalog])
   const specialSlots = useMemo(() => buildSpecialSlots(catalog), [catalog])
@@ -147,28 +161,34 @@ export default function MineralPeriodicTable({
   const gridGap = showcase ? 'gap-[3px] sm:gap-1' : 'gap-0.5'
 
   const mutedElementStyle = (color: string): CSSProperties => ({
-    backgroundColor: hexToRgba(color, 0.18),
-    borderColor: 'rgba(148, 163, 184, 0.25)',
-    color: 'rgba(51, 65, 85, 0.4)',
-    filter: 'saturate(0.25) brightness(0.98)',
-    opacity: 0.5,
+    backgroundColor: hexToRgba(color, isDark ? 0.32 : 0.18),
+    borderColor: isDark ? 'rgba(148, 163, 184, 0.38)' : 'rgba(148, 163, 184, 0.25)',
+    color: isDark ? 'rgba(226, 232, 240, 0.62)' : 'rgba(51, 65, 85, 0.48)',
+    filter: isDark ? 'saturate(0.45) brightness(1.08)' : 'saturate(0.25) brightness(0.98)',
+    opacity: isDark ? 0.88 : 0.55,
   })
 
   const mutedSpecialStyle = (): CSSProperties => ({
-    backgroundColor: 'rgba(148, 163, 184, 0.2)',
-    borderColor: 'rgba(148, 163, 184, 0.25)',
-    color: 'rgba(51, 65, 85, 0.4)',
-    filter: 'saturate(0.2) brightness(0.98)',
-    opacity: 0.5,
+    backgroundColor: isDark ? 'rgba(148, 163, 184, 0.28)' : 'rgba(148, 163, 184, 0.2)',
+    borderColor: isDark ? 'rgba(148, 163, 184, 0.38)' : 'rgba(148, 163, 184, 0.25)',
+    color: isDark ? 'rgba(226, 232, 240, 0.62)' : 'rgba(51, 65, 85, 0.48)',
+    filter: isDark ? 'saturate(0.35) brightness(1.08)' : 'saturate(0.2) brightness(0.98)',
+    opacity: isDark ? 0.88 : 0.55,
   })
 
-  const mappedCommodityStyle = (color: string): CSSProperties => ({
-    backgroundColor: color,
-    color: '#fff',
-    textShadow: '0 1px 2px rgba(0,0,0,0.35)',
-    opacity: 1,
-    filter: 'none',
-  })
+  const mappedCommodityStyle = (color: string): CSSProperties => {
+    const labelColor = textColorForBg(color)
+    return {
+      backgroundColor: color,
+      color: labelColor,
+      textShadow: labelColor === '#ffffff' ? '0 1px 2px rgba(0,0,0,0.4)' : 'none',
+      opacity: 1,
+      filter: 'none',
+    }
+  }
+
+  const mappedTileClass = 'periodic-tile-mapped'
+  const mutedTileClass = 'periodic-tile-muted'
 
   const renderElementCell = (z: number) => {
     const element = ELEMENTS_BY_Z[z]
@@ -189,8 +209,10 @@ export default function MineralPeriodicTable({
       mapped && entry ? mappedCommodityStyle(commodityColor) : mutedElementStyle(categoryColor)
 
     const tileClass = `${tileMinH} rounded-[3px] sm:rounded-md flex flex-col items-stretch justify-between p-0.5 sm:p-1 text-left border border-black/10 transition-all ${
+      mapped && entry ? mappedTileClass : mutedTileClass
+    } ${
       selected
-        ? 'ring-2 ring-offset-1 ring-terra-500 scale-[1.03] shadow-md z-[1]'
+        ? 'ring-2 ring-offset-1 ring-offset-app-bg ring-terra-500 scale-[1.03] shadow-md z-[1]'
         : linked
           ? 'hover:brightness-110 hover:scale-[1.02] cursor-pointer shadow-sm'
           : 'cursor-default select-none'
@@ -243,11 +265,8 @@ export default function MineralPeriodicTable({
     return (
       <div
         key={kind === -1 ? 'lan-placeholder' : 'act-placeholder'}
-        className={`${tileMinH} rounded-[4px] sm:rounded-md flex flex-col items-center justify-center border border-black/10 text-[7px] sm:text-[10px] font-semibold aspect-square sm:aspect-auto sm:h-[3.125rem] md:h-[3.375rem] lg:h-[3.625rem] w-full`}
-        style={{
-          ...mutedElementStyle(kind === -1 ? '#c9a0e8' : '#e8a0d4'),
-          color: 'rgba(51, 65, 85, 0.45)',
-        }}
+        className={`${tileMinH} ${mutedTileClass} rounded-[4px] sm:rounded-md flex flex-col items-center justify-center border border-black/10 text-[7px] sm:text-[10px] font-semibold aspect-square sm:aspect-auto sm:h-[3.125rem] md:h-[3.375rem] lg:h-[3.625rem] w-full`}
+        style={mutedElementStyle(kind === -1 ? '#c9a0e8' : '#e8a0d4')}
         aria-hidden
       >
         {label}
@@ -300,8 +319,10 @@ export default function MineralPeriodicTable({
       : `${tileMinH} min-w-[3.5rem] sm:min-w-[4.5rem] rounded-md flex flex-col items-center justify-center px-2`
 
     const tileClass = `${specialTileClass} border border-black/10 transition-all ${
+      mapped && entry ? mappedTileClass : mutedTileClass
+    } ${
       selected
-        ? 'ring-2 ring-offset-1 ring-terra-500 scale-[1.03] shadow-md'
+        ? 'ring-2 ring-offset-1 ring-offset-app-bg ring-terra-500 scale-[1.03] shadow-md'
         : linked
           ? 'hover:brightness-110 hover:scale-[1.02] cursor-pointer shadow-sm'
           : 'cursor-default select-none'
@@ -339,9 +360,9 @@ export default function MineralPeriodicTable({
   }
 
   return (
-    <div className={`${shellClass} ${className}`}>
+    <div className={`periodic-table ${shellClass} ${className}`}>
       {showcase && (
-        <p className="sm:hidden text-[10px] text-slate-400 text-center mb-2 px-1">
+        <p className="sm:hidden text-[10px] text-slate-500 dark:text-slate-400 text-center mb-2 px-1">
           Swipe sideways to explore the full table
         </p>
       )}

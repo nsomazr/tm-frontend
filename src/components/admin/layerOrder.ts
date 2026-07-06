@@ -25,41 +25,29 @@ export function applyDefaultTypeStack(layers: MapLayer[]): MapLayer[] {
   return sorted.map((layer, index) => ({ ...layer, z_index: index }))
 }
 
-export function moveLayerInStack(
+export function applyGroupOrder(
   layers: MapLayer[],
-  layerId: number,
-  direction: 'front' | 'forward' | 'backward' | 'back'
+  groupType: string,
+  orderedTopToBottom: MapLayer[]
 ): MapLayer[] {
-  const ordered = sortLayersBottomToTop(layers)
-  const index = ordered.findIndex((layer) => layer.id === layerId)
-  if (index < 0) return layers
+  const typeOrder = ['polygon', 'line', 'point'] as const
+  const groups = new Map<string, MapLayer[]>()
 
-  const next = [...ordered]
-  const [item] = next.splice(index, 1)
-  let target = index
-
-  switch (direction) {
-    case 'front':
-      target = next.length
-      break
-    case 'forward':
-      target = Math.min(index + 1, next.length)
-      break
-    case 'backward':
-      target = Math.max(index - 1, 0)
-      break
-    case 'back':
-      target = 0
-      break
+  for (const type of typeOrder) {
+    if (type === groupType) {
+      groups.set(type, [...orderedTopToBottom].reverse())
+    } else {
+      groups.set(type, sortLayersBottomToTop(layers.filter((layer) => layer.layer_type === type)))
+    }
   }
 
-  next.splice(target, 0, item)
-  return next.map((layer, i) => ({ ...layer, z_index: i }))
+  const merged = typeOrder.flatMap((type) => groups.get(type) ?? [])
+  return merged.map((layer, index) => ({ ...layer, z_index: index }))
 }
 
-export function stackPositionLabel(index: number, total: number) {
-  if (total <= 1) return 'Only layer'
-  if (index === total - 1) return 'Top'
-  if (index === 0) return 'Bottom'
-  return `Middle (${index + 1}/${total})`
+export function stackPositionLabel(indexFromTop: number, total: number) {
+  if (total <= 1) return 'Only layer in group'
+  if (indexFromTop === 0) return 'Top — drawn in front'
+  if (indexFromTop === total - 1) return 'Bottom — drawn behind'
+  return `${indexFromTop + 1} of ${total}`
 }

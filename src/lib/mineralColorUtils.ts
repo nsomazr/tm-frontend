@@ -9,6 +9,20 @@ export function normalizeHex(value: string, fallback = '#0D9488'): string {
   return `#${body.toUpperCase()}`
 }
 
+/** Normalize hex, rgba(), or rgb() strings to #RRGGBB for heatmap / swatches. */
+export function resolveColorHex(value: string | undefined | null, fallback = '#E87722'): string {
+  if (!value?.trim()) return normalizeHex(fallback, fallback)
+  const raw = value.trim()
+  const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(raw)
+  if (rgbMatch) {
+    const r = Math.min(255, Number(rgbMatch[1])).toString(16).padStart(2, '0')
+    const g = Math.min(255, Number(rgbMatch[2])).toString(16).padStart(2, '0')
+    const b = Math.min(255, Number(rgbMatch[3])).toString(16).padStart(2, '0')
+    return `#${r}${g}${b}`.toUpperCase()
+  }
+  return normalizeHex(raw, fallback)
+}
+
 export function hexToRgba(hex: string, alpha: number): string {
   const norm = normalizeHex(hex)
   const body = norm.slice(1)

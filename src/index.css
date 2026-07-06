@@ -517,6 +517,21 @@
     box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.16);
   }
 
+  /* Commodity periodic table — keep tile labels readable in dark mode */
+  .periodic-table .periodic-tile-mapped,
+  .periodic-table .periodic-tile-mapped span {
+    color: inherit;
+  }
+
+  .periodic-table .periodic-tile-muted,
+  .periodic-table .periodic-tile-muted span {
+    color: inherit;
+  }
+
+  .dark .periodic-table .periodic-tile-muted {
+    border-color: rgba(148, 163, 184, 0.32);
+  }
+
   .map-search-unified {
     box-shadow: 0 6px 28px -8px rgba(15, 23, 42, 0.2);
     transition:

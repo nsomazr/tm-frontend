@@ -27,7 +27,7 @@ import MapCoordinateReadout from './MapCoordinateReadout'
 import MineralHeatmapColorbar from './MineralHeatmapColorbar'
 import { registerCoordinateProjections } from './coordinateSystems'
 import { useCoordinateSystemState } from './useCoordinateSystemState'
-import { Fill, RegularShape, Stroke, Style, Circle as CircleStyle } from 'ol/style'
+import { Fill, RegularShape, Stroke, Style } from 'ol/style'
 import { explorationBounds, type ExplorationDraw } from './explorationGeometry'
 import { analysisZoneRadiusKm, recommendedZoomForAnalysisZone, type AnalysisZoneSpec } from './analysisZoneGeometry'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
@@ -299,8 +299,10 @@ function userDrawStyles(role: string): Style {
   }
   if (role === 'point') {
     return new Style({
-      image: new CircleStyle({
+      image: new RegularShape({
+        points: 3,
         radius: 10,
+        angle: 0,
         fill: new Fill({ color: USER_DRAW_POINT_COLOR }),
         stroke: new Stroke({ color: '#ffffff', width: 2.5 }),
       }),

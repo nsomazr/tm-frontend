@@ -1,4 +1,4 @@
-import { hexToRgba } from '../../lib/mineralColorUtils'
+import { hexToRgba, resolveColorHex } from '../../lib/mineralColorUtils'
 import type { MineralHeatmapSpec } from './mineralHeatmapLayer'
 
 interface MineralHeatmapColorbarProps {
@@ -7,7 +7,7 @@ interface MineralHeatmapColorbarProps {
 }
 
 export default function MineralHeatmapColorbar({ spec, className = '' }: MineralHeatmapColorbarProps) {
-  const color = spec.color || '#E87722'
+  const color = resolveColorHex(spec.color, '#E87722')
   const gradient = `linear-gradient(to right, ${hexToRgba(color, 0.08)}, ${hexToRgba(color, 0.95)})`
 
   return (

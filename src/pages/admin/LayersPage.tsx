@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, geographyApi, mapsApi } from '../../api'
+import { adminApi, mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import FileUploadField from '../../components/ui/FileUploadField'
 import ListPagination from '../../components/ui/ListPagination'
@@ -20,7 +20,7 @@ import {
 import { colorRecordForLayer, formatColorCodes } from '../../lib/mineralColorUtils'
 import {
   applyDefaultTypeStack,
-  moveLayerInStack,
+  applyGroupOrder,
   sortLayersBottomToTop,
   sortLayersTopToBottom,
   stackPositionLabel,
@@ -150,7 +150,6 @@ export default function LayersPage() {
   const [newName, setNewName] = useState('')
   const [newNameSw, setNewNameSw] = useState('')
   const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>('polygon')
-  const [newRegionId, setNewRegionId] = useState('')
   const [newPreview, setNewPreview] = useState(false)
   const [newColor, setNewColor] = useState('#0D9488')
   const [colorTouched, setColorTouched] = useState(false)
@@ -159,11 +158,6 @@ export default function LayersPage() {
   const { data: layers } = useQuery({
     queryKey: ['admin-layers'],
     queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
-  })
-
-  const { data: regions } = useQuery({
-    queryKey: ['regions'],
-    queryFn: () => geographyApi.regions().then((r) => r.data),
   })
 
   const { data: managerUploads } = useQuery({
@@ -223,7 +217,6 @@ export default function LayersPage() {
           fill
         ),
       }
-      if (newRegionId) payload.region = Number(newRegionId)
       return mapsApi.createLayer(payload)
     },
     onSuccess: (res) => {
@@ -236,7 +229,6 @@ export default function LayersPage() {
       })
       setNewName('')
       setNewNameSw('')
-      setNewRegionId('')
       setNewPreview(false)
       setColorTouched(false)
     },
@@ -289,11 +281,8 @@ export default function LayersPage() {
     },
   })
 
-  const handleMoveLayer = (
-    layerId: number,
-    direction: 'front' | 'forward' | 'backward' | 'back'
-  ) => {
-    const next = moveLayerInStack(stackableLayers, layerId, direction)
+  const handleReorderGroup = (groupType: string, orderedTopToBottom: MapLayer[]) => {
+    const next = applyGroupOrder(stackableLayers, groupType, orderedTopToBottom)
     reorderStack.mutate(next)
   }
 
@@ -519,21 +508,6 @@ export default function LayersPage() {
                     ))}
                   </select>
                 </label>
-                <label className="block">
-                  <span className="text-sm font-medium text-app-text-secondary">Region (optional)</span>
-                  <select
-                    value={newRegionId}
-                    onChange={(e) => setNewRegionId(e.target.value)}
-                    className="input mt-1.5 w-full"
-                  >
-                    <option value="">Any / national</option>
-                    {regions?.results.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {displayName(r)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
                 <label className="flex items-center gap-2 text-sm text-app-text-secondary self-end pb-2">
                   <input
                     type="checkbox"
@@ -607,7 +581,7 @@ export default function LayersPage() {
 
       <LayerArrangeSection
         layers={stackableLayers}
-        onMove={handleMoveLayer}
+        onReorderGroup={handleReorderGroup}
         onResetDefault={handleDefaultStack}
         busy={reorderStack.isPending}
       />
@@ -653,12 +627,12 @@ export default function LayersPage() {
               <tbody>
                 {layerPagination.pageItems.map((layer) => {
                   const displayColor = layerDisplayColor(layer)
-                  const stackIndex = sortLayersBottomToTop(stackableLayers).findIndex(
+                  const indexFromTop = sortLayersTopToBottom(stackableLayers).findIndex(
                     (item) => item.id === layer.id
                   )
                   const stackLabel =
-                    layer.is_active && stackableLayers.length > 0 && stackIndex >= 0
-                      ? stackPositionLabel(stackIndex, stackableLayers.length)
+                    layer.is_active && stackableLayers.length > 0 && indexFromTop >= 0
+                      ? stackPositionLabel(indexFromTop, stackableLayers.length)
                       : '-'
 
                   return (

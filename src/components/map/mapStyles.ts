@@ -1,11 +1,21 @@
 import type { MapLayer } from '../../types'
-import { Style, Fill, Stroke, Circle as CircleStyle } from 'ol/style'
+import { Style, Fill, Stroke, RegularShape } from 'ol/style'
 import type { FeatureLike } from 'ol/Feature'
 import type { BasemapId } from './basemaps'
 import { isImageryBasemap } from './basemaps'
 import { zoomFromResolution } from './mapUtils'
 
 export type MapColorTheme = 'light' | 'dark'
+
+function pointTriangleImage(fill: string, radius: number, strokeWidth = 2) {
+  return new RegularShape({
+    points: 3,
+    radius,
+    angle: 0,
+    fill: new Fill({ color: fill }),
+    stroke: new Stroke({ color: '#ffffff', width: strokeWidth }),
+  })
+}
 
 function hexWithAlpha(hex: string, alpha: number) {
   const h = hex.replace('#', '')
@@ -56,11 +66,7 @@ export function buildLayerStyle(
 
   if (layer.layer_type === 'point') {
     return new Style({
-      image: new CircleStyle({
-        radius: onImagery ? 7 : 6,
-        fill: new Fill({ color: fill }),
-        stroke: new Stroke({ color: '#ffffff', width: 2 }),
-      }),
+      image: pointTriangleImage(fill, onImagery ? 8 : 7),
     })
   }
 
@@ -123,11 +129,7 @@ export function buildHighlightStyle(layer: MapLayer, basemap: BasemapId): Style 
 
   if (layer.layer_type === 'point') {
     return new Style({
-      image: new CircleStyle({
-        radius: 9,
-        fill: new Fill({ color: fill }),
-        stroke: new Stroke({ color: '#ffffff', width: 3 }),
-      }),
+      image: pointTriangleImage(fill, 10, 3),
     })
   }
 
