@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { geographyApi, mineralsApi, reportsApi } from '../../api'
+import { mineralsApi, reportsApi } from '../../api'
 import ReportWritingAssistant from '../../components/reports/ReportWritingAssistant'
 import FileUploadField from '../../components/ui/FileUploadField'
 import { toast } from '../../components/ui/toast'
@@ -37,7 +37,6 @@ export default function ReportEditorPage() {
   const [form, setForm] = useState({
     title: '',
     mineral: '',
-    region: '',
     description: '',
     price: '25000',
     is_active: true,
@@ -58,11 +57,6 @@ export default function ReportEditorPage() {
     queryFn: () => mineralsApi.list().then((r) => r.data),
   })
 
-  const { data: regions } = useQuery({
-    queryKey: ['regions'],
-    queryFn: () => geographyApi.regions().then((r) => r.data),
-  })
-
   useEffect(() => {
     if (!report) return
     const executive = report.ai_summary?.summary || ''
@@ -70,7 +64,6 @@ export default function ReportEditorPage() {
     setForm({
       title: report.title,
       mineral: String(report.mineral),
-      region: report.region ? String(report.region) : '',
       description: report.description || '',
       price: report.price,
       is_active: report.is_active ?? true,
@@ -94,7 +87,7 @@ export default function ReportEditorPage() {
       const payload = {
         title: form.title,
         mineral: Number(form.mineral),
-        region: form.region ? Number(form.region) : null,
+        region: null,
         description: form.description,
         price: form.price,
         is_active: form.is_active,
@@ -167,7 +160,6 @@ export default function ReportEditorPage() {
 
   const selectedMineral = minerals?.results.find((m) => String(m.id) === form.mineral)
   const mineralName = selectedMineral ? displayName(selectedMineral) : ''
-  const regionName = regions?.results.find((r) => String(r.id) === form.region)?.name || ''
 
   if (!isNew && loadingReport) {
     return <p className="text-sm text-app-muted">Loading report…</p>
@@ -248,11 +240,12 @@ export default function ReportEditorPage() {
               onChange={(e) => setForm({ ...form, title: e.target.value })}
               className="input"
             />
-            <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block max-w-md">
+              <span className="text-sm font-medium text-app-text-secondary">Mineral</span>
               <select
                 value={form.mineral}
                 onChange={(e) => setForm({ ...form, mineral: e.target.value })}
-                className="input"
+                className="input mt-1.5 w-full"
               >
                 <option value="">Select mineral</option>
                 {minerals?.results.map((m) => (
@@ -261,19 +254,7 @@ export default function ReportEditorPage() {
                   </option>
                 ))}
               </select>
-              <select
-                value={form.region}
-                onChange={(e) => setForm({ ...form, region: e.target.value })}
-                className="input"
-              >
-                <option value="">Region (optional)</option>
-                {regions?.results.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            </label>
             <textarea
               placeholder="Overview: geological context, scope, and background"
               value={form.description}
@@ -289,7 +270,7 @@ export default function ReportEditorPage() {
                 metadata={{
                   title: form.title,
                   mineralName,
-                  regionName,
+                  regionName: '',
                   description: form.description,
                   currentExecutiveSummary: form.executive_summary,
                   currentKeyFindings: form.key_findings,

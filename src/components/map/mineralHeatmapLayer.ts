@@ -3,7 +3,7 @@ import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import VectorSource from 'ol/source/Vector'
 import { fromLonLat } from 'ol/proj'
-import { hexToRgba, normalizeHex } from '../../lib/mineralColorUtils'
+import { hexToHexAlpha, normalizeHex } from '../../lib/mineralColorUtils'
 
 export interface MineralHeatmapPoint {
   lat: number
@@ -16,17 +16,24 @@ export interface MineralHeatmapSpec {
   name?: string
   color: string
   points: MineralHeatmapPoint[]
+  /** Draw below mineral vector layers (3600 + z_index). */
+  zIndex?: number
 }
 
 export function mineralHeatmapGradient(color: string): string[] {
   const hex = normalizeHex(color, '#E87722')
   return [
-    'rgba(0,0,0,0)',
-    hexToRgba(hex, 0.2),
-    hexToRgba(hex, 0.45),
-    hexToRgba(hex, 0.72),
-    hexToRgba(hex, 1),
+    hexToHexAlpha(hex, 0),
+    hexToHexAlpha(hex, 0.22),
+    hexToHexAlpha(hex, 0.48),
+    hexToHexAlpha(hex, 0.74),
+    hexToHexAlpha(hex, 1),
   ]
+}
+
+/** Place heatmap just beneath the selected mineral's lowest vector layer. */
+export function mineralHeatmapZIndex(minLayerZIndex: number): number {
+  return 3590 + minLayerZIndex
 }
 
 export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: boolean): Heatmap {
@@ -43,12 +50,12 @@ export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: bool
   const hex = normalizeHex(spec.color, '#E87722')
   return new Heatmap({
     source,
-    blur: mobile ? 20 : 26,
-    radius: mobile ? 14 : 18,
+    blur: mobile ? 18 : 22,
+    radius: mobile ? 12 : 16,
     weight: (feature) => Number(feature.get('weight') ?? 1),
     gradient: mineralHeatmapGradient(hex),
-    zIndex: 4520,
-    opacity: 0.88,
+    zIndex: spec.zIndex ?? 3580,
+    opacity: 0.82,
     properties: { mineralHeatmap: spec.slug },
   })
 }

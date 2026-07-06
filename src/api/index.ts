@@ -289,9 +289,14 @@ export const analyticsApi = {
         ...(options?.includeVillages ? { include_villages: 'true' } : {}),
       },
     }),
-  mineralHeatmap: (slug: string, options?: { country?: string }) =>
+  mineralHeatmap: (slug: string, options?: { country?: string; layerIds?: number[] }) =>
     api.get<import('../types').MineralHeatmapData>(`/analytics/minerals/${slug}/heatmap/`, {
-      params: { country: options?.country },
+      params: {
+        country: options?.country,
+        ...(options?.layerIds?.length
+          ? { layer_ids: options.layerIds.join(',') }
+          : {}),
+      },
     }),
   searchContextInsights: (params: {
     mineral_slug?: string

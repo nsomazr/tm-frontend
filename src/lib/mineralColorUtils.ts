@@ -37,6 +37,15 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${a.toFixed(2)})`
 }
 
+/** #RRGGBBAA for OpenLayers heatmap gradients (more reliable than rgba strings). */
+export function hexToHexAlpha(hex: string, alpha: number): string {
+  const norm = normalizeHex(hex).slice(1)
+  const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+    .toString(16)
+    .padStart(2, '0')
+  return `#${norm}${a}`.toLowerCase()
+}
+
 export interface LayerColorRecord {
   hex: string
   fillRgba: string

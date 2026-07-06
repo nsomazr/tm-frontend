@@ -45,6 +45,7 @@ import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
 import type { AreaInsight, MapLayer, MineralCatalogEntry, MineralHighlightSpec, MineralSearchInsight } from '../types'
 import type { MineralHeatmapSpec } from '../components/map/mineralHeatmapLayer'
+import { mineralHeatmapZIndex } from '../components/map/mineralHeatmapLayer'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { allVisibleLayerIds, defaultVisibleLayerIds } from '../components/map/mapUtils'
 import { layerDisplayColor } from '../components/admin/layerColors'
@@ -88,7 +89,7 @@ function focusSearchResult(
   }
 }
 
-/** When every visible layer belongs to the same mineral, return that slug. */
+/** When exactly one mineral has visible layers (and at least one layer is checked), return that slug. */
 function soleVisibleMineralSlug(visible: Set<number>, layerList: MapLayer[]): string | null {
   if (visible.size === 0) return null
   const slugs = new Set<string>()
@@ -99,13 +100,28 @@ function soleVisibleMineralSlug(visible: Set<number>, layerList: MapLayer[]): st
   return [...slugs][0]
 }
 
+function visibleLayersForMineral(
+  slug: string,
+  layerList: MapLayer[],
+  visible: Set<number>,
+): MapLayer[] {
+  return layerList.filter((layer) => layer.mineral_slug === slug && visible.has(layer.id))
+}
+
+function visibleLayerIdsKey(slug: string, layerList: MapLayer[], visible: Set<number>): string {
+  return visibleLayersForMineral(slug, layerList, visible)
+    .map((layer) => layer.id)
+    .sort((a, b) => a - b)
+    .join(',')
+}
+
 /** Representative map color for a mineral from its visible layer checkboxes. */
 function mineralColorFromVisibleLayers(
   slug: string,
   layerList: MapLayer[],
   visible: Set<number>,
 ): string {
-  const mineralLayers = layerList.filter((l) => l.mineral_slug === slug && visible.has(l.id))
+  const mineralLayers = visibleLayersForMineral(slug, layerList, visible)
   const polygon = mineralLayers.find((l) => l.layer_type === 'polygon')
   const point = mineralLayers.find((l) => l.layer_type === 'point')
   const pick = polygon ?? point ?? mineralLayers[0]
@@ -129,6 +145,7 @@ export default function FullMapPage() {
   const [insightLoading, setInsightLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set())
   const layerHeatmapSlugRef = useRef<string | null>(null)
+  const layerHeatmapLayersKeyRef = useRef<string>('')
   const layersBeforeExploreRef = useRef<Set<number> | null>(null)
   const [panelDismissed, setPanelDismissed] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
@@ -399,15 +416,26 @@ export default function FullMapPage() {
   const loadMineralHeatmapForCheckbox = useCallback(
     async (slug: string, nextVisible: Set<number>) => {
       if (!hasPaidAccess) return
+      const visibleMineralLayers = visibleLayersForMineral(slug, layers, nextVisible)
+      if (visibleMineralLayers.length === 0) {
+        setMineralHeatmap(null)
+        return
+      }
+      const layerIds = visibleMineralLayers.map((layer) => layer.id)
       const colorHex = resolveColorHex(mineralColorFromVisibleLayers(slug, layers, nextVisible))
+      const minZ = Math.min(...visibleMineralLayers.map((layer) => layer.z_index))
       try {
-        const { data } = await analyticsApi.mineralHeatmap(slug, { country: countryCode })
+        const { data } = await analyticsApi.mineralHeatmap(slug, {
+          country: countryCode,
+          layerIds,
+        })
         if (data?.points?.length) {
           setMineralHeatmap({
             slug: data.slug,
             name: data.name,
             color: colorHex || resolveColorHex(data.color),
             points: data.points,
+            zIndex: mineralHeatmapZIndex(minZ),
           })
         } else {
           setMineralHeatmap(null)
@@ -432,19 +460,23 @@ export default function FullMapPage() {
       const slug = soleVisibleMineralSlug(nextVisible, layers)
       if (!slug) {
         layerHeatmapSlugRef.current = null
+        layerHeatmapLayersKeyRef.current = ''
         setMineralHeatmap(null)
         return
       }
 
+      const layersKey = visibleLayerIdsKey(slug, layers, nextVisible)
       const colorHex = resolveColorHex(mineralColorFromVisibleLayers(slug, layers, nextVisible))
       if (
         slug === layerHeatmapSlugRef.current &&
+        layersKey === layerHeatmapLayersKeyRef.current &&
         mineralHeatmap?.slug === slug &&
         mineralHeatmap.color === colorHex
       ) {
         return
       }
       layerHeatmapSlugRef.current = slug
+      layerHeatmapLayersKeyRef.current = layersKey
       void loadMineralHeatmapForCheckbox(slug, nextVisible)
     },
     [hasPaidAccess, exploreOpen, layers, loadMineralHeatmapForCheckbox, mineralHeatmap?.slug, mineralHeatmap?.color]
@@ -456,6 +488,7 @@ export default function FullMapPage() {
         layersBeforeExploreRef.current = new Set(visibleLayers)
         setVisibleLayers(new Set())
         layerHeatmapSlugRef.current = null
+        layerHeatmapLayersKeyRef.current = ''
         setMineralHeatmap(null)
         setMineralHighlight(null)
       } else {
@@ -497,6 +530,7 @@ export default function FullMapPage() {
     if (!layerIdsKey || exploreOpen) return
     setVisibleLayers(hasPaidAccess ? defaultVisibleLayerIds(layers) : allVisibleLayerIds(layers))
     layerHeatmapSlugRef.current = null
+    layerHeatmapLayersKeyRef.current = ''
     setMineralHeatmap(null)
   }, [mineral, layerIdsKey, layers, hasPaidAccess, exploreOpen])
 
