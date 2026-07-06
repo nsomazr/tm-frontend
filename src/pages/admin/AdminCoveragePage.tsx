@@ -38,6 +38,7 @@ export default function AdminCoveragePage() {
   })
 
   const layerHotspots = (hotspots?.layer_hotspots ?? []) as LayerHotspotRow[]
+  const mineralHotspots = (hotspots?.mineral_hotspots ?? layerHotspots) as LayerHotspotRow[]
   const layers = (hotspots?.layers ?? investor?.layers ?? []) as {
     slug: string
     name: string
@@ -53,18 +54,18 @@ export default function AdminCoveragePage() {
   const [selectedLayerSlug, setSelectedLayerSlug] = useState('')
 
   useEffect(() => {
-    if (layerHotspots.length === 0) {
+    if (mineralHotspots.length === 0) {
       setSelectedLayerSlug('')
       return
     }
-    if (!selectedLayerSlug || !layerHotspots.some((layer) => layer.slug === selectedLayerSlug)) {
-      setSelectedLayerSlug(layerHotspots[0].slug)
+    if (!selectedLayerSlug || !mineralHotspots.some((layer) => layer.slug === selectedLayerSlug)) {
+      setSelectedLayerSlug(mineralHotspots[0].slug)
     }
-  }, [layerHotspots, selectedLayerSlug])
+  }, [mineralHotspots, selectedLayerSlug])
 
   const selectedLayer = useMemo(
-    () => layerHotspots.find((layer) => layer.slug === selectedLayerSlug) ?? layerHotspots[0],
-    [layerHotspots, selectedLayerSlug]
+    () => mineralHotspots.find((layer) => layer.slug === selectedLayerSlug) ?? mineralHotspots[0],
+    [mineralHotspots, selectedLayerSlug]
   )
 
   const isLoading = hotspotsLoading || investorLoading
@@ -126,15 +127,15 @@ export default function AdminCoveragePage() {
                     Zone counts and polygon coverage per region for the selected layer.
                   </p>
                 </div>
-                {layerHotspots.length > 0 && (
+                {mineralHotspots.length > 0 && (
                   <label className="shrink-0 min-w-[12rem]">
-                    <span className="sr-only">Layer</span>
+                    <span className="sr-only">Mineral</span>
                     <select
                       value={selectedLayerSlug}
                       onChange={(e) => setSelectedLayerSlug(e.target.value)}
                       className="input text-sm w-full"
                     >
-                      {layerHotspots.map((layer) => (
+                      {mineralHotspots.map((layer) => (
                         <option key={layer.slug} value={layer.slug}>
                           {displayName(layer)} ({fmt(layer.feature_count)})
                         </option>

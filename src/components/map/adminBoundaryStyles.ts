@@ -21,6 +21,15 @@ export const DEFAULT_BOUNDARY_VISIBILITY: BoundaryVisibility = {
   villages: false,
 }
 
+/** Free-tier map: no admin boundary overlays or label toggles. */
+export const UNPAID_BOUNDARY_VISIBILITY: BoundaryVisibility = {
+  country: false,
+  regions: false,
+  districts: false,
+  wards: false,
+  villages: false,
+}
+
 export type BoundaryLevelKey = keyof BoundaryVisibility
 
 export function boundaryVisibilityIsDefault(visibility: BoundaryVisibility) {

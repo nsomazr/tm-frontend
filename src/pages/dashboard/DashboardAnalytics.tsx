@@ -57,23 +57,25 @@ export default function DashboardAnalytics() {
     hotspots: { region: string; feature_count: number; area_km2?: number }[]
   }[]
 
+  const mineralHotspots = (hotspots?.mineral_hotspots ?? layerHotspots) as typeof layerHotspots
+
   const totalCoverageArea = hotspots?.total_area_km2 as number | undefined
 
   const [selectedLayerSlug, setSelectedLayerSlug] = useState('')
 
   useEffect(() => {
-    if (layerHotspots.length === 0) {
+    if (mineralHotspots.length === 0) {
       setSelectedLayerSlug('')
       return
     }
-    if (!selectedLayerSlug || !layerHotspots.some((layer) => layer.slug === selectedLayerSlug)) {
-      setSelectedLayerSlug(layerHotspots[0].slug)
+    if (!selectedLayerSlug || !mineralHotspots.some((layer) => layer.slug === selectedLayerSlug)) {
+      setSelectedLayerSlug(mineralHotspots[0].slug)
     }
-  }, [layerHotspots, selectedLayerSlug])
+  }, [mineralHotspots, selectedLayerSlug])
 
   const selectedLayer = useMemo(
-    () => layerHotspots.find((layer) => layer.slug === selectedLayerSlug) ?? layerHotspots[0],
-    [layerHotspots, selectedLayerSlug]
+    () => mineralHotspots.find((layer) => layer.slug === selectedLayerSlug) ?? mineralHotspots[0],
+    [mineralHotspots, selectedLayerSlug]
   )
 
   const regionList = selectedLayer?.hotspots ?? (hotspots?.hotspots ?? []) as {
@@ -198,13 +200,13 @@ export default function DashboardAnalytics() {
                   <h2 className="text-sm font-semibold text-app-text">Regional hotspots</h2>
                   <p className="text-xs text-app-muted mt-0.5">Zones per region for the selected layer</p>
                 </div>
-                {layerHotspots.length > 0 && (
+                {mineralHotspots.length > 0 && (
                   <select
                     value={selectedLayerSlug}
                     onChange={(e) => setSelectedLayerSlug(e.target.value)}
                     className="input text-xs sm:text-sm min-w-[10rem] max-w-full"
                   >
-                    {layerHotspots.map((layer) => (
+                    {mineralHotspots.map((layer) => (
                       <option key={layer.slug} value={layer.slug}>
                         {displayName(layer)}
                       </option>

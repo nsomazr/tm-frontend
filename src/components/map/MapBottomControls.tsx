@@ -410,7 +410,7 @@ export default function MapBottomControls({
             </>
           )}
 
-        {countries.length > 0 ? (
+        {hasPaidAccess && countries.length > 0 ? (
           <div className="pointer-events-auto mb-1.5 flex flex-col gap-1.5">
             <div className="grid grid-cols-2 gap-1">
               <div
@@ -462,6 +462,20 @@ export default function MapBottomControls({
                 />
               </div>
             )}
+          </div>
+        ) : !hasPaidAccess ? (
+          <div className="pointer-events-auto mb-1.5">
+            <TerraAssistantLauncher
+              open={assistantOpen}
+              onToggle={handleAssistantToggle}
+              onClose={onAssistantClose}
+              areaInsight={areaInsight}
+              insightLoading={insightLoading}
+              hasPaidAccess={hasPaidAccess}
+              mapContext={assistantMapContext}
+              getMapSnapshot={getMapSnapshot}
+              fullWidthButton
+            />
           </div>
         ) : (
           <div className="pointer-events-auto mb-2 grid grid-cols-2 gap-2">

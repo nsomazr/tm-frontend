@@ -67,7 +67,7 @@ export default function MapRightDock({
   return (
     <aside className="absolute z-10 flex-col gap-1.5 pointer-events-none max-h-[calc(100%-4rem)] overflow-y-auto
       top-3 right-3 w-60 hidden md:flex">
-      {countries.length > 0 ? (
+      {hasPaidAccess && countries.length > 0 ? (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2">
           <CountryBoundaryPanel
             countries={countries}
@@ -88,7 +88,7 @@ export default function MapRightDock({
             compact
           />
         </div>
-      ) : (
+      ) : hasPaidAccess ? (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2">
           <span className="mb-1 block px-0.5 text-[10px] font-semibold uppercase tracking-wide leading-none map-text-muted">
             {m.map.boundaryLayersTitle}
@@ -104,7 +104,7 @@ export default function MapRightDock({
             compact
           />
         </div>
-      )}
+      ) : null}
       {showCoordinateSystem && (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
           <CoordinateSystemPicker value={coordinateSystem} onChange={onCoordinateSystemChange} />

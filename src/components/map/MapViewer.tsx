@@ -24,6 +24,7 @@ import MapRightDock from './MapRightDock'
 import MapBottomControls from './MapBottomControls'
 import MapZoomControls from './MapZoomControls'
 import MapCoordinateReadout from './MapCoordinateReadout'
+import MineralHeatmapColorbar from './MineralHeatmapColorbar'
 import { registerCoordinateProjections } from './coordinateSystems'
 import { useCoordinateSystemState } from './useCoordinateSystemState'
 import { Fill, RegularShape, Stroke, Style, Circle as CircleStyle } from 'ol/style'
@@ -1395,6 +1396,16 @@ export default function MapViewer({
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
+      {mineralHeatmap?.points?.length ? (
+        <MineralHeatmapColorbar
+          spec={mineralHeatmap}
+          className={
+            isMobile
+              ? 'absolute z-20 left-3 bottom-[calc(6.75rem+env(safe-area-inset-bottom,0px))]'
+              : 'absolute z-20 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-[max(calc(min(18rem,100vw-1.5rem)+0.75rem),calc(0.75rem+env(safe-area-inset-left,0px)))]'
+          }
+        />
+      ) : null}
       {!minimalChrome && showCoordinateReadout && (
         <MapCoordinateReadout
           mapCoordinate={pointerCoordinate}

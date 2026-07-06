@@ -10,6 +10,7 @@ import MapViewer, {
 import MapZoomControls from '../components/map/MapZoomControls'
 import {
   DEFAULT_BOUNDARY_VISIBILITY,
+  UNPAID_BOUNDARY_VISIBILITY,
   boundaryVisibilityIsDefault,
   initialBoundaryVisibilityForGeoJson,
   type BoundaryVisibility,
@@ -42,7 +43,7 @@ import { toast } from '../components/ui/toast'
 import { canExploreMineral } from '../lib/mineralExploration'
 import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
-import type { AreaInsight, MineralCatalogEntry, MineralHighlightSpec, MineralSearchInsight } from '../types'
+import type { AreaInsight, MapLayer, MineralCatalogEntry, MineralHighlightSpec, MineralSearchInsight } from '../types'
 import type { MineralHeatmapSpec } from '../components/map/mineralHeatmapLayer'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { allVisibleLayerIds, defaultVisibleLayerIds } from '../components/map/mapUtils'
@@ -85,6 +86,16 @@ function focusSearchResult(
   }
 }
 
+/** When every visible layer belongs to the same mineral, return that slug. */
+function soleVisibleMineralSlug(visible: Set<number>, layerList: MapLayer[]): string | null {
+  const slugs = new Set<string>()
+  for (const layer of layerList) {
+    if (visible.has(layer.id) && layer.mineral_slug) slugs.add(layer.mineral_slug)
+  }
+  if (slugs.size !== 1) return null
+  return [...slugs][0]
+}
+
 export default function FullMapPage() {
   const { hasPaidAccess, hasFullMapAccess, canSaveExplorations, mineralExploration, refreshUser } =
     useAuth()
@@ -101,6 +112,8 @@ export default function FullMapPage() {
   const [areaInsight, setAreaInsight] = useState<AreaInsight | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set())
+  const layerHeatmapSlugRef = useRef<string | null>(null)
+  const layersBeforeExploreRef = useRef<Set<number> | null>(null)
   const [panelDismissed, setPanelDismissed] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantMapContext, setAssistantMapContext] = useState<TerraAssistantMapContext | null>(null)
@@ -118,9 +131,31 @@ export default function FullMapPage() {
   const mineralParamHandled = useRef(false)
   const isMobile = useMediaQuery('(max-width: 767px)')
 
+  const [exploreOpen, setExploreOpen] = useState(false)
+
+  const handleExploreOpenChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        layersBeforeExploreRef.current = new Set(visibleLayers)
+        setVisibleLayers(new Set())
+        layerHeatmapSlugRef.current = null
+        setMineralHeatmap(null)
+        setMineralHighlight(null)
+      } else {
+        const restored = layersBeforeExploreRef.current
+        if (restored) {
+          setVisibleLayers(new Set(restored))
+        }
+        layersBeforeExploreRef.current = null
+        layerHeatmapSlugRef.current = null
+      }
+      setExploreOpen(open)
+    },
+    [visibleLayers]
+  )
+
   // Draw-and-explore tool (paid users): manually enter/click points to form a
   // point, line, or polygon, then zoom to and explore the area.
-  const [exploreOpen, setExploreOpen] = useState(false)
   const [drawMode, setDrawMode] = useState<ExplorationMode>('point')
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const [coordinateSystem] = useCoordinateSystemState()
@@ -172,11 +207,14 @@ export default function FullMapPage() {
     }
   }, [drawMode, drawPoints, queryClient])
 
-  const handleLoadExploration = useCallback((mode: ExplorationMode, points: [number, number][]) => {
-    setDrawMode(mode)
-    setDrawPoints(points)
-    setExploreOpen(true)
-  }, [])
+  const handleLoadExploration = useCallback(
+    (mode: ExplorationMode, points: [number, number][]) => {
+      setDrawMode(mode)
+      setDrawPoints(points)
+      handleExploreOpenChange(true)
+    },
+    [handleExploreOpenChange]
+  )
 
   const handleDeleteExploration = useCallback(
     async (id: number) => {
@@ -206,23 +244,20 @@ export default function FullMapPage() {
   const mineralCatalog = mineralCatalogData?.minerals ?? []
 
   const loadMineralMapOverlay = useCallback(
-    async (slug: string) => {
-      if (!canExploreMineral(mineralExploration, slug)) {
-        toast.error(m.map.mineralExplorationBlocked)
-        return null
-      }
-      try {
-        const coverageRes = await analyticsApi.mineralCoverage(slug, {
-          country: countryCode,
-          includeVillages: hasPaidAccess,
-        })
-        const quota = coverageRes.data.exploration_quota
-        if (quota) {
-          void refreshUser()
-        }
-        let heatmapRes
+    async (slug: string, options?: { heatmapOnly?: boolean }) => {
+      if (hasPaidAccess) {
         try {
-          heatmapRes = await analyticsApi.mineralHeatmap(slug, { country: countryCode })
+          const heatmapRes = await analyticsApi.mineralHeatmap(slug, { country: countryCode })
+          if (heatmapRes?.data?.points?.length) {
+            setMineralHeatmap({
+              slug: heatmapRes.data.slug,
+              name: heatmapRes.data.name,
+              color: heatmapRes.data.color,
+              points: heatmapRes.data.points,
+            })
+          } else {
+            setMineralHeatmap(null)
+          }
         } catch (error: unknown) {
           const err = error as { response?: { status?: number; data?: { detail?: string } } }
           if (err.response?.status === 403) {
@@ -230,8 +265,25 @@ export default function FullMapPage() {
           } else if (err.response?.status !== 404) {
             toast.error(m.map.mineralHeatmapFailed)
           }
-          heatmapRes = null
+          setMineralHeatmap(null)
         }
+      }
+
+      if (options?.heatmapOnly) return null
+
+      if (!canExploreMineral(mineralExploration, slug)) {
+        if (!hasPaidAccess) toast.error(m.map.mineralExplorationBlocked)
+        return null
+      }
+
+      try {
+        const coverageRes = await analyticsApi.mineralCoverage(slug, {
+          country: countryCode,
+          includeVillages: hasPaidAccess,
+        })
+        const quota = coverageRes.data.exploration_quota
+        if (quota) void refreshUser()
+
         const data = coverageRes.data
         setMineralHighlight({
           slug: data.slug,
@@ -240,15 +292,6 @@ export default function FullMapPage() {
           districtIds: data.district_ids,
           villageIds: data.village_ids,
         })
-        if (heatmapRes?.data?.points?.length) {
-          setMineralHeatmap({
-            slug: heatmapRes.data.slug,
-            color: heatmapRes.data.color,
-            points: heatmapRes.data.points,
-          })
-        } else {
-          setMineralHeatmap(null)
-        }
         setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
         return data
       } catch (error: unknown) {
@@ -258,11 +301,10 @@ export default function FullMapPage() {
           void refreshUser()
         }
         setMineralHighlight(null)
-        setMineralHeatmap(null)
         return null
       }
     },
-    [countryCode, hasPaidAccess, mineralExploration, m.map.mineralExplorationBlocked, refreshUser]
+    [countryCode, hasPaidAccess, mineralExploration, m.map.mineralExplorationBlocked, m.map.mineralHeatmapFailed, refreshUser]
   )
 
   const applyCatalogMineral = useCallback(
@@ -362,12 +404,16 @@ export default function FullMapPage() {
   }, [boundariesData, villageBoundaries])
 
   useEffect(() => {
+    if (!hasPaidAccess) {
+      setBoundaryVisibility(UNPAID_BOUNDARY_VISIBILITY)
+      return
+    }
     if (!mergedBoundaries?.features?.length) return
     setBoundaryVisibility((prev) => {
       if (!boundaryVisibilityIsDefault(prev)) return prev
       return initialBoundaryVisibilityForGeoJson(mergedBoundaries)
     })
-  }, [mergedBoundaries])
+  }, [mergedBoundaries, hasPaidAccess])
 
   const handleCountryChange = useCallback(
     (code: string) => {
@@ -404,9 +450,9 @@ export default function FullMapPage() {
   )
 
   useEffect(() => {
-    if (!layerIdsKey) return
+    if (!layerIdsKey || exploreOpen) return
     setVisibleLayers(hasPaidAccess ? defaultVisibleLayerIds(layers) : allVisibleLayerIds(layers))
-  }, [mineral, layerIdsKey, layers, hasPaidAccess])
+  }, [mineral, layerIdsKey, layers, hasPaidAccess, exploreOpen])
 
   const handleBoundaryVisibilityChange = useCallback((next: BoundaryVisibility) => {
     setBoundaryVisibility(next)
@@ -768,27 +814,31 @@ export default function FullMapPage() {
 
   const askTerraFromSearch = insightLoading && assistantOpen && !!assistantMapContext?.searchLabel
 
-  const layerHeatmapSlugRef = useRef<string | null>(null)
-
   const syncHeatmapFromVisibleLayers = useCallback(
     (nextVisible: Set<number>) => {
-      if (!hasPaidAccess || selectedResult || catalogMineralSlug) return
+      if (!hasPaidAccess || selectedResult || catalogMineralSlug || exploreOpen) return
 
-      const visible = layers.filter((l) => nextVisible.has(l.id))
-      if (visible.length !== 1) {
+      const slug = soleVisibleMineralSlug(nextVisible, layers)
+      if (!slug) {
         layerHeatmapSlugRef.current = null
         setMineralHeatmap(null)
         setMineralHighlight(null)
         return
       }
 
-      const slug = visible[0].mineral_slug
-      if (!slug || slug === layerHeatmapSlugRef.current) return
+      if (slug === layerHeatmapSlugRef.current && mineralHeatmap?.slug === slug) return
       layerHeatmapSlugRef.current = slug
-      void loadMineralMapOverlay(slug)
+
+      const exploreAllowed = canExploreMineral(mineralExploration, slug)
+      void loadMineralMapOverlay(slug, { heatmapOnly: !exploreAllowed })
     },
-    [hasPaidAccess, selectedResult, catalogMineralSlug, layers, loadMineralMapOverlay]
+    [hasPaidAccess, selectedResult, catalogMineralSlug, exploreOpen, layers, loadMineralMapOverlay, mineralExploration, mineralHeatmap?.slug]
   )
+
+  useEffect(() => {
+    if (!hasPaidAccess || exploreOpen || selectedResult || catalogMineralSlug) return
+    syncHeatmapFromVisibleLayers(visibleLayers)
+  }, [visibleLayers, layers, hasPaidAccess, exploreOpen, selectedResult, catalogMineralSlug, syncHeatmapFromVisibleLayers])
 
   const toggleLayer = (id: number) => {
     if (!hasPaidAccess) return
@@ -858,7 +908,7 @@ export default function FullMapPage() {
           }}
           exploreEnabled={hasPaidAccess}
           exploreOpen={exploreOpen}
-          onExploreOpenChange={setExploreOpen}
+          onExploreOpenChange={handleExploreOpenChange}
           explorePanel={
             <ExploreDrawTool
               mode={drawMode}
@@ -876,7 +926,7 @@ export default function FullMapPage() {
               onSave={handleSaveExploration}
               onLoad={handleLoadExploration}
               onDelete={handleDeleteExploration}
-              onClose={() => setExploreOpen(false)}
+              onClose={() => handleExploreOpenChange(false)}
               embedded
             />
           }

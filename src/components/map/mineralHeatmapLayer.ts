@@ -13,6 +13,7 @@ export interface MineralHeatmapPoint {
 
 export interface MineralHeatmapSpec {
   slug: string
+  name?: string
   color: string
   points: MineralHeatmapPoint[]
 }
@@ -40,12 +41,12 @@ export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: bool
 
   return new Heatmap({
     source,
-    blur: mobile ? 14 : 18,
-    radius: mobile ? 8 : 11,
+    blur: mobile ? 20 : 26,
+    radius: mobile ? 14 : 18,
     weight: (feature) => Number(feature.get('weight') ?? 1),
     gradient: mineralHeatmapGradient(spec.color),
     zIndex: 4520,
-    opacity: 0.88,
+    opacity: 0.92,
     properties: { mineralHeatmap: spec.slug },
   })
 }
