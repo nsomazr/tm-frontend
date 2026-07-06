@@ -541,9 +541,10 @@ export default function MapSidebar({
       className={`fixed z-50 flex flex-col bg-app-surface shadow-2xl animate-fade-in overflow-hidden
         left-[max(0.75rem,env(safe-area-inset-left,0px))]
         right-[max(0.75rem,env(safe-area-inset-right,0px))]
-        w-auto rounded-2xl border border-app-border-strong
+        top-[max(0.75rem,env(safe-area-inset-top,0px))]
+        w-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] rounded-2xl border border-app-border-strong
         ${mobileBottom}
-        ${isMobile ? 'max-h-[min(55vh,360px)]' : ''}
+        ${isMobile ? 'max-h-[min(65vh,calc(100vh-6rem))]' : ''}
         sm:static sm:inset-auto sm:z-10 sm:w-[24rem] sm:max-h-none sm:rounded-none sm:border-t-0 sm:border-r sm:shadow-lg sm:shrink-0 sm:h-full sm:bottom-auto sm:overflow-visible`}
     >
       <MobileSheetHandle />

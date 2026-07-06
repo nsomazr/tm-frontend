@@ -9,7 +9,7 @@ export default function MapSearchBar({ search, onSearchChange }: MapSearchBarPro
   const { m } = useTranslation()
 
   return (
-    <div className="absolute top-2 sm:top-3 left-1/2 -translate-x-1/2 z-30 w-[calc(100%-1rem)] max-w-md pointer-events-none">
+    <div className="absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))] z-30 mx-auto w-auto max-w-md pointer-events-none">
       <div className="relative pointer-events-auto">
         <svg
           className="absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 map-text-muted pointer-events-none"
