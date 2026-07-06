@@ -22,11 +22,16 @@ export interface MineralHeatmapSpec {
 
 export function mineralHeatmapGradient(color: string): string[] {
   const hex = normalizeHex(color, '#E87722')
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  const lowAlpha = luminance < 0.2 ? 0.42 : luminance < 0.35 ? 0.3 : 0.22
   return [
     hexToHexAlpha(hex, 0),
-    hexToHexAlpha(hex, 0.22),
-    hexToHexAlpha(hex, 0.48),
-    hexToHexAlpha(hex, 0.74),
+    hexToHexAlpha(hex, lowAlpha),
+    hexToHexAlpha(hex, Math.min(0.72, lowAlpha + 0.26)),
+    hexToHexAlpha(hex, Math.min(0.88, lowAlpha + 0.46)),
     hexToHexAlpha(hex, 1),
   ]
 }

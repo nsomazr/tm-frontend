@@ -464,13 +464,15 @@ export default function FullMapPage() {
         }
         if (data?.points?.length) {
           setMineralHeatmap({
-            slug: data.slug,
+            slug,
             name: data.name,
             color: colorHex || resolveColorHex(data.color),
             points: data.points,
             zIndex: mineralHeatmapZIndex(minZ),
           })
         } else {
+          layerHeatmapSlugRef.current = null
+          layerHeatmapLayersKeyRef.current = ''
           setMineralHeatmap(null)
         }
       } catch (error: unknown) {
@@ -489,7 +491,7 @@ export default function FullMapPage() {
 
   const syncHeatmapFromVisibleLayers = useCallback(
     (nextVisible: Set<number>) => {
-      if (!hasPaidAccess || exploreOpen) return
+      if (!hasPaidAccess || exploreOpen || layers.length === 0) return
 
       const slug = soleVisibleMineralSlug(nextVisible, layers)
       const layersKey = slug ? visibleLayerIdsKey(slug, layers, nextVisible) : ''
@@ -502,12 +504,9 @@ export default function FullMapPage() {
         return
       }
 
-      const colorHex = resolveColorHex(mineralColorFromVisibleLayers(slug, layers, nextVisible))
       if (
         slug === layerHeatmapSlugRef.current &&
-        layersKey === layerHeatmapLayersKeyRef.current &&
-        mineralHeatmap?.slug === slug &&
-        mineralHeatmap.color === colorHex
+        layersKey === layerHeatmapLayersKeyRef.current
       ) {
         return
       }
@@ -517,7 +516,7 @@ export default function FullMapPage() {
       layerHeatmapLayersKeyRef.current = layersKey
       void loadMineralHeatmapForCheckbox(slug, nextVisible, requestId)
     },
-    [hasPaidAccess, exploreOpen, layers, loadMineralHeatmapForCheckbox, mineralHeatmap?.slug, mineralHeatmap?.color]
+    [hasPaidAccess, exploreOpen, layers, loadMineralHeatmapForCheckbox]
   )
 
   const handleExploreOpenChange = useCallback(
@@ -565,7 +564,7 @@ export default function FullMapPage() {
   )
 
   useEffect(() => {
-    if (!layerIdsKey || exploreOpen) return
+    if (!layerIdsKey || exploreOpen || layers.length === 0) return
     setVisibleLayers(hasPaidAccess ? defaultVisibleLayerIds(layers) : allVisibleLayerIds(layers))
     layerHeatmapSlugRef.current = null
     layerHeatmapLayersKeyRef.current = ''
@@ -573,9 +572,9 @@ export default function FullMapPage() {
   }, [mineral, layerIdsKey, hasPaidAccess, exploreOpen])
 
   useEffect(() => {
-    if (!hasPaidAccess || exploreOpen || !layerIdsKey) return
+    if (!hasPaidAccess || exploreOpen || !layerIdsKey || layers.length === 0) return
     syncHeatmapFromVisibleLayers(visibleLayers)
-  }, [visibleLayers, layerIdsKey, hasPaidAccess, exploreOpen, syncHeatmapFromVisibleLayers])
+  }, [visibleLayers, layerIdsKey, hasPaidAccess, exploreOpen, layers.length, syncHeatmapFromVisibleLayers])
 
   const handleBoundaryVisibilityChange = useCallback((next: BoundaryVisibility) => {
     setBoundaryVisibility(next)
