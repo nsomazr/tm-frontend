@@ -702,16 +702,18 @@ export default function FullMapPage() {
               onResetView={mapControls.resetView}
             />
           )}
-          <TerraAssistantLauncher
-            open={showAssistantPanel}
-            onToggle={toggleAssistantPanel}
-            onClose={handleCloseAssistant}
-            areaInsight={areaInsight}
-            insightLoading={insightLoading}
-            hasPaidAccess={hasPaidAccess}
-            mapContext={assistantMapContext}
-            getMapSnapshot={mapControls?.captureSnapshot}
-          />
+          {!isMobile && (
+            <TerraAssistantLauncher
+              open={showAssistantPanel}
+              onToggle={toggleAssistantPanel}
+              onClose={handleCloseAssistant}
+              areaInsight={areaInsight}
+              insightLoading={insightLoading}
+              hasPaidAccess={hasPaidAccess}
+              mapContext={assistantMapContext}
+              getMapSnapshot={mapControls?.captureSnapshot}
+            />
+          )}
         </div>
       </div>
     </div>

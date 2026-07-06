@@ -193,7 +193,7 @@ function fitCountryView(
   view.setCenter(focusCenter)
   view.fit(extent, {
     padding,
-    maxZoom: Math.min(focus.default_zoom + 2.5, 9),
+    maxZoom: Math.min(focus.default_zoom - 0.5, 5.5),
     duration,
     callback: () => {
       view.setCenter(focusCenter)
