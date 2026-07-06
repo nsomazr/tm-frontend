@@ -1317,7 +1317,6 @@ export default function MapViewer({
           hasPaidAccess={hasPaidAccess ?? false}
           assistantMapContext={assistantMapContext ?? null}
           getMapSnapshot={getMapSnapshot}
-          onCoordinateSystemChange={setCoordinateSystem}
         />
       )}
     </div>
