@@ -1,12 +1,13 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import type { MapLayer } from '../../types'
+import type { AreaInsight, MapLayer } from '../../types'
 import type { BasemapId } from './basemaps'
 import { BASEMAPS, saveBasemapPreference } from './basemaps'
 import LegendPanel from './LegendPanel'
 import LayerTypeSymbol from './LayerTypeSymbol'
 import MapZoomControls from './MapZoomControls'
+import TerraAssistantLauncher from './TerraAssistantLauncher'
 
 import type { BoundaryLevelKey, BoundaryVisibility } from './adminBoundaryStyles'
 import type { BoundaryFocus } from './boundaryFocus'
@@ -15,6 +16,7 @@ import CoordinateSystemPicker from './CoordinateSystemPicker'
 import type { CoordinateSystemId } from './coordinateSystems'
 import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
 import type { Country } from '../../types'
+import type { TerraAssistantMapContext } from '../assistant/TerraAssistantPanel'
 
 interface MapBottomControlsProps {
   layers: MapLayer[]
@@ -45,6 +47,14 @@ interface MapBottomControlsProps {
   staticMap?: boolean
   coordinateSystem: CoordinateSystemId
   onCoordinateSystemChange: (id: CoordinateSystemId) => void
+  assistantOpen: boolean
+  onAssistantToggle: () => void
+  onAssistantClose: () => void
+  areaInsight: AreaInsight | null
+  insightLoading: boolean
+  hasPaidAccess: boolean
+  assistantMapContext: TerraAssistantMapContext | null
+  getMapSnapshot?: () => Promise<string | null>
 }
 
 type Panel = 'layers' | 'basemap' | 'legend' | null
@@ -172,6 +182,7 @@ export default function MapBottomControls({
   const { m } = useTranslation()
   const displayName = useDisplayName()
   const [panel, setPanel] = useState<Panel>(null)
+  const [countryPanelOpen, setCountryPanelOpen] = useState(true)
 
   const typeLabels: Record<string, string> = {
     polygon: m.map.polygons,
@@ -330,25 +341,40 @@ export default function MapBottomControls({
           )}
 
         {countries.length > 0 ? (
-          <div className="pointer-events-auto mb-2 map-chrome rounded-xl p-2">
-            <CountryBoundaryPanel
-              countries={countries}
-              countryCode={countryCode}
-              onCountryChange={onCountryChange}
-              availableBoundaryLevels={availableBoundaryLevels}
-              boundaryVisibility={boundaryVisibility}
-              onBoundaryVisibilityChange={onBoundaryVisibilityChange}
-              showBasemapLabels={showBasemapLabels}
-              onShowBasemapLabelsChange={onShowBasemapLabelsChange}
-              showBoundaryLabels={showBoundaryLabels}
-              onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
-              boundaryFocus={boundaryFocus}
-              onClearBoundaryFocus={onClearBoundaryFocus}
-              villagesLoading={villagesLoading}
-              villagesError={villagesError}
-              lockedBoundaryLevels={lockedBoundaryLevels}
-              compact
-            />
+          <div className="pointer-events-auto mb-2 map-chrome rounded-2xl overflow-hidden border border-app-border/70 bg-app-surface/95">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold map-text"
+              onClick={() => setCountryPanelOpen((open) => !open)}
+            >
+              <span>{m.map.boundaryCountryLabel}</span>
+              <span className="text-app-muted">
+                {countryPanelOpen ? '−' : '+'}
+              </span>
+            </button>
+            {countryPanelOpen && (
+              <div className="border-t border-app-border/70 px-2 pb-2 pt-1">
+                <CountryBoundaryPanel
+                  countries={countries}
+                  countryCode={countryCode}
+                  onCountryChange={onCountryChange}
+                  availableBoundaryLevels={availableBoundaryLevels}
+                  boundaryVisibility={boundaryVisibility}
+                  onBoundaryVisibilityChange={onBoundaryVisibilityChange}
+                  showBasemapLabels={showBasemapLabels}
+                  onShowBasemapLabelsChange={onShowBasemapLabelsChange}
+                  showBoundaryLabels={showBoundaryLabels}
+                  onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
+                  boundaryFocus={boundaryFocus}
+                  onClearBoundaryFocus={onClearBoundaryFocus}
+                  villagesLoading={villagesLoading}
+                  villagesError={villagesError}
+                  lockedBoundaryLevels={lockedBoundaryLevels}
+                  compact
+                  className="p-0"
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="pointer-events-auto mb-2 map-chrome rounded-xl p-2">
@@ -376,6 +402,19 @@ export default function MapBottomControls({
         </div>
 
         <div className="pointer-events-auto flex flex-col items-center gap-1">
+          <div className="w-full px-1">
+            <TerraAssistantLauncher
+              open={assistantOpen}
+              onToggle={onAssistantToggle}
+              onClose={onAssistantClose}
+              areaInsight={areaInsight}
+              insightLoading={insightLoading}
+              hasPaidAccess={hasPaidAccess}
+              mapContext={assistantMapContext}
+              getMapSnapshot={getMapSnapshot}
+              className="w-full"
+            />
+          </div>
           <div className="map-chrome flex w-full items-stretch gap-1.5 rounded-2xl p-1.5">
           <MapZoomControls
             onZoomIn={onZoomIn}

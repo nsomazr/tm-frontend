@@ -12,7 +12,7 @@ import ScaleLine from 'ol/control/ScaleLine'
 import { defaults as defaultControls } from 'ol/control'
 import { defaults as defaultInteractions } from 'ol/interaction'
 import 'ol/ol.css'
-import type { Country, CountryFocus, MapLayer, MineralHighlightSpec } from '../../types'
+import type { AreaInsight, Country, CountryFocus, MapLayer, MineralHighlightSpec } from '../../types'
 import { mapsApi } from '../../api'
 import WatermarkOverlay from './WatermarkOverlay'
 import LayerPanel from './LayerPanel'
@@ -101,6 +101,14 @@ interface MapViewerProps {
   ) => void
   continuousInspect?: boolean
   mapFocus?: MapFocusTarget | null
+  assistantOpen?: boolean
+  onAssistantToggle?: () => void
+  onAssistantClose?: () => void
+  areaInsight?: AreaInsight | null
+  insightLoading?: boolean
+  hasPaidAccess?: boolean
+  assistantMapContext?: import('../assistant/TerraAssistantPanel').TerraAssistantMapContext | null
+  getMapSnapshot?: () => Promise<string | null>
   analysisZone?: AnalysisZoneSpec | null
   countryFocus?: CountryFocus | null
   countries?: Country[]
@@ -178,13 +186,18 @@ function fitCountryView(
   map.updateSize()
   const view = map.getView()
   const extent = boundsToExtent(focus.bounds)
+  const focusCenter = fromLonLat([focus.center.lng, focus.center.lat])
   const duration = animated ? (mobile ? 500 : 800) : 0
   const padding = mobile ? [112, 10, 72, 10] : [104, 24, 80, 24]
   view.set('extent', extent)
+  view.setCenter(focusCenter)
   view.fit(extent, {
     padding,
     maxZoom: Math.min(focus.default_zoom + 2.5, 9),
     duration,
+    callback: () => {
+      view.setCenter(focusCenter)
+    },
   })
 }
 
@@ -264,6 +277,14 @@ export default function MapViewer({
   onAreaInspect,
   continuousInspect = false,
   mapFocus,
+  assistantOpen = false,
+  onAssistantToggle = () => {},
+  onAssistantClose = () => {},
+  areaInsight = null,
+  insightLoading = false,
+  hasPaidAccess = false,
+  assistantMapContext = null,
+  getMapSnapshot,
   analysisZone = null,
   countryFocus = null,
   countries = [],

@@ -680,6 +680,14 @@ export default function FullMapPage() {
             onAreaInspect={handleAreaInspect}
             staticMap={!hasPaidAccess}
             mineralHighlight={mineralHighlight}
+            assistantOpen={assistantOpen}
+            onAssistantToggle={toggleAssistantPanel}
+            onAssistantClose={handleCloseAssistant}
+            areaInsight={areaInsight}
+            insightLoading={insightLoading}
+            hasPaidAccess={hasPaidAccess}
+            assistantMapContext={assistantMapContext}
+            getMapSnapshot={mapControls?.captureSnapshot}
           />
         )}
         {isFetching && !initialLoad && (
