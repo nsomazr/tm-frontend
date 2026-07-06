@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
+import AssistantMessageContent from '../assistant/AssistantMessageContent'
 import type { AreaInsight } from '../../types'
 
 interface MapInsightsPanelProps {
@@ -84,9 +85,12 @@ export default function MapInsightsPanel({
 
             {insight!.ai_insight ? (
               <div className="pt-2 border-t border-slate-100">
-                <p className="text-slate-700 text-xs leading-relaxed whitespace-pre-line">
-                  {insight!.ai_insight}
-                </p>
+                <AssistantMessageContent
+                  content={insight!.ai_insight}
+                  role="assistant"
+                  compact
+                  className="text-slate-700 text-xs"
+                />
               </div>
             ) : insight!.requires_subscription ? (
               <div className="pt-2 border-t border-slate-100 bg-terra-50/80 -mx-4 px-4 py-3 rounded-b-xl">

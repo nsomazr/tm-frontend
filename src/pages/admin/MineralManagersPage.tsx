@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, mineralsApi } from '../../api'
 import { useDisplayName } from '../../i18n/useDisplayName'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 
 export default function MineralManagersPage() {
   const qc = useQueryClient()
@@ -43,6 +45,9 @@ export default function MineralManagersPage() {
     mutationFn: (id: number) => adminApi.removeManager(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['mineral-managers'] }),
   })
+
+  const assignmentList = assignments?.results ?? []
+  const assignmentPagination = usePagination(assignmentList)
 
   return (
     <div>
@@ -98,7 +103,7 @@ export default function MineralManagersPage() {
               </tr>
             </thead>
             <tbody>
-              {assignments.results.map((a) => (
+              {assignmentPagination.pageItems.map((a) => (
                 <tr key={a.id}>
                   <td className="text-app-text">{a.user_detail.username}</td>
                   <td>{a.mineral_name}</td>
@@ -117,6 +122,14 @@ export default function MineralManagersPage() {
             </tbody>
           </table>
         )}
+        <ListPagination
+          page={assignmentPagination.page}
+          pageCount={assignmentPagination.pageCount}
+          total={assignmentPagination.total}
+          pageSize={assignmentPagination.pageSize}
+          onPageChange={assignmentPagination.setPage}
+          className="mt-4"
+        />
       </div>
     </div>
   )

@@ -1,17 +1,77 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { analyticsApi, mapsApi } from '../api'
-import MapViewer, { type MapFocusTarget } from '../components/map/MapViewer'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { analyticsApi, geographyApi, mapsApi } from '../api'
+import MapViewer, {
+  type AdminFitBounds,
+  type MapControls,
+  type MapFocusTarget,
+} from '../components/map/MapViewer'
+import MapZoomControls from '../components/map/MapZoomControls'
+import {
+  DEFAULT_BOUNDARY_VISIBILITY,
+  boundaryVisibilityIsDefault,
+  initialBoundaryVisibilityForGeoJson,
+  type BoundaryVisibility,
+} from '../components/map/adminBoundaryStyles'
+import {
+  boundaryFocusFromAt,
+  boundaryVisibilityForFocus,
+  resolveBoundaryFocus,
+  type BoundaryFocus,
+} from '../components/map/boundaryFocus'
+import {
+  DEFAULT_COUNTRY_CODE,
+  resolveCountryFocus,
+} from '../components/map/countryFocus'
 import MapSidebar from '../components/map/MapSidebar'
 import MapSearchBar from '../components/map/MapSearchBar'
-import TerraAssistantButton from '../components/map/TerraAssistantButton'
+import TerraAssistantLauncher from '../components/map/TerraAssistantLauncher'
 import type { TerraAssistantMapContext } from '../components/assistant/TerraAssistantPanel'
 import { useAuth } from '../auth/AuthContext'
 import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
-import type { AreaInsight, MineralSearchInsight } from '../types'
+import type { AreaInsight, MineralCatalogEntry, MineralHighlightSpec, MineralSearchInsight } from '../types'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { defaultVisibleLayerIds } from '../components/map/mapUtils'
+import { allVisibleLayerIds, defaultVisibleLayerIds } from '../components/map/mapUtils'
+
+function searchInsightParams(item: MineralSearchInsight) {
+  if (item.type === 'mineral') return { mineral_slug: item.slug }
+  if (item.type === 'region') return { region_id: item.id }
+  if (item.type === 'region_boundary' || item.type === 'district_boundary' || item.type === 'ward_boundary' || item.type === 'village_boundary') {
+    return { boundary_id: item.boundary_id ?? item.id }
+  }
+  if (item.type === 'layer') return { layer_id: item.id }
+  return {}
+}
+
+function isRegionSearchResult(item: MineralSearchInsight) {
+  return item.type === 'region' || item.type === 'region_boundary' || item.type === 'district_boundary' || item.type === 'ward_boundary' || item.type === 'village_boundary'
+}
+
+function focusSearchResult(
+  item: MineralSearchInsight,
+  setAdminFitBounds: (bounds: AdminFitBounds | null) => void,
+  setMapFocus: (focus: MapFocusTarget | null) => void,
+  focusOn: (lat: number, lng: number, zoom?: number) => void
+) {
+  setAdminFitBounds(null)
+  setMapFocus(null)
+  const bounds = item.bounds
+  if (
+    bounds &&
+    Number.isFinite(bounds.west) &&
+    Number.isFinite(bounds.south) &&
+    Number.isFinite(bounds.east) &&
+    Number.isFinite(bounds.north)
+  ) {
+    setAdminFitBounds({ ...bounds, key: Date.now() })
+    return
+  }
+  if (item.center) {
+    focusOn(item.center.lat, item.center.lng, item.zoom ?? 9)
+  }
+}
 
 export default function FullMapPage() {
   const { hasPaidAccess, hasFullMapAccess } = useAuth()
@@ -21,6 +81,8 @@ export default function FullMapPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [mineral, setMineral] = useState('')
   const [selectedResult, setSelectedResult] = useState<MineralSearchInsight | null>(null)
+  const [searchPreview, setSearchPreview] = useState<AreaInsight | null>(null)
+  const [searchPreviewLoading, setSearchPreviewLoading] = useState(false)
   const [mapFocus, setMapFocus] = useState<MapFocusTarget | null>(null)
   const [areaInsight, setAreaInsight] = useState<AreaInsight | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
@@ -28,6 +90,17 @@ export default function FullMapPage() {
   const [panelDismissed, setPanelDismissed] = useState(false)
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantMapContext, setAssistantMapContext] = useState<TerraAssistantMapContext | null>(null)
+  const [mapControls, setMapControls] = useState<MapControls | null>(null)
+  const [boundaryVisibility, setBoundaryVisibility] = useState<BoundaryVisibility>(
+    () => DEFAULT_BOUNDARY_VISIBILITY
+  )
+  const [adminFitBounds, setAdminFitBounds] = useState<AdminFitBounds | null>(null)
+  const [boundaryFocus, setBoundaryFocus] = useState<BoundaryFocus | null>(null)
+  const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY_CODE)
+  const [catalogMineralSlug, setCatalogMineralSlug] = useState<string | null>(null)
+  const [mineralHighlight, setMineralHighlight] = useState<MineralHighlightSpec | null>(null)
+  const [searchParams] = useSearchParams()
+  const mineralParamHandled = useRef(false)
   const isMobile = useMediaQuery('(max-width: 767px)')
 
   useEffect(() => {
@@ -41,10 +114,143 @@ export default function FullMapPage() {
     enabled: debouncedSearch.length >= 2,
   })
 
+  const { data: mineralCatalogData } = useQuery({
+    queryKey: ['mineral-catalog', countryCode],
+    queryFn: () => analyticsApi.mineralCatalog(countryCode).then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const mineralCatalog = mineralCatalogData?.minerals ?? []
+
+  const applyCatalogMineral = useCallback(
+    async (entry: MineralCatalogEntry | null) => {
+      if (!entry) {
+        setCatalogMineralSlug(null)
+        setMineralHighlight(null)
+        return
+      }
+
+      setCatalogMineralSlug(entry.slug)
+      setBoundaryFocus(null)
+      setSelectedResult(null)
+      setMineral('')
+
+      try {
+        const { data } = await analyticsApi.mineralCoverage(entry.slug, {
+          country: countryCode,
+          includeVillages: hasPaidAccess,
+        })
+        setMineralHighlight({
+          slug: data.slug,
+          color: data.color,
+          regionIds: data.region_ids,
+          districtIds: data.district_ids,
+          villageIds: data.village_ids,
+        })
+        setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
+        if (data.bounds) {
+          setAdminFitBounds({ ...data.bounds, key: Date.now() })
+        } else if (data.center) {
+          setMapFocus({ lat: data.center.lat, lng: data.center.lng, zoom: 8, key: Date.now() })
+        }
+      } catch {
+        setMineralHighlight(null)
+        setCatalogMineralSlug(null)
+      }
+    },
+    [countryCode, hasPaidAccess]
+  )
+
+  useEffect(() => {
+    const slug = searchParams.get('mineral')
+    if (!slug || mineralCatalog.length === 0) return
+    if (mineralParamHandled.current && catalogMineralSlug === slug) return
+    const entry = mineralCatalog.find((m) => m.slug === slug && m.is_mapped)
+    if (!entry) return
+    mineralParamHandled.current = true
+    void applyCatalogMineral(entry)
+  }, [searchParams, mineralCatalog, applyCatalogMineral, catalogMineralSlug])
+
+  const { data: boundaryCountriesData } = useQuery({
+    queryKey: ['countries-with-boundaries'],
+    queryFn: () => geographyApi.countriesWithBoundaries().then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const boundaryCountries = boundaryCountriesData ?? []
+
+  const { data: tanzaniaFocusData } = useQuery({
+    queryKey: ['country-focus', DEFAULT_COUNTRY_CODE],
+    queryFn: () => geographyApi.countryFocus(DEFAULT_COUNTRY_CODE).then((r) => r.data),
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const mapCountryFocus = useMemo(
+    () => resolveCountryFocus(DEFAULT_COUNTRY_CODE, tanzaniaFocusData, null),
+    [tanzaniaFocusData]
+  )
+
+  useEffect(() => {
+    if (boundaryCountries.length === 0) return
+    const codes = new Set(boundaryCountries.map((c) => c.code.toUpperCase()))
+    if (!codes.has(countryCode.toUpperCase())) {
+      const next = codes.has(DEFAULT_COUNTRY_CODE)
+        ? DEFAULT_COUNTRY_CODE
+        : boundaryCountries[0].code
+      setCountryCode(next)
+      setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
+    }
+  }, [boundaryCountries, countryCode])
+
+  const { data: boundariesData } = useQuery({
+    queryKey: ['country-boundaries', countryCode, 'base'],
+    queryFn: () => geographyApi.boundaries(countryCode, '0,1,2,3').then((r) => r.data),
+    enabled: boundaryCountries.some((c) => c.code === countryCode),
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const { data: villageBoundaries, isFetching: villagesLoading, isError: villagesError } = useQuery({
+    queryKey: ['country-boundaries', countryCode, 'villages'],
+    queryFn: () => geographyApi.boundariesAllVillages(countryCode),
+    enabled:
+      boundaryVisibility.villages &&
+      boundaryCountries.some((c) => c.code === countryCode),
+    staleTime: 30 * 60 * 1000,
+    retry: 1,
+  })
+
+  const mergedBoundaries = useMemo(() => {
+    const base = boundariesData?.features ?? []
+    const villages = villageBoundaries?.features ?? []
+    if (!base.length && !villages.length) return boundariesData ?? null
+    return {
+      type: 'FeatureCollection' as const,
+      features: [...base, ...villages],
+    }
+  }, [boundariesData, villageBoundaries])
+
+  useEffect(() => {
+    if (!mergedBoundaries?.features?.length) return
+    setBoundaryVisibility((prev) => {
+      if (!boundaryVisibilityIsDefault(prev)) return prev
+      return initialBoundaryVisibilityForGeoJson(mergedBoundaries)
+    })
+  }, [mergedBoundaries])
+
+  const handleCountryChange = useCallback(
+    (code: string) => {
+      setCountryCode(code.toUpperCase())
+      setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
+      setBoundaryFocus(null)
+      setAdminFitBounds(null)
+    },
+    [],
+  )
+
   const { data: layersData, isLoading, isFetching } = useQuery({
-    queryKey: ['layers', mineral],
+    queryKey: ['layers', hasPaidAccess ? mineral : '__all__'],
     queryFn: () =>
-      mapsApi.layers(mineral ? { mineral_slug: mineral } : {}).then((r) => r.data),
+      mapsApi.layers(hasPaidAccess && mineral ? { mineral_slug: mineral } : {}).then((r) => r.data),
     placeholderData: (prev) => prev,
     staleTime: 5 * 60 * 1000,
   })
@@ -52,16 +258,13 @@ export default function FullMapPage() {
   const searchResults = searchData?.results || []
   const layers = layersData?.results || []
 
-  const showResultsPanel = useMemo(
-    () =>
-      !panelDismissed &&
-      (assistantOpen ||
-        debouncedSearch.length >= 2 ||
-        !!selectedResult ||
-        !!areaInsight ||
-        insightLoading),
-    [panelDismissed, assistantOpen, debouncedSearch, selectedResult, areaInsight, insightLoading]
-  )
+  const showAssistantPanel =
+    !panelDismissed && (assistantOpen || insightLoading || !!areaInsight)
+
+  const showSearchPanel =
+    !panelDismissed &&
+    !assistantOpen &&
+    (debouncedSearch.length >= 2 || !!selectedResult)
 
   const layerIdsKey = useMemo(
     () => layers.map((l) => l.id).sort((a, b) => a - b).join(','),
@@ -70,8 +273,12 @@ export default function FullMapPage() {
 
   useEffect(() => {
     if (!layerIdsKey) return
-    setVisibleLayers(defaultVisibleLayerIds(layers))
-  }, [mineral, layerIdsKey, layers])
+    setVisibleLayers(hasPaidAccess ? defaultVisibleLayerIds(layers) : allVisibleLayerIds(layers))
+  }, [mineral, layerIdsKey, layers, hasPaidAccess])
+
+  const handleBoundaryVisibilityChange = useCallback((next: BoundaryVisibility) => {
+    setBoundaryVisibility(next)
+  }, [])
 
   const focusOn = useCallback((lat: number, lng: number, zoom = 11) => {
     setMapFocus((prev) => {
@@ -91,12 +298,71 @@ export default function FullMapPage() {
     async (lat: number, lng: number, zoom: number, featureIds?: number[]) => {
       setPanelDismissed(false)
       setInsightLoading(true)
-      setAssistantMapContext({ lat, lng, zoom, featureIds })
-      setAssistantOpen(true)
-      const inspectZoom = isMobile ? Math.min(zoom, 7) : Math.max(zoom, 10)
-      focusOn(lat, lng, inspectZoom)
+      setCatalogMineralSlug(null)
+      setMineralHighlight(null)
+
+      let boundaryId: number | undefined
+      let regionBoundaryName: string | undefined
+      let districtBoundaryName: string | undefined
+      let wardBoundaryName: string | undefined
+      let villageBoundaryName: string | undefined
+
       try {
-        const { data } = await analyticsApi.areaInsights(lat, lng, zoom, featureIds)
+        const { data: at } = await geographyApi.boundariesAt(DEFAULT_COUNTRY_CODE, lat, lng)
+        const focus = boundaryFocusFromAt(at)
+        if (focus) {
+          setBoundaryFocus(focus)
+          setBoundaryVisibility(boundaryVisibilityForFocus(focus))
+        } else {
+          setBoundaryFocus(null)
+        }
+        const focusUnit = at.village || at.district || at.ward || at.region
+        if (focusUnit?.bounds) {
+          setAdminFitBounds({ ...focusUnit.bounds, key: Date.now() })
+        }
+        if (at.region) {
+          regionBoundaryName = at.region.name
+        }
+        if (at.district) {
+          districtBoundaryName = at.district.name
+        }
+        if (at.ward) {
+          wardBoundaryName = at.ward.name
+        }
+        if (at.village) {
+          villageBoundaryName = at.village.name
+          boundaryId = at.village.id
+        } else if (at.district) {
+          boundaryId = at.district.id
+        } else if (at.ward) {
+          boundaryId = at.ward.id
+        } else if (at.region) {
+          boundaryId = at.region.id
+        }
+      } catch {
+        /* boundary lookup optional */
+      }
+
+      setAssistantMapContext({
+        lat,
+        lng,
+        zoom,
+        featureIds,
+        fromMapClick: true,
+        countryCode: DEFAULT_COUNTRY_CODE,
+        boundaryId,
+        regionBoundaryName,
+        districtBoundaryName,
+        wardBoundaryName,
+        villageBoundaryName,
+      })
+      setAssistantOpen(true)
+      try {
+        const { data } = await analyticsApi.areaInsights(lat, lng, zoom, {
+          featureIds,
+          country: DEFAULT_COUNTRY_CODE,
+          boundaryId,
+        })
         setAreaInsight(data)
       } catch {
         setAreaInsight(null)
@@ -104,16 +370,36 @@ export default function FullMapPage() {
         setInsightLoading(false)
       }
     },
-    [focusOn, isMobile]
+    [hasPaidAccess],
   )
 
   const openAssistantPanel = useCallback(() => {
     setAssistantOpen(true)
     setPanelDismissed(false)
-    setAssistantMapContext((prev) =>
-      prev ?? { lat: -6.369, lng: 34.888, zoom: 6 }
-    )
   }, [])
+
+  const handleCloseAssistant = useCallback(() => {
+    const fromMapClick = assistantMapContext?.fromMapClick
+    setAssistantOpen(false)
+    setAreaInsight(null)
+    setAssistantMapContext(null)
+    setInsightLoading(false)
+    if (fromMapClick && !selectedResult) {
+      setBoundaryFocus(null)
+      setAdminFitBounds(null)
+    }
+    if (!debouncedSearch && !selectedResult) {
+      setPanelDismissed(true)
+    }
+  }, [assistantMapContext, debouncedSearch, selectedResult])
+
+  const toggleAssistantPanel = useCallback(() => {
+    if (!panelDismissed && (assistantOpen || insightLoading || !!areaInsight)) {
+      handleCloseAssistant()
+      return
+    }
+    openAssistantPanel()
+  }, [panelDismissed, assistantOpen, insightLoading, areaInsight, handleCloseAssistant, openAssistantPanel])
 
   const handleAskTerraAboutSearch = useCallback(
     async (item: MineralSearchInsight) => {
@@ -133,46 +419,91 @@ export default function FullMapPage() {
         zoom,
         mineralSlug: item.type === 'mineral' ? item.slug : undefined,
         regionId: item.type === 'region' ? item.id : undefined,
+        boundaryId:
+          item.type === 'region_boundary' ||
+          item.type === 'district_boundary' ||
+          item.type === 'ward_boundary' ||
+          item.type === 'village_boundary'
+            ? (item.boundary_id ?? item.id)
+            : undefined,
         searchLabel,
       })
 
-      if (item.center) {
-        focusOn(lat, lng, zoom)
+      if (item.center || item.bounds) {
+        focusSearchResult(item, setAdminFitBounds, setMapFocus, focusOn)
       }
 
       try {
-        const params =
-          item.type === 'mineral' ? { mineral_slug: item.slug } : { region_id: item.id }
-        const { data } = await analyticsApi.searchContextInsights(params)
-        setAreaInsight(data)
+        const params = searchInsightParams(item)
+        if (Object.keys(params).length > 0) {
+          const { data } = await analyticsApi.searchContextInsights(params)
+          setAreaInsight(data)
+        }
       } catch {
         setAreaInsight(null)
       } finally {
         setInsightLoading(false)
       }
     },
-    [displayName, focusOn]
+    [displayName, focusOn, setAdminFitBounds, setMapFocus]
   )
+
+  const loadSearchPreview = useCallback(async (item: MineralSearchInsight) => {
+    const params = searchInsightParams(item)
+    if (Object.keys(params).length === 0) {
+      setSearchPreview(null)
+      return
+    }
+    setSearchPreviewLoading(true)
+    try {
+      const { data } = await analyticsApi.searchContextInsights(params)
+      setSearchPreview(data)
+    } catch {
+      setSearchPreview(null)
+    } finally {
+      setSearchPreviewLoading(false)
+    }
+  }, [])
 
   const handleSelectResult = useCallback((item: MineralSearchInsight) => {
     setPanelDismissed(false)
+    setCatalogMineralSlug(null)
+    setMineralHighlight(null)
     setSelectedResult(item)
     setSearch('')
     setDebouncedSearch('')
     setAreaInsight(null)
     setAssistantOpen(false)
     setAssistantMapContext(null)
+    setSearchPreview(null)
+    void loadSearchPreview(item)
 
-    if (item.type === 'region') {
+    if (isRegionSearchResult(item)) {
       setMineral('')
+      const focus = resolveBoundaryFocus(item, mergedBoundaries)
+      if (focus) {
+        setBoundaryFocus(focus)
+        setBoundaryVisibility(boundaryVisibilityForFocus(focus))
+      } else {
+        setBoundaryFocus(null)
+      }
+    } else if (item.type === 'layer') {
+      if (hasPaidAccess) {
+        setMineral('')
+        setVisibleLayers(new Set([item.id]))
+      }
+      setBoundaryFocus(null)
     } else {
-      setMineral(item.slug)
+      if (hasPaidAccess) {
+        setMineral(item.slug)
+      }
+      setBoundaryFocus(null)
     }
 
-    if (item.center) {
-      focusOn(item.center.lat, item.center.lng, item.zoom ?? 9)
+    if (item.center || item.bounds) {
+      focusSearchResult(item, setAdminFitBounds, setMapFocus, focusOn)
     }
-  }, [focusOn])
+  }, [mergedBoundaries, focusOn, loadSearchPreview, hasPaidAccess])
 
   useEffect(() => {
     if (debouncedSearch.length < 2 || searchLoading || searchResults.length !== 1) return
@@ -187,8 +518,14 @@ export default function FullMapPage() {
 
   const handleClearFilter = () => {
     setMineral('')
+    setCatalogMineralSlug(null)
+    setMineralHighlight(null)
     setSelectedResult(null)
+    setSearchPreview(null)
+    setSearchPreviewLoading(false)
     setMapFocus(null)
+    setAdminFitBounds(null)
+    setBoundaryFocus(null)
     setPanelDismissed(false)
     setAssistantOpen(false)
     setAreaInsight(null)
@@ -202,14 +539,31 @@ export default function FullMapPage() {
     setDebouncedSearch('')
     setMineral('')
     setSelectedResult(null)
+    setSearchPreview(null)
+    setSearchPreviewLoading(false)
     setAreaInsight(null)
     setMapFocus(null)
+    setAdminFitBounds(null)
+    setBoundaryFocus(null)
     setAssistantMapContext(null)
   }
+
+  const handleClearBoundaryFocus = useCallback(() => {
+    setBoundaryFocus(null)
+    setAdminFitBounds(null)
+    setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
+  }, [])
+
+  const handleViewReset = useCallback(() => {
+    setMapFocus(null)
+    setAdminFitBounds(null)
+    setBoundaryFocus(null)
+  }, [])
 
   const askTerraFromSearch = insightLoading && assistantOpen && !!assistantMapContext?.searchLabel
 
   const toggleLayer = (id: number) => {
+    if (!hasPaidAccess) return
     setVisibleLayers((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -219,6 +573,7 @@ export default function FullMapPage() {
   }
 
   const toggleLayerType = (type: string, visible: boolean) => {
+    if (!hasPaidAccess) return
     setVisibleLayers((prev) => {
       const next = new Set(prev)
       for (const layer of layers) {
@@ -235,34 +590,30 @@ export default function FullMapPage() {
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 overflow-hidden relative">
-      {showResultsPanel && (
+      {showSearchPanel && (
         <>
-          {!assistantOpen && (
-            <button
-              type="button"
-              aria-label={m.map.closePanel}
-              className="fixed inset-0 z-30 bg-black/25 sm:hidden"
-              onClick={handleClosePanel}
-            />
-          )}
+          <button
+            type="button"
+            aria-label={m.map.closePanel}
+            className="fixed inset-0 z-30 bg-black/25 sm:hidden"
+            onClick={handleClosePanel}
+          />
           <MapSidebar
-          debouncedSearch={debouncedSearch}
-          searchResults={searchResults}
-          searchLoading={searchLoading}
-          selectedMineral={selectedResult}
-          mineralFilter={mineral}
-          onSelectMineral={handleSelectResult}
-          onClearFilter={handleClearFilter}
-          onAskTerra={handleAskTerraAboutSearch}
-          askTerraLoading={askTerraFromSearch}
-          areaInsight={areaInsight}
-          insightLoading={insightLoading}
-          hasPaidAccess={hasPaidAccess}
-          mapContext={assistantMapContext}
-          assistantOpen={assistantOpen}
-          isMobile={isMobile}
-          onClose={handleClosePanel}
-        />
+            debouncedSearch={debouncedSearch}
+            searchResults={searchResults}
+            searchLoading={searchLoading}
+            selectedMineral={selectedResult}
+            mineralFilter={mineral}
+            previewInsight={searchPreview}
+            previewLoading={searchPreviewLoading}
+            hasPaidAccess={hasPaidAccess}
+            onSelectMineral={handleSelectResult}
+            onClearFilter={handleClearFilter}
+            onAskTerra={handleAskTerraAboutSearch}
+            askTerraLoading={askTerraFromSearch}
+            isMobile={isMobile}
+            onClose={handleClosePanel}
+          />
         </>
       )}
 
@@ -311,20 +662,47 @@ export default function FullMapPage() {
             fullScreen
             className="h-full w-full"
             mapFocus={mapFocus}
+            countryFocus={mapCountryFocus}
+            countries={boundaryCountries}
+            countryCode={countryCode}
+            onCountryChange={handleCountryChange}
+            boundariesGeoJson={boundariesData ?? null}
+            villagesGeoJson={villageBoundaries ?? null}
+            boundaryVisibility={boundaryVisibility}
+            onBoundaryVisibilityChange={handleBoundaryVisibilityChange}
+            boundaryFocus={boundaryFocus}
+            onClearBoundaryFocus={handleClearBoundaryFocus}
+            villagesLoading={villagesLoading}
+            villagesError={villagesError}
+            adminFitBounds={adminFitBounds}
+            onMapControlsReady={setMapControls}
+            onViewReset={handleViewReset}
             onAreaInspect={handleAreaInspect}
-            onOpenAssistant={openAssistantPanel}
-            assistantActive={showResultsPanel && (assistantOpen || !!areaInsight || insightLoading)}
+            staticMap={!hasPaidAccess}
+            mineralHighlight={mineralHighlight}
           />
         )}
         {isFetching && !initialLoad && (
           <div className="absolute top-16 right-3 z-20 h-6 w-6 animate-spin rounded-full border-2 border-terra-600 border-t-transparent bg-white/80" />
         )}
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-none max-md:hidden">
-          <TerraAssistantButton
-            active={showResultsPanel && (assistantOpen || !!areaInsight || insightLoading)}
-            onClick={openAssistantPanel}
-            className="pointer-events-auto"
+        <div className="pointer-events-none fixed right-3 z-50 flex flex-col items-end gap-2 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
+          {!isMobile && mapControls && (
+            <MapZoomControls
+              onZoomIn={mapControls.zoomIn}
+              onZoomOut={mapControls.zoomOut}
+              onResetView={mapControls.resetView}
+            />
+          )}
+          <TerraAssistantLauncher
+            open={showAssistantPanel}
+            onToggle={toggleAssistantPanel}
+            onClose={handleCloseAssistant}
+            areaInsight={areaInsight}
+            insightLoading={insightLoading}
+            hasPaidAccess={hasPaidAccess}
+            mapContext={assistantMapContext}
+            getMapSnapshot={mapControls?.captureSnapshot}
           />
         </div>
       </div>

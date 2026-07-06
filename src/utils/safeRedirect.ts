@@ -3,6 +3,8 @@ const DEFAULT_ALLOWED_HOSTS = [
   'selcom.online',
   'tz.selcom.online',
   'terrameta.5ggeology.com',
+  'ngrok-free.app',
+  'ngrok.io',
   'localhost',
   '127.0.0.1',
 ]

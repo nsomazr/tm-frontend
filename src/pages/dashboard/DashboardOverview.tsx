@@ -55,8 +55,14 @@ export default function DashboardOverview() {
         <StatCard label="Reports owned" value={String(purchases?.length ?? 0)} />
         <StatCard
           label="Top region"
-          value={hasPaidAccess && topRegion ? topRegion.region : 'N/A'}
-          hint={hasPaidAccess && topRegion ? `${topRegion.feature_count} zones` : 'Subscribe for analytics'}
+          value={hasPaidAccess && topRegion ? topRegion.region : hasPaidAccess ? '-' : 'N/A'}
+          hint={
+            hasPaidAccess && topRegion
+              ? `${topRegion.feature_count} zones`
+              : hasPaidAccess
+                ? 'No mapped data yet. Upload layers in Admin'
+                : 'Subscribe for analytics'
+          }
         />
       </div>
 

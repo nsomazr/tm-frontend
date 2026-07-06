@@ -76,7 +76,7 @@ export default function DashboardSubscription() {
         </div>
       ) : (
         <EmptyState
-          message="You are on Explorer: 500 Ask Terra credits per month, map previews, and report teasers. Upgrade for more AI credits, full datasets, analytics, and downloads."
+          message="You are on Explorer: map browse, commodity table, and report teasers. Upgrade for Terra insights, show-on-map, full AI, analytics, and downloads."
           action={
             <Link to="/subscriptions" className="btn-primary text-sm">
               View subscription plans

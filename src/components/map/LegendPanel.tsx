@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapLayer } from '../../types'
+import { layerDisplayColor } from '../admin/layerColors'
 
 interface LegendPanelProps {
   layers: MapLayer[]
@@ -54,7 +55,7 @@ export default function LegendPanel({ layers, embedded, sheetMode, defaultOpen =
         id: layer.id,
         name: displayName(layer),
         type: layer.layer_type,
-        color: (layer.style?.fill as string) || '#888',
+        color: layerDisplayColor(layer),
       }))
   }, [layers, displayName])
 

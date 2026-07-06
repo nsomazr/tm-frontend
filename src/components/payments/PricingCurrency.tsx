@@ -50,7 +50,7 @@ export function usePricingCurrency() {
   return ctx
 }
 
-/** Centered TZS / USD pill switcher — place above pricing cards. */
+/** Centered TZS / USD pill switcher - place above pricing cards. */
 export function PricingCurrencyToggle({ className = '' }: { className?: string }) {
   const { currency, setCurrency, rateLoading, rateError, labels } = usePricingCurrency()
 

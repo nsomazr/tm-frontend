@@ -16,6 +16,8 @@ import type {
   MineralSearchInsight,
   PaginatedResponse,
   PaymentOrder,
+  Country,
+  CountryFocus,
   Region,
   Report,
   SubscriptionPlan,
@@ -89,6 +91,10 @@ export const paymentsApi = {
     plan_id?: number
     report_id?: number
     license_id?: number
+    lat?: number
+    lng?: number
+    zoom?: number
+    extra_km2?: number
     msisdn?: string
     payment_method?: 'mobile_money' | 'card'
     card_brand?: 'visa' | 'mastercard'
@@ -136,8 +142,91 @@ export const reportsApi = {
     api.post(`/reports/admin/${slug}/generate-pdf/`, { force }),
 }
 
+function normalizeCountryList(
+  data: Country[] | PaginatedResponse<Country>
+): PaginatedResponse<Country> {
+  if (Array.isArray(data)) {
+    return { count: data.length, next: null, previous: null, results: data }
+  }
+  return data
+}
+
 export const geographyApi = {
   regions: () => api.get<PaginatedResponse<Region>>('/geography/regions/'),
+  countries: () =>
+    api
+      .get<Country[] | PaginatedResponse<Country>>('/geography/countries/')
+      .then((r) => ({ ...r, data: normalizeCountryList(r.data) })),
+  countriesWithBoundaries: () =>
+    api.get<Country[]>('/geography/countries/with-boundaries/'),
+  countryFocus: (code: string) => api.get<CountryFocus>(`/geography/countries/${code}/focus/`),
+  boundaries: (
+    code: string,
+    levels = '0,1,2,3,4',
+    options?: { display?: boolean; offset?: number; limit?: number },
+  ) =>
+    api.get<{
+      type: 'FeatureCollection'
+      features: unknown[]
+      meta?: { total: number; offset: number; limit: number; count: number }
+    }>(`/geography/countries/${code}/boundaries/`, {
+      params: {
+        levels,
+        ...(options?.display ? { display: 'true' } : {}),
+        ...(options?.offset != null ? { offset: options.offset } : {}),
+        ...(options?.limit != null ? { limit: options.limit } : {}),
+      },
+      timeout: levels.includes('4') ? 120_000 : 30_000,
+    }),
+  boundariesAllVillages: async (code: string) => {
+    const { data } = await geographyApi.boundaries(code, '4', { display: true })
+    if (data.features?.length) {
+      return { type: 'FeatureCollection' as const, features: data.features }
+    }
+    const pageSize = 3000
+    let offset = 0
+    let total = Number.POSITIVE_INFINITY
+    const features: unknown[] = []
+    while (offset < total) {
+      const { data: page } = await geographyApi.boundaries(code, '4', {
+        display: true,
+        offset,
+        limit: pageSize,
+      })
+      features.push(...(page.features ?? []))
+      total = page.meta?.total ?? features.length
+      offset += page.features?.length ?? 0
+      if (!page.features?.length) break
+    }
+    return { type: 'FeatureCollection' as const, features }
+  },
+  boundariesAt: (code: string, lat: number, lng: number) =>
+    api.get<import('../types').AdminBoundaryAtResponse>(
+      `/geography/countries/${code}/boundaries/at/`,
+      { params: { lat, lng } }
+    ),
+  adminBoundaryStats: (country = 'TZ') =>
+    api.get<import('../types').AdminBoundaryStats>('/geography/admin/boundaries/', {
+      params: { country },
+    }),
+  importBoundaries: (form: FormData) =>
+    api.post<{ task_id?: string; status?: string; imported?: number; country?: string; level?: number }>(
+      '/geography/admin/boundaries/import/',
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
+  boundaryImportStatus: (taskId: string) =>
+    api.get<{
+      task_id: string
+      status: 'processing' | 'completed' | 'failed'
+      phase?: string
+      done?: number
+      total?: number
+      imported?: number
+      country?: string
+      level?: number
+      error?: string
+    }>(`/geography/admin/boundaries/import/${taskId}/`),
 }
 
 export const adminApi = {
@@ -170,15 +259,39 @@ export const analyticsApi = {
   adminPlatform: () => api.get<import('../types').AdminPlatformAnalytics>('/analytics/admin/'),
   searchInsights: (q: string) =>
     api.get<{ results: MineralSearchInsight[] }>('/analytics/search-insights/', { params: { q } }),
-  searchContextInsights: (params: { mineral_slug?: string; region_id?: number }) =>
+  mineralCatalog: (country = 'TZ') =>
+    api.get<import('../types').MineralCatalogResponse>(
+      '/analytics/mineral-catalog/',
+      { params: { country } }
+    ),
+  mineralCoverage: (slug: string, options?: { country?: string; includeVillages?: boolean }) =>
+    api.get<import('../types').MineralBoundaryCoverage>(`/analytics/minerals/${slug}/coverage/`, {
+      params: {
+        country: options?.country,
+        ...(options?.includeVillages ? { include_villages: 'true' } : {}),
+      },
+    }),
+  searchContextInsights: (params: {
+    mineral_slug?: string
+    region_id?: number
+    layer_id?: number
+    boundary_id?: number
+  }) =>
     api.get<AreaInsight>('/analytics/search-context-insights/', { params }),
-  areaInsights: (lat: number, lng: number, zoom: number, featureIds?: number[]) =>
+  areaInsights: (
+    lat: number,
+    lng: number,
+    zoom: number,
+    options?: { featureIds?: number[]; country?: string; boundaryId?: number }
+  ) =>
     api.get<AreaInsight>('/analytics/area-insights/', {
       params: {
         lat,
         lng,
         zoom,
-        ...(featureIds?.length ? { feature_ids: featureIds.join(',') } : {}),
+        ...(options?.featureIds?.length ? { feature_ids: options.featureIds.join(',') } : {}),
+        ...(options?.country ? { country: options.country } : {}),
+        ...(options?.boundaryId != null ? { boundary_id: options.boundaryId } : {}),
       },
     }),
   assistantCredits: () =>
@@ -216,7 +329,10 @@ export const analyticsApi = {
     zoom?: number
     featureIds?: number[]
     mineralSlug?: string
+    layerId?: number
     regionId?: number
+    boundaryId?: number
+    countryCode?: string
     threadKey?: string
   }) =>
     api.post<AssistantChatResponse>('/analytics/assistant/chat/', {
@@ -226,7 +342,36 @@ export const analyticsApi = {
       ...(payload.lat != null ? { lat: payload.lat, lng: payload.lng, zoom: payload.zoom ?? 8 } : {}),
       ...(payload.featureIds?.length ? { feature_ids: payload.featureIds } : {}),
       ...(payload.mineralSlug ? { mineral_slug: payload.mineralSlug } : {}),
+      ...(payload.layerId != null ? { layer_id: payload.layerId } : {}),
       ...(payload.regionId != null ? { region_id: payload.regionId } : {}),
+      ...(payload.boundaryId != null ? { boundary_id: payload.boundaryId } : {}),
+      ...(payload.countryCode ? { country: payload.countryCode } : {}),
       ...(payload.threadKey ? { thread_key: payload.threadKey } : {}),
     }),
+  exportInsightReport: (payload: {
+    mode?: 'map' | 'account'
+    sections: string[]
+    messages?: AssistantMessage[]
+    mapSnapshot?: string
+    lat?: number
+    lng?: number
+    zoom?: number
+    featureIds?: number[]
+    mineralSlug?: string
+    regionId?: number
+    boundaryId?: number
+    countryCode?: string
+  }) =>
+    api.post('/analytics/assistant/export-report/', {
+      mode: payload.mode || 'account',
+      sections: payload.sections,
+      messages: payload.messages ?? [],
+      ...(payload.mapSnapshot ? { map_snapshot: payload.mapSnapshot } : {}),
+      ...(payload.lat != null ? { lat: payload.lat, lng: payload.lng, zoom: payload.zoom ?? 8 } : {}),
+      ...(payload.featureIds?.length ? { feature_ids: payload.featureIds } : {}),
+      ...(payload.mineralSlug ? { mineral_slug: payload.mineralSlug } : {}),
+      ...(payload.regionId != null ? { region_id: payload.regionId } : {}),
+      ...(payload.boundaryId != null ? { boundary_id: payload.boundaryId } : {}),
+      ...(payload.countryCode ? { country: payload.countryCode } : {}),
+    }, { responseType: 'blob' }),
 }

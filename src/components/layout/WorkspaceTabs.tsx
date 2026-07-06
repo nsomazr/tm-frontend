@@ -47,7 +47,7 @@ export default function WorkspaceTabs({
 
   if (compact) {
     return (
-      <div className="segmented min-w-0 shrink" role="group" aria-label="Workspace">
+      <div className="segmented shrink-0 min-w-[8.75rem]" role="group" aria-label="Workspace">
         <NavLink to="/dashboard" className={({ isActive }) => tabClass(isActive, true)}>
           {m.nav.account}
         </NavLink>

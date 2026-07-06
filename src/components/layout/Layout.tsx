@@ -6,7 +6,6 @@ import CompanyCredit from '../brand/CompanyCredit'
 import LanguageSwitch from './LanguageSwitch'
 import MobileMenu from './MobileMenu'
 import ThemeToggle from './ThemeToggle'
-import WorkspaceTabs, { isWorkspaceRoute } from './WorkspaceTabs'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? 'nav-link-active' : ''}`
@@ -19,7 +18,9 @@ function UserMenu() {
   if (user) {
     return (
       <div className="flex items-center gap-2 sm:gap-3">
-        <span className="hidden lg:inline text-sm text-app-muted truncate max-w-[120px]">{user.username}</span>
+        <Link to="/dashboard" className="nav-link text-xs sm:text-sm whitespace-nowrap px-2">
+          {m.nav.dashboard}
+        </Link>
         <button onClick={logout} className="nav-link text-xs sm:text-sm whitespace-nowrap px-2">
           {m.nav.logout}
         </button>
@@ -60,11 +61,11 @@ function HeaderNav({ className }: { className?: string }) {
 }
 
 export default function Layout() {
-  const { user } = useAuth()
   const { m } = useTranslation()
   const location = useLocation()
   const isMapPage = location.pathname === '/' || location.pathname === '/maps'
-  const isWorkspace = isWorkspaceRoute(location.pathname)
+  const isWorkspace =
+    location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin')
   const desktopControlsClass = isMapPage ? 'hidden lg:flex' : 'hidden md:flex'
   const mobileMenuClass = isMapPage ? 'lg:hidden' : 'md:hidden'
 
@@ -82,13 +83,12 @@ export default function Layout() {
         <HeaderNav
           className={`hidden items-center gap-1 flex-1 justify-center min-w-0 ${isMapPage ? 'lg:flex' : 'md:flex'}`}
         />
-        <div className={`ml-auto items-center gap-1 sm:gap-2 min-w-0 shrink ${desktopControlsClass}`}>
+        <div className={`ml-auto items-center gap-1 sm:gap-2 shrink-0 ${desktopControlsClass}`}>
           <ThemeToggle compact />
           <LanguageSwitch compact />
-          {user && <WorkspaceTabs compact />}
           <UserMenu />
         </div>
-        <div className={`ml-auto flex shrink-0 items-center gap-1 ${mobileMenuClass}`}>
+        <div className={`ml-auto flex shrink-0 items-center gap-1.5 ${mobileMenuClass}`}>
           {isMapPage && <ThemeToggle compact />}
           <MobileMenu />
         </div>

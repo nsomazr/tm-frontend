@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
@@ -12,6 +12,7 @@ import {
 import { analyticsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
+import { formatAreaKm2 } from '../../components/map/mapFormat'
 import { EmptyState, PageHeader, StatCard } from './DashboardUi'
 
 function AnalyticsSkeleton() {
@@ -47,50 +48,87 @@ export default function DashboardAnalytics() {
     enabled: hasPaidAccess,
   })
 
-  const regionList = (hotspots?.hotspots ?? []) as { region: string; feature_count: number }[]
-  const mineralList = (hotspots?.minerals ?? []) as {
+  const layerHotspots = (hotspots?.layer_hotspots ?? []) as {
+    slug: string
     name: string
     name_sw?: string
     color: string
-    count: number
+    feature_count: number
+    hotspots: { region: string; feature_count: number; area_km2?: number }[]
+  }[]
+
+  const totalCoverageArea = hotspots?.total_area_km2 as number | undefined
+
+  const [selectedLayerSlug, setSelectedLayerSlug] = useState('')
+
+  useEffect(() => {
+    if (layerHotspots.length === 0) {
+      setSelectedLayerSlug('')
+      return
+    }
+    if (!selectedLayerSlug || !layerHotspots.some((layer) => layer.slug === selectedLayerSlug)) {
+      setSelectedLayerSlug(layerHotspots[0].slug)
+    }
+  }, [layerHotspots, selectedLayerSlug])
+
+  const selectedLayer = useMemo(
+    () => layerHotspots.find((layer) => layer.slug === selectedLayerSlug) ?? layerHotspots[0],
+    [layerHotspots, selectedLayerSlug]
+  )
+
+  const regionList = selectedLayer?.hotspots ?? (hotspots?.hotspots ?? []) as {
+    region: string
+    feature_count: number
+    area_km2?: number
+  }[]
+  const layerList = (hotspots?.layers ?? investor?.layers ?? []) as {
+    name: string
+    name_sw?: string
+    color: string
+    feature_count: number
+    area_km2?: number
     slug?: string
+    layer_type?: string
   }[]
   const layerStats = (hotspots?.layer_stats ?? []) as { layer_type: string; count: number }[]
-  const inventory = (investor?.minerals ?? []) as {
+  const inventory = (investor?.layers ?? []) as {
     name: string
     name_sw?: string
     slug: string
     color: string
-    layer_count: number
-    report_count: number
+    feature_count: number
+    layer_type: string
+    area_km2?: number
   }[]
 
-  const sortedMinerals = useMemo(
-    () => [...mineralList].sort((a, b) => b.count - a.count),
-    [mineralList]
+  const sortedLayers = useMemo(
+    () => [...layerList].sort((a, b) => b.feature_count - a.feature_count),
+    [layerList]
   )
 
   const totalZones = useMemo(
-    () => sortedMinerals.reduce((s, m) => s + m.count, 0),
-    [sortedMinerals]
+    () => hotspots?.total_prospects ?? sortedLayers.reduce((s, layer) => s + layer.feature_count, 0),
+    [hotspots?.total_prospects, sortedLayers]
   )
 
   const topRegion = regionList[0]
-  const topMineral = sortedMinerals[0]
+  const topLayer = sortedLayers[0]
+  const selectedLayerZones = selectedLayer?.feature_count ?? totalZones
   const insight = useMemo(
-    () => buildAnalyticsInsight(regionList, sortedMinerals, totalZones),
-    [regionList, sortedMinerals, totalZones]
+    () => buildAnalyticsInsight(regionList, sortedLayers, selectedLayerZones),
+    [regionList, sortedLayers, selectedLayerZones]
   )
 
-  const mineralBars = sortedMinerals.map((m) => ({
-    label: displayName(m),
-    value: m.count,
-    color: m.color,
+  const layerBars = sortedLayers.map((layer) => ({
+    label: displayName(layer),
+    value: layer.feature_count,
+    color: layer.color,
   }))
 
   const regionBars = regionList.slice(0, 8).map((r) => ({
     label: r.region,
     value: r.feature_count,
+    color: selectedLayer?.color,
   }))
 
   if (!hasPaidAccess) {
@@ -113,7 +151,7 @@ export default function DashboardAnalytics() {
     <div className="max-w-4xl animate-fade-in">
       <PageHeader
         title="Analytics"
-        description="Mapped zone concentration across Tanzania: where minerals and regions stand out."
+        description="Mapped zone concentration on the map: where uploaded layers and regions stand out."
       />
 
       {isLoading ? (
@@ -121,18 +159,30 @@ export default function DashboardAnalytics() {
       ) : (
         <div className="space-y-5">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Mapped zones" value={fmt(totalZones)} hint="Active prospect features" />
+            <StatCard label="Mapped zones" value={fmt(totalZones)} hint={totalZones > 0 ? 'Active prospect features' : 'Upload layers in Admin'} />
+            <StatCard
+              label="Polygon coverage"
+              value={totalCoverageArea && totalCoverageArea > 0 ? formatAreaKm2(totalCoverageArea) : '-'}
+              hint={totalCoverageArea && totalCoverageArea > 0 ? 'Total mapped polygon area' : 'Polygon layers only'}
+            />
             <StatCard
               label="Leading region"
-              value={topRegion?.region ?? 'N/A'}
-              hint={topRegion ? `${topRegion.feature_count} zones · ${pct(topRegion.feature_count, totalZones)}%` : undefined}
+              value={topRegion?.region ?? '-'}
+              hint={
+                topRegion
+                  ? `${topRegion.feature_count} zones${topRegion.area_km2 ? ` · ${formatAreaKm2(topRegion.area_km2)}` : ''} · ${pct(topRegion.feature_count, selectedLayerZones)}%`
+                  : 'No regional data yet'
+              }
             />
             <StatCard
-              label="Top commodity"
-              value={topMineral ? displayName(topMineral) : 'N/A'}
-              hint={topMineral ? `${topMineral.count} zones · ${pct(topMineral.count, totalZones)}%` : undefined}
+              label="Top layer"
+              value={topLayer ? displayName(topLayer) : '-'}
+              hint={
+                topLayer
+                  ? `${topLayer.feature_count} zones${topLayer.area_km2 ? ` · ${formatAreaKm2(topLayer.area_km2)}` : ''} · ${pct(topLayer.feature_count, totalZones)}%`
+                  : 'No layer data yet'
+              }
             />
-            <StatCard label="Regions covered" value={fmt(regionList.length)} hint="With mapped data" />
           </div>
 
           {insight && (
@@ -143,8 +193,25 @@ export default function DashboardAnalytics() {
 
           <div className="grid lg:grid-cols-2 gap-4">
             <section className="rounded-2xl bg-app-surface p-4 sm:p-5">
-              <h2 className="text-sm font-semibold text-app-text">Regional hotspots</h2>
-              <p className="text-xs text-app-muted mt-0.5 mb-4">Zones per region, ranked by count</p>
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-app-text">Regional hotspots</h2>
+                  <p className="text-xs text-app-muted mt-0.5">Zones per region for the selected layer</p>
+                </div>
+                {layerHotspots.length > 0 && (
+                  <select
+                    value={selectedLayerSlug}
+                    onChange={(e) => setSelectedLayerSlug(e.target.value)}
+                    className="input text-xs sm:text-sm min-w-[10rem] max-w-full"
+                  >
+                    {layerHotspots.map((layer) => (
+                      <option key={layer.slug} value={layer.slug}>
+                        {displayName(layer)}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
               {regionBars.length === 0 ? (
                 <p className="text-sm text-app-muted">No regional data yet.</p>
               ) : (
@@ -153,12 +220,12 @@ export default function DashboardAnalytics() {
             </section>
 
             <section className="rounded-2xl bg-app-surface p-4 sm:p-5">
-              <h2 className="text-sm font-semibold text-app-text">Mineral mix</h2>
-              <p className="text-xs text-app-muted mt-0.5 mb-2">Share of mapped zones by commodity</p>
-              {mineralBars.length === 0 ? (
-                <p className="text-sm text-app-muted">No mineral data yet.</p>
+              <h2 className="text-sm font-semibold text-app-text">Uploaded layers</h2>
+              <p className="text-xs text-app-muted mt-0.5 mb-2">Share of mapped zones by layer</p>
+              {layerBars.length === 0 ? (
+                <p className="text-sm text-app-muted">No layer data yet.</p>
               ) : (
-                <MineralMixStrip items={mineralBars} />
+                <MineralMixStrip items={layerBars} />
               )}
             </section>
           </div>
@@ -174,44 +241,40 @@ export default function DashboardAnalytics() {
           {inventory.length > 0 && (
             <section className="rounded-2xl bg-app-surface overflow-hidden">
               <div className="px-4 sm:px-5 py-4 border-b app-divider">
-                <h2 className="text-sm font-semibold text-app-text">Commodity inventory</h2>
-                <p className="text-xs text-app-muted mt-0.5">Layers and reports per mineral</p>
+                <h2 className="text-sm font-semibold text-app-text">Layer inventory</h2>
+                <p className="text-xs text-app-muted mt-0.5">Uploaded layers and zone counts</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b app-divider text-left text-app-muted">
-                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide">Mineral</th>
-                      <th className="px-3 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Zones</th>
-                      <th className="px-3 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Layers</th>
-                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Reports</th>
+                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide">Layer</th>
+                      <th className="px-3 py-2.5 font-medium text-xs uppercase tracking-wide">Geometry</th>
+                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Coverage</th>
+                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Zones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {inventory
-                      .map((m) => ({
-                        ...m,
-                        zoneCount:
-                          sortedMinerals.find((x) => x.slug === m.slug || x.name === m.name)?.count ?? 0,
-                      }))
-                      .sort((a, b) => b.zoneCount - a.zoneCount)
-                      .map((m) => (
-                        <tr key={m.slug} className="border-b app-divider last:border-0">
+                      .slice()
+                      .sort((a, b) => b.feature_count - a.feature_count)
+                      .map((layer) => (
+                        <tr key={layer.slug} className="border-b app-divider last:border-0">
                           <td className="px-4 sm:px-5 py-2.5">
                             <span className="inline-flex items-center gap-2 font-medium text-app-text">
                               <span
                                 className="h-2.5 w-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: m.color }}
+                                style={{ backgroundColor: layer.color }}
                               />
-                              {displayName(m)}
+                              {displayName(layer)}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-app-text">
-                            {m.zoneCount}
-                          </td>
-                          <td className="px-3 py-2.5 text-right tabular-nums text-app-secondary">{m.layer_count}</td>
+                          <td className="px-3 py-2.5 capitalize text-app-secondary">{layer.layer_type}</td>
                           <td className="px-4 sm:px-5 py-2.5 text-right tabular-nums text-app-secondary">
-                            {m.report_count}
+                            {layer.area_km2 && layer.area_km2 > 0 ? formatAreaKm2(layer.area_km2) : '-'}
+                          </td>
+                          <td className="px-4 sm:px-5 py-2.5 text-right tabular-nums font-semibold text-app-text">
+                            {layer.feature_count}
                           </td>
                         </tr>
                       ))}

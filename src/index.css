@@ -18,7 +18,7 @@
   }
 
   .dark {
-    /* Cursor-style neutral dark — base #141414 */
+    /* Cursor-style neutral dark - base #141414 */
     --color-app-bg: #141414;
     --color-app-surface: #1c1c1c;
     --color-app-elevated: #232323;
@@ -448,7 +448,7 @@
     color: #86efac;
   }
 
-  /* Header segmented toggles — single soft tray, no double rings */
+  /* Header segmented toggles - single soft tray, no double rings */
   .segmented {
     @apply inline-flex items-center rounded-xl p-0.5;
     background-color: var(--color-app-muted);
@@ -479,7 +479,7 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   }
 
-  /* Map floating panels — theme-aware glass (fixes dark mode text on white) */
+  /* Map floating panels - theme-aware glass (fixes dark mode text on white) */
   .map-chrome {
     background-color: color-mix(in srgb, var(--color-app-surface) 98%, transparent);
     border: 1px solid var(--color-app-border-strong);
@@ -623,7 +623,15 @@
     background-color: color-mix(in srgb, var(--color-app-text-muted) 70%, transparent);
   }
 
-  /* OpenLayers controls — hide default zoom on mobile (custom dock handles it) */
+  /* OpenLayers controls - hide default zoom on mobile (custom dock handles it) */
+  .map-viewer .ol-viewport {
+    cursor: grab;
+  }
+
+  .map-viewer .ol-viewport:active {
+    cursor: grabbing;
+  }
+
   .map-viewer {
     width: 100%;
     max-width: 100%;
@@ -642,16 +650,27 @@
     display: none;
   }
 
-  .map-viewer:not(.map-viewer--mobile) .ol-zoom {
-    top: auto;
-    left: auto;
-    right: 0.75rem;
-    bottom: 0.75rem;
+  .map-viewer:not(.map-viewer--mobile) {
+    --map-scale-stack-inset: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    --map-scale-stack-left: max(0.75rem, env(safe-area-inset-left, 0px));
+    --map-scale-stack-height: 3rem;
+    --map-scale-stack-gap: 0.375rem;
   }
 
   .map-viewer:not(.map-viewer--mobile) .ol-scale-line {
-    left: 0.75rem;
-    bottom: 0.75rem;
+    left: var(--map-scale-stack-left);
+    bottom: var(--map-scale-stack-inset);
+    z-index: 15;
+  }
+
+  .map-viewer:not(.map-viewer--mobile) .map-coordinate-readout {
+    position: absolute;
+    left: var(--map-scale-stack-left);
+    bottom: calc(
+      var(--map-scale-stack-inset) + var(--map-scale-stack-height) + var(--map-scale-stack-gap)
+    );
+    z-index: 20;
+    max-width: min(22rem, calc(100% - 1.5rem));
   }
 
   .map-assistant-sheet {

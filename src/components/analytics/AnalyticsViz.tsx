@@ -63,16 +63,16 @@ export function LayerTypeGrid({
 
 export function buildAnalyticsInsight(
   regions: { region: string; feature_count: number }[],
-  minerals: { name: string; count: number }[],
+  layers: { name: string; feature_count: number }[],
   totalZones: number
 ): string | null {
   if (totalZones <= 0 || regions.length === 0) return null
   const top = regions[0]
   const topShare = pct(top.feature_count, totalZones)
-  const topMineral = [...minerals].sort((a, b) => b.count - a.count)[0]
-  if (topMineral && topMineral.count > 0) {
-    const mineralShare = pct(topMineral.count, totalZones)
-    return `${top.region} leads with ${top.feature_count} mapped zones (${topShare}% of coverage). ${topMineral.name} is the most mapped commodity at ${mineralShare}%.`
+  const topLayer = [...layers].sort((a, b) => b.feature_count - a.feature_count)[0]
+  if (topLayer && topLayer.feature_count > 0) {
+    const layerShare = pct(topLayer.feature_count, totalZones)
+    return `${top.region} leads with ${top.feature_count} mapped zones (${topShare}% of coverage). ${topLayer.name} is the largest uploaded layer at ${layerShare}%.`
   }
   return `${top.region} leads with ${top.feature_count} mapped zones (${topShare}% of national coverage).`
 }

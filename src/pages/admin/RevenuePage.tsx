@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { paymentsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
+import ListPagination from '../../components/ui/ListPagination'
+import { toast } from '../../components/ui/toast'
+import { usePagination } from '../../hooks/usePagination'
 import type { PaymentOrder } from '../../types'
 
 const STATUS_OPTIONS = [
@@ -53,7 +56,6 @@ export default function RevenuePage() {
   const [provider, setProvider] = useState('')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<PaymentOrder | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
 
   const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['revenue'],
@@ -83,24 +85,23 @@ export default function RevenuePage() {
     mutationFn: (reference: string) => paymentsApi.refreshOrder(reference),
     onSuccess: ({ data }) => {
       setSelected((prev) => (prev?.merchant_reference === data.merchant_reference ? data : prev))
-      setActionError(null)
+      toast.success('Order refreshed from gateway')
       invalidate()
     },
-    onError: () => setActionError('Could not refresh order from gateway.'),
+    onError: () => toast.error('Could not refresh order from gateway'),
   })
 
   const completeOrder = useMutation({
     mutationFn: (reference: string) => paymentsApi.completeOrder(reference),
     onSuccess: ({ data }) => {
       setSelected((prev) => (prev?.merchant_reference === data.merchant_reference ? data : prev))
-      setActionError(null)
+      toast.success('Order marked as completed')
       invalidate()
     },
-    onError: () => setActionError('Could not mark order as completed.'),
+    onError: () => toast.error('Could not mark order as completed'),
   })
 
   const openDetail = async (order: PaymentOrder) => {
-    setActionError(null)
     try {
       const { data } = await paymentsApi.adminOrder(order.merchant_reference)
       setSelected(data)
@@ -110,6 +111,7 @@ export default function RevenuePage() {
   }
 
   const orders = ordersPage?.results || []
+  const ordersPagination = usePagination(orders)
   const actionPending = refreshOrder.isPending || completeOrder.isPending
 
   return (
@@ -200,9 +202,6 @@ export default function RevenuePage() {
               />
             </div>
           </div>
-          {actionError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{actionError}</p>
-          )}
         </div>
 
         {ordersLoading ? (
@@ -227,7 +226,7 @@ export default function RevenuePage() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((order) => (
+                {ordersPagination.pageItems.map((order) => (
                   <tr key={order.merchant_reference}>
                     <td>
                       <span className="font-mono text-xs map-text" title={order.merchant_reference}>
@@ -283,6 +282,14 @@ export default function RevenuePage() {
                 ))}
               </tbody>
             </table>
+            <ListPagination
+              page={ordersPagination.page}
+              pageCount={ordersPagination.pageCount}
+              total={ordersPagination.total}
+              pageSize={ordersPagination.pageSize}
+              onPageChange={ordersPagination.setPage}
+              className="px-4 pb-4"
+            />
           </div>
         )}
       </div>

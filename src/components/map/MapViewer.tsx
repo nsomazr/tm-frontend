@@ -6,35 +6,80 @@ import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
 import Feature from 'ol/Feature'
+import Circle from 'ol/geom/Circle'
 import { fromLonLat, toLonLat, transformExtent } from 'ol/proj'
 import ScaleLine from 'ol/control/ScaleLine'
 import { defaults as defaultControls } from 'ol/control'
 import { defaults as defaultInteractions } from 'ol/interaction'
 import 'ol/ol.css'
-import type { MapLayer } from '../../types'
+import type { Country, CountryFocus, MapLayer, MineralHighlightSpec } from '../../types'
 import { mapsApi } from '../../api'
 import WatermarkOverlay from './WatermarkOverlay'
 import LayerPanel from './LayerPanel'
+import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
 import MapRightDock from './MapRightDock'
 import MapBottomControls from './MapBottomControls'
+import MapZoomControls from './MapZoomControls'
+import MapCoordinateReadout from './MapCoordinateReadout'
+import { registerCoordinateProjections } from './coordinateSystems'
+import { useCoordinateSystemState } from './useCoordinateSystemState'
+import { Fill, Stroke, Style } from 'ol/style'
+import { analysisZoneRadiusKm, recommendedZoomForAnalysisZone, type AnalysisZoneSpec } from './analysisZoneGeometry'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useBasemapState } from './useBasemapState'
+import { useMapLabelState } from './usePlaceNamesState'
 import {
   type BasemapId,
+  basemapLabelOverlayVisible,
+  createBasemapSource,
   createLabelsSource,
-  getBasemap,
 } from './basemaps'
 import { buildHighlightStyle, buildLayerStyleFunction } from './mapStyles'
 import { useTheme } from '../../theme/ThemeContext'
 import { pickFeatureAtPixel } from './mapHitUtils'
 import { loadLayerGeojson } from './mapGeojsonCache'
 import { useTranslation } from '../../i18n/LocaleContext'
+import {
+  boundaryLabelZoom,
+  boundaryMinZoom,
+  boundaryLevelsFromGeoJson,
+  countryBoundaryStyle,
+  districtBoundaryStyle,
+  regionBoundaryStyle,
+  wardBoundaryStyle,
+  villageBoundaryStyle,
+  villageBoundaryLabelStyle,
+  type BoundaryLevelKey,
+  type BoundaryVisibility,
+  DEFAULT_BOUNDARY_VISIBILITY,
+} from './adminBoundaryStyles'
+import {
+  boundsToExtent,
+  DEFAULT_COUNTRY_FOCUS,
+} from './countryFocus'
+import type { BoundaryFocus } from './boundaryFocus'
 
+export type { AnalysisZoneSpec } from './analysisZoneGeometry'
+export type { MapViewMetrics } from './mapViewportUtils'
+export interface MapControls {
+  zoomIn: () => void
+  zoomOut: () => void
+  resetView: () => void
+  captureSnapshot: () => Promise<string | null>
+}
 export interface MapFocusTarget {
   lat: number
   lng: number
   zoom?: number
   /** Bumps when the same coordinates should re-trigger fly-to */
+  key?: number
+}
+
+export interface AdminFitBounds {
+  west: number
+  south: number
+  east: number
+  north: number
   key?: number
 }
 
@@ -48,23 +93,102 @@ interface MapViewerProps {
   editable?: boolean
   allowReorder?: boolean
   onFeatureClick?: (props: Record<string, unknown>) => void
-  onAreaInspect?: (lat: number, lng: number, zoom: number, featureIds?: number[]) => void
+  onAreaInspect?: (
+    lat: number,
+    lng: number,
+    zoom: number,
+    featureIds?: number[]
+  ) => void
   continuousInspect?: boolean
   mapFocus?: MapFocusTarget | null
+  analysisZone?: AnalysisZoneSpec | null
+  countryFocus?: CountryFocus | null
+  countries?: Country[]
+  countryCode?: string
+  onCountryChange?: (code: string) => void
+  boundariesGeoJson?: { type: string; features: unknown[] } | null
+  villagesGeoJson?: { type: string; features: unknown[] } | null
+  boundaryVisibility?: BoundaryVisibility
+  onBoundaryVisibilityChange?: (next: BoundaryVisibility) => void
+  boundaryFocus?: BoundaryFocus | null
+  onClearBoundaryFocus?: () => void
+  villagesLoading?: boolean
+  villagesError?: boolean
+  adminFitBounds?: AdminFitBounds | null
+  onMapControlsReady?: (controls: MapControls) => void
+  onViewReset?: () => void
   className?: string
   fullScreen?: boolean
-  onOpenAssistant?: () => void
-  assistantActive?: boolean
   /** Hide layer panel, legend, and basemap dock (admin embeds, previews) */
   minimalChrome?: boolean
+  /** Show region/district toggles even when minimalChrome is set */
+  showBoundaryControls?: boolean
+  /** Limit which boundary toggles appear (defaults to all levels in GeoJSON) */
+  boundaryControlLevels?: BoundaryLevelKey[]
+  /** Unpaid preview: mineral layers always on; boundary toggles are user-controlled. */
+  staticMap?: boolean
+  mineralHighlight?: MineralHighlightSpec | null
 }
 
-const TANZANIA_CENTER = fromLonLat([34.8, -6.5])
-const TANZANIA_EXTENT = transformExtent([29.34, -11.75, 40.44, -0.99], 'EPSG:4326', 'EPSG:3857')
+function mineralTintForFeature(
+  feature: import('ol/Feature').FeatureLike,
+  level: number,
+  highlight: MineralHighlightSpec | null | undefined,
+): string | null {
+  if (!highlight) return null
+  const id = Number(feature.get('id') ?? -1)
+  if (id < 0) return null
+  if (level === 1 && highlight.regionIds.includes(id)) return highlight.color
+  if (level === 2 && highlight.districtIds.includes(id)) return highlight.color
+  if (level === 4 && highlight.villageIds.includes(id)) return highlight.color
+  return null
+}
+
+const TANZANIA_CENTER = fromLonLat([DEFAULT_COUNTRY_FOCUS.center.lng, DEFAULT_COUNTRY_FOCUS.center.lat])
+const TANZANIA_EXTENT = boundsToExtent(DEFAULT_COUNTRY_FOCUS.bounds)
+
+function fitAdminBounds(map: OlMap, bounds: AdminFitBounds, mobile: boolean) {
+  const extent = boundsToExtent(bounds)
+  map.getView().fit(extent, {
+    padding: mobile ? [112, 16, 100, 16] : [104, 48, 120, 48],
+    maxZoom: 12,
+    duration: mobile ? 500 : 700,
+  })
+}
+
+function fitCountryView(
+  map: OlMap,
+  focus: CountryFocus,
+  mobile: boolean,
+  animated = false
+) {
+  const view = map.getView()
+  const extent = boundsToExtent(focus.bounds)
+  const duration = animated ? (mobile ? 500 : 800) : 0
+  const padding = mobile ? [112, 10, 72, 10] : [104, 24, 80, 24]
+  view.set('extent', extent)
+  view.fit(extent, {
+    padding,
+    maxZoom: Math.min(focus.default_zoom + 2.5, 9),
+    duration,
+  })
+}
 
 function layerOlZIndex(layer: MapLayer) {
-  const offsets: Record<string, number> = { polygon: 100, line: 1100, point: 2100 }
-  return (offsets[layer.layer_type] ?? 100) + layer.z_index
+  // Above admin boundary overlays (3100–3400), below analysis/hover (4500+).
+  return 3600 + layer.z_index
+}
+
+function villageLabelsVisible(
+  vis: BoundaryVisibility,
+  showBoundaryLabels: boolean,
+  zoom: number,
+) {
+  return (
+    vis.villages &&
+    showBoundaryLabels &&
+    zoom >= boundaryLabelZoom(4)
+  )
 }
 
 function readGeojsonFeatures(data: unknown) {
@@ -72,6 +196,33 @@ function readGeojsonFeatures(data: unknown) {
     dataProjection: 'EPSG:4326',
     featureProjection: 'EPSG:3857',
   })
+}
+
+function addFeaturesInBatches(
+  source: VectorSource,
+  features: Feature[],
+  batchSize = 400,
+  onDone?: () => void,
+) {
+  let index = 0
+  let cancelled = false
+
+  function step() {
+    if (cancelled) return
+    const end = Math.min(index + batchSize, features.length)
+    source.addFeatures(features.slice(index, end))
+    index = end
+    if (index < features.length) {
+      requestAnimationFrame(step)
+    } else {
+      onDone?.()
+    }
+  }
+
+  step()
+  return () => {
+    cancelled = true
+  }
 }
 
 function layerIsOnMap(map: OlMap, layer: VectorLayer<VectorSource>) {
@@ -83,21 +234,7 @@ function isMobileViewport() {
 }
 
 function fitTanzaniaView(map: OlMap, mobile: boolean, animated = false) {
-  const view = map.getView()
-  const duration = animated ? (mobile ? 500 : 800) : 0
-  if (mobile) {
-    view.fit(TANZANIA_EXTENT, {
-      padding: [72, 16, 88, 16],
-      maxZoom: 5,
-      duration,
-    })
-  } else {
-    view.animate({
-      center: TANZANIA_CENTER,
-      zoom: 6,
-      duration,
-    })
-  }
+  fitCountryView(map, DEFAULT_COUNTRY_FOCUS, mobile, animated)
 }
 
 export default function MapViewer({
@@ -113,11 +250,29 @@ export default function MapViewer({
   onAreaInspect,
   continuousInspect = false,
   mapFocus,
+  analysisZone = null,
+  countryFocus = null,
+  countries = [],
+  countryCode = 'TZ',
+  onCountryChange,
+  boundariesGeoJson = null,
+  villagesGeoJson = null,
+  boundaryVisibility = DEFAULT_BOUNDARY_VISIBILITY,
+  onBoundaryVisibilityChange,
+  boundaryFocus = null,
+  onClearBoundaryFocus,
+  villagesLoading = false,
+  villagesError = false,
+  adminFitBounds = null,
+  onMapControlsReady,
+  onViewReset,
   className = 'h-[500px] w-full',
   fullScreen = false,
-  onOpenAssistant,
-  assistantActive = false,
   minimalChrome = false,
+  showBoundaryControls = false,
+  boundaryControlLevels,
+  staticMap = false,
+  mineralHighlight = null,
 }: MapViewerProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<OlMap | null>(null)
@@ -130,10 +285,37 @@ export default function MapViewer({
   const programmaticMoveRef = useRef(false)
   continuousInspectRef.current = continuousInspect
   const hoverLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const analysisZoneLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const countryLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const regionLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const districtLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const wardLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const villageLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const villageLabelLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const villageBatchCancelRef = useRef<(() => void) | null>(null)
+  const boundaryVisibilityRef = useRef(boundaryVisibility)
+  const boundaryFocusRef = useRef(boundaryFocus)
+  const mineralHighlightRef = useRef(mineralHighlight)
+  const mapZoomRef = useRef(6)
+  const showBasemapLabelsRef = useRef(true)
+  const showBoundaryLabelsRef = useRef(true)
+  boundaryVisibilityRef.current = boundaryVisibility
+  boundaryFocusRef.current = boundaryFocus
+  mineralHighlightRef.current = mineralHighlight
+  const countryFocusRef = useRef<CountryFocus>(DEFAULT_COUNTRY_FOCUS)
+  countryFocusRef.current = countryFocus ?? DEFAULT_COUNTRY_FOCUS
   const hadMapFocusRef = useRef(false)
   const basemapRef = useRef<BasemapId>('light')
   const [mapEpoch, setMapEpoch] = useState(0)
   const [basemap, setBasemap] = useBasemapState()
+  const {
+    showBasemapLabels,
+    setShowBasemapLabels,
+    showBoundaryLabels,
+    setShowBoundaryLabels,
+  } = useMapLabelState()
+  const [coordinateSystem, setCoordinateSystem] = useCoordinateSystemState()
+  const [pointerCoordinate, setPointerCoordinate] = useState<number[] | null>(null)
   const { theme } = useTheme()
   const themeRef = useRef(theme)
   const [layers, setLayers] = useState(initialLayers)
@@ -142,13 +324,19 @@ export default function MapViewer({
   )
   const visibleLayers = externalVisible ?? internalVisible
   const isMobile = useMediaQuery('(max-width: 767px)')
-  const { locale } = useTranslation()
+  const { locale, m } = useTranslation()
   const prevLocaleRef = useRef(locale)
   const isMobileRef = useRef(isMobile)
   isMobileRef.current = isMobile
 
   basemapRef.current = basemap
+  showBasemapLabelsRef.current = showBasemapLabels
+  showBoundaryLabelsRef.current = showBoundaryLabels
   themeRef.current = theme
+
+  useEffect(() => {
+    registerCoordinateProjections()
+  }, [])
 
   const layersSignature = useMemo(
     () =>
@@ -158,6 +346,20 @@ export default function MapViewer({
         .join('|'),
     [layers]
   )
+
+  const availableBoundaryLevels = useMemo(
+    () => boundaryLevelsFromGeoJson(boundariesGeoJson, countryFocus?.boundary_levels ?? []),
+    [boundariesGeoJson, countryFocus?.boundary_levels]
+  )
+
+  const boundaryToggleLevels = useMemo(
+    () => boundaryControlLevels ?? availableBoundaryLevels,
+    [boundaryControlLevels, availableBoundaryLevels]
+  )
+
+  const boundaryUiLevels = boundaryToggleLevels
+
+  const lockedBoundaryLevels = useMemo(() => [] as BoundaryLevelKey[], [])
 
   const styleFn = useCallback(
     (layer: MapLayer) => buildLayerStyleFunction(layer, basemapRef.current, themeRef.current),
@@ -171,6 +373,23 @@ export default function MapViewer({
     })
     hoverLayerRef.current?.getSource()?.clear()
   }, [styleFn])
+
+  const syncVillageLayers = useCallback((zoom?: number) => {
+    const map = mapInstance.current
+    const villageLayer = villageLayerRef.current
+    const villageLabelLayer = villageLabelLayerRef.current
+    if (!villageLayer) return
+    const z = zoom ?? map?.getView().getZoom() ?? mapZoomRef.current ?? 6
+    mapZoomRef.current = z
+    const vis = boundaryVisibilityRef.current
+    const showStrokes = vis.villages && z >= boundaryMinZoom(4)
+    villageLayer.setVisible(showStrokes)
+    if (villageLabelLayer) {
+      villageLabelLayer.setVisible(villageLabelsVisible(vis, showBoundaryLabelsRef.current, z))
+      villageLabelLayer.changed()
+    }
+    villageLayer.changed()
+  }, [])
 
   const populateLayerSource = useCallback((layerId: number, layer: MapLayer, source: VectorSource, force = false) => {
     loadLayerGeojson(layer.slug, force)
@@ -191,8 +410,9 @@ export default function MapViewer({
   const inspectAt = useCallback(
     (coordinate: number[], featureIds?: number[]) => {
       if (!onAreaInspect || !mapInstance.current) return
+      const map = mapInstance.current
       const [lng, lat] = toLonLat(coordinate)
-      const zoom = Math.round(mapInstance.current.getView().getZoom() ?? 8)
+      const zoom = Math.round(map.getView().getZoom() ?? 8)
       onAreaInspect(lat, lng, zoom, featureIds)
     },
     [onAreaInspect]
@@ -209,14 +429,16 @@ export default function MapViewer({
   useEffect(() => {
     if (!mapRef.current || mapInstance.current) return
 
-    const bm = getBasemap(basemapRef.current)
-    const baseLayer = new TileLayer({ source: bm.createSource(), zIndex: 0 })
+    const baseLayer = new TileLayer({
+      source: createBasemapSource(basemapRef.current, showBasemapLabelsRef.current),
+      zIndex: 0,
+    })
     baseLayerRef.current = baseLayer
 
     const labelsLayer = new TileLayer({
       source: createLabelsSource(),
       zIndex: 1,
-      visible: basemapRef.current === 'topo',
+      visible: basemapLabelOverlayVisible(basemapRef.current, showBasemapLabelsRef.current),
       opacity: 0.95,
     })
     labelsLayerRef.current = labelsLayer
@@ -229,26 +451,154 @@ export default function MapViewer({
     })
     hoverLayerRef.current = hoverLayer
 
+    const analysisSource = new VectorSource()
+    const analysisZoneLayer = new VectorLayer({
+      source: analysisSource,
+      zIndex: 4500,
+      style: (feature) => {
+        const extended = feature.get('extended') === true
+        return new Style({
+          stroke: new Stroke({
+            color: extended ? 'rgba(13, 148, 136, 0.98)' : 'rgba(20, 184, 166, 0.95)',
+            width: extended ? 3 : 2.5,
+            lineDash: extended ? undefined : [12, 8],
+          }),
+          fill: new Fill({
+            color: extended ? 'rgba(13, 148, 136, 0.16)' : 'rgba(20, 184, 166, 0.12)',
+          }),
+        })
+      },
+    })
+    analysisZoneLayerRef.current = analysisZoneLayer
+
+    const countrySource = new VectorSource()
+    const countryLayer = new VectorLayer({
+      source: countrySource,
+      zIndex: 3400,
+      style: () => countryBoundaryStyle(),
+    })
+    countryLayerRef.current = countryLayer
+
+    const regionSource = new VectorSource()
+    const regionLayer = new VectorLayer({
+      source: regionSource,
+      zIndex: 3300,
+      declutter: 'boundary-layers',
+      style: (feature) => {
+        const focus = boundaryFocusRef.current
+        const id = Number(feature.get('id') ?? -1)
+        const mineralTint = mineralTintForFeature(feature, 1, mineralHighlightRef.current)
+        const labels =
+          showBoundaryLabelsRef.current && (mapZoomRef.current ?? 6) >= boundaryLabelZoom(1)
+        return regionBoundaryStyle(
+          feature,
+          labels,
+          focus?.level === 1 && focus.id === id,
+          mineralTint,
+        )
+      },
+    })
+    regionLayerRef.current = regionLayer
+
+    const districtSource = new VectorSource()
+    const districtLayer = new VectorLayer({
+      source: districtSource,
+      zIndex: 3200,
+      visible: false,
+      declutter: 'boundary-layers',
+      style: (feature) => {
+        const focus = boundaryFocusRef.current
+        const id = Number(feature.get('id') ?? -1)
+        const labels =
+          showBoundaryLabelsRef.current && (mapZoomRef.current ?? 6) >= boundaryLabelZoom(2)
+        const mineralTint = mineralTintForFeature(feature, 2, mineralHighlightRef.current)
+        return districtBoundaryStyle(feature, labels, focus?.level === 2 && focus.id === id, mineralTint)
+      },
+    })
+    districtLayerRef.current = districtLayer
+
+    const wardSource = new VectorSource()
+    const wardLayer = new VectorLayer({
+      source: wardSource,
+      zIndex: 3150,
+      visible: false,
+      declutter: 'boundary-layers',
+      style: (feature) => {
+        const focus = boundaryFocusRef.current
+        const labels =
+          showBoundaryLabelsRef.current && (mapZoomRef.current ?? 6) >= boundaryLabelZoom(3)
+        return wardBoundaryStyle(feature, labels, focus?.level === 3)
+      },
+    })
+    wardLayerRef.current = wardLayer
+
+    const villageSource = new VectorSource()
+    const villageLayer = new VectorLayer({
+      source: villageSource,
+      zIndex: 3100,
+      visible: false,
+      updateWhileAnimating: true,
+      updateWhileInteracting: true,
+      style: (feature) => {
+        const focus = boundaryFocusRef.current
+        const id = Number(feature.get('id') ?? -1)
+        const mineralTint = mineralTintForFeature(feature, 4, mineralHighlightRef.current)
+        return villageBoundaryStyle(
+          feature,
+          focus?.level === 4 && focus.id === id,
+          mineralTint,
+        )
+      },
+    })
+    villageLayerRef.current = villageLayer
+
+    const villageLabelLayer = new VectorLayer({
+      source: villageSource,
+      zIndex: 4300,
+      visible: false,
+      declutter: 'boundary-layers',
+      updateWhileAnimating: true,
+      updateWhileInteracting: true,
+      style: (feature) => {
+        const zoom = mapZoomRef.current ?? 6
+        const vis = boundaryVisibilityRef.current
+        if (!villageLabelsVisible(vis, showBoundaryLabelsRef.current, zoom)) return undefined
+        return villageBoundaryLabelStyle(feature)
+      },
+    })
+    villageLabelLayerRef.current = villageLabelLayer
+
     const mobile = isMobileViewport()
 
     const map = new OlMap({
       target: mapRef.current,
-      layers: [baseLayer, labelsLayer, hoverLayer],
+      layers: [
+        baseLayer,
+        labelsLayer,
+        villageLayer,
+        wardLayer,
+        districtLayer,
+        regionLayer,
+        countryLayer,
+        analysisZoneLayer,
+        villageLabelLayer,
+        hoverLayer,
+      ],
       view: new View({
         center: TANZANIA_CENTER,
-        zoom: mobile ? 5 : 6,
+        zoom: mobile ? 5.5 : 6.5,
         minZoom: mobile ? 4 : 5,
         maxZoom: 18,
         extent: TANZANIA_EXTENT,
         constrainOnlyCenter: true,
       }),
-      controls: defaultControls({ zoom: !mobile, attribution: false }).extend([
+      controls: defaultControls({ zoom: false, attribution: false }).extend([
         new ScaleLine({ units: 'metric', bar: true, text: true, minWidth: 120 }),
       ]),
       interactions: defaultInteractions({ doubleClickZoom: !mobile }),
     })
 
-    fitTanzaniaView(map, mobile)
+    fitCountryView(map, countryFocusRef.current, mobile)
 
     const handleMapInspect = (evt: { coordinate: number[]; pixel: number[] }) => {
       const picked = pickFeatureAtPixel(
@@ -268,8 +618,31 @@ export default function MapViewer({
 
     map.on('singleclick', handleMapInspect)
 
+    const syncBoundaryLayerVisibility = () => {
+      const zoom = map.getView().getZoom() ?? 6
+      mapZoomRef.current = zoom
+      const vis = boundaryVisibilityRef.current
+      countryLayer.setVisible(vis.country)
+      regionLayer.setVisible(vis.regions && zoom >= boundaryMinZoom(1))
+      districtLayer.setVisible(vis.districts && zoom >= boundaryMinZoom(2))
+      wardLayer.setVisible(vis.wards && zoom >= boundaryMinZoom(3))
+      syncVillageLayers(zoom)
+      regionLayer.changed()
+      districtLayer.changed()
+      wardLayer.changed()
+    }
+    map.getView().on('change:resolution', syncBoundaryLayerVisibility)
+    syncBoundaryLayerVisibility()
+
     map.on('pointermove', (evt) => {
-      if (evt.dragging) return
+      const target = map.getTargetElement()
+      if (evt.dragging) {
+        target.style.cursor = 'grabbing'
+        return
+      }
+
+      setPointerCoordinate(evt.coordinate)
+
       const hoverSource = hoverLayer.getSource()
       if (!hoverSource) return
       hoverSource.clear()
@@ -287,10 +660,14 @@ export default function MapViewer({
         if (meta) {
           hoverLayer.setStyle(buildHighlightStyle(meta, basemapRef.current))
         }
-        map.getTargetElement().style.cursor = 'pointer'
+        target.style.cursor = 'pointer'
       } else {
-        map.getTargetElement().style.cursor = ''
+        target.style.cursor = 'grab'
       }
+    })
+
+    map.on('pointerdrag', () => {
+      map.getTargetElement().style.cursor = 'grabbing'
     })
 
     map.on('moveend', () => {
@@ -307,11 +684,20 @@ export default function MapViewer({
     setMapEpoch((epoch) => epoch + 1)
     return () => {
       if (inspectTimer.current) clearTimeout(inspectTimer.current)
+      villageBatchCancelRef.current?.()
+      villageBatchCancelRef.current = null
       map.setTarget(undefined)
       mapInstance.current = null
       baseLayerRef.current = null
       labelsLayerRef.current = null
       hoverLayerRef.current = null
+      analysisZoneLayerRef.current = null
+      countryLayerRef.current = null
+      regionLayerRef.current = null
+      districtLayerRef.current = null
+      wardLayerRef.current = null
+      villageLayerRef.current = null
+      villageLabelLayerRef.current = null
       vectorLayersRef.current.clear()
       layerMetaRef.current.clear()
     }
@@ -353,10 +739,10 @@ export default function MapViewer({
       hadMapFocusRef.current = false
       programmaticMoveRef.current = true
       const mobile = isMobileRef.current
-      fitTanzaniaView(map, mobile, true)
+      fitCountryView(map, countryFocusRef.current, mobile, true)
       window.setTimeout(() => {
         programmaticMoveRef.current = false
-      }, mobile ? 600 : 900)
+      }, isMobileRef.current ? 600 : 900)
       return
     }
 
@@ -367,17 +753,13 @@ export default function MapViewer({
 
     programmaticMoveRef.current = true
     const view = map.getView()
-    const mobile = isMobileRef.current
-    const currentZoom = view.getZoom() ?? (mobile ? 5 : 6)
-    const targetZoom = mobile
-      ? Math.min(Math.max(currentZoom, Math.min(zoom, 7)), 7)
-      : Math.max(currentZoom, zoom)
+    const targetZoom = zoom
 
     view.animate(
       {
         center,
         zoom: targetZoom,
-        duration: mobile ? 500 : 800,
+        duration: isMobileRef.current ? 500 : 800,
       },
       () => {
         window.setTimeout(() => {
@@ -385,29 +767,214 @@ export default function MapViewer({
         }, 200)
       }
     )
-  }, [mapFocus])
+  }, [mapFocus, countryFocus])
 
-  // Switch basemap
+  useEffect(() => {
+    const map = mapInstance.current
+    const countryLayer = countryLayerRef.current
+    const regionLayer = regionLayerRef.current
+    const districtLayer = districtLayerRef.current
+    const wardLayer = wardLayerRef.current
+    const villageLayer = villageLayerRef.current
+    if (!map || !countryLayer || !regionLayer || !districtLayer || !wardLayer || !villageLayer) return
+
+    const countrySource = countryLayer.getSource()
+    const regionSource = regionLayer.getSource()
+    const districtSource = districtLayer.getSource()
+    const wardSource = wardLayer.getSource()
+    const villageSource = villageLayer.getSource()
+    if (!countrySource || !regionSource || !districtSource || !wardSource || !villageSource) return
+
+    countrySource.clear()
+    regionSource.clear()
+    districtSource.clear()
+    wardSource.clear()
+
+    const collection = boundariesGeoJson
+    if (collection?.features?.length) {
+      const features = readGeojsonFeatures(collection)
+      for (const feature of features) {
+        const level = Number(feature.get('level') ?? 0)
+        const featureId = Number(feature.get('id') ?? -1)
+        if (boundaryFocus && level === boundaryFocus.level && featureId !== boundaryFocus.id) {
+          continue
+        }
+        if (level === 0) countrySource.addFeature(feature)
+        else if (level === 1) regionSource.addFeature(feature)
+        else if (level === 2) districtSource.addFeature(feature)
+        else if (level === 3) wardSource.addFeature(feature)
+      }
+    }
+
+    const zoom = map.getView().getZoom() ?? 6
+    mapZoomRef.current = zoom
+    countryLayer.setVisible(boundaryVisibility.country)
+    regionLayer.setVisible(boundaryVisibility.regions && zoom >= boundaryMinZoom(1))
+    districtLayer.setVisible(boundaryVisibility.districts && zoom >= boundaryMinZoom(2))
+    wardLayer.setVisible(boundaryVisibility.wards && zoom >= boundaryMinZoom(3))
+    syncVillageLayers(zoom)
+    regionLayer.changed()
+    districtLayer.changed()
+    wardLayer.changed()
+  }, [boundariesGeoJson, boundaryVisibility, boundaryFocus, syncVillageLayers])
+
+  useEffect(() => {
+    const map = mapInstance.current
+    const villageLayer = villageLayerRef.current
+    if (!map || !villageLayer) return
+
+    const villageSource = villageLayer.getSource()
+    if (!villageSource) return
+
+    villageBatchCancelRef.current?.()
+    villageBatchCancelRef.current = null
+    villageSource.clear()
+
+    const zoom = map.getView().getZoom() ?? 6
+    const showVillages = boundaryVisibility.villages && zoom >= boundaryMinZoom(4)
+    syncVillageLayers(zoom)
+
+    if (!showVillages || !villagesGeoJson?.features?.length) {
+      return
+    }
+
+    const parsed = readGeojsonFeatures(villagesGeoJson)
+    const villageFeatures: Feature[] = []
+    for (const feature of parsed) {
+      const featureId = Number(feature.get('id') ?? -1)
+      if (boundaryFocus?.level === 4 && featureId !== boundaryFocus.id) continue
+      villageFeatures.push(feature as Feature)
+    }
+
+    villageBatchCancelRef.current = addFeaturesInBatches(villageSource, villageFeatures, 500, () => {
+      syncVillageLayers()
+    })
+  }, [villagesGeoJson, boundaryVisibility.villages, boundaryFocus, syncVillageLayers])
+
+  useEffect(() => {
+    boundaryFocusRef.current = boundaryFocus
+    regionLayerRef.current?.changed()
+    districtLayerRef.current?.changed()
+    wardLayerRef.current?.changed()
+    villageLayerRef.current?.changed()
+    villageLabelLayerRef.current?.changed()
+  }, [boundaryFocus])
+
+  useEffect(() => {
+    mineralHighlightRef.current = mineralHighlight
+    regionLayerRef.current?.changed()
+    districtLayerRef.current?.changed()
+    villageLayerRef.current?.changed()
+  }, [mineralHighlight])
+
+  useEffect(() => {
+    const map = mapInstance.current
+    if (!map || !countryFocus) return
+
+    const extent = boundsToExtent(countryFocus.bounds)
+    map.getView().set('extent', extent)
+
+    if (!analysisZone) {
+      programmaticMoveRef.current = true
+      fitCountryView(map, countryFocus, isMobileRef.current, true)
+      window.setTimeout(() => {
+        programmaticMoveRef.current = false
+      }, isMobileRef.current ? 650 : 900)
+    }
+  }, [countryFocus, analysisZone])
+
+  useEffect(() => {
+    const map = mapInstance.current
+    if (!map || !adminFitBounds) return
+    programmaticMoveRef.current = true
+    fitAdminBounds(map, adminFitBounds, isMobileRef.current)
+    window.setTimeout(() => {
+      programmaticMoveRef.current = false
+    }, isMobileRef.current ? 650 : 850)
+  }, [adminFitBounds])
+
+  useEffect(() => {
+    const map = mapInstance.current
+    const layer = analysisZoneLayerRef.current
+    const source = layer?.getSource()
+    if (!map || !layer || !source) return
+
+    source.clear()
+    if (!analysisZone || boundaryFocus) return
+
+    const radiusM = analysisZoneRadiusKm(analysisZone.areaKm2) * 1000
+    const feature = new Feature({
+      geometry: new Circle(fromLonLat([analysisZone.lng, analysisZone.lat]), radiusM),
+      extended: analysisZone.extended === true,
+    })
+    source.addFeature(feature)
+
+    const geometry = feature.getGeometry()
+    const extent = geometry?.getExtent()
+    if (!extent || !extent.every((value) => Number.isFinite(value))) return
+
+    const size = map.getSize()
+    const targetZoom = size
+      ? recommendedZoomForAnalysisZone(
+          analysisZone.lat,
+          analysisZone.areaKm2,
+          size[0],
+          size[1]
+        )
+      : 12
+    const center = fromLonLat([analysisZone.lng, analysisZone.lat])
+
+    programmaticMoveRef.current = true
+    const mobile = isMobileRef.current
+    const view = map.getView()
+    const padding = mobile ? [72, 28, 176, 28] : [48, 56, 152, 56]
+
+    view.fit(extent, {
+      padding,
+      maxZoom: 15.5,
+      duration: mobile ? 550 : 750,
+      callback: () => {
+        const fittedZoom = view.getZoom() ?? 6
+        if (fittedZoom < targetZoom - 0.15) {
+          view.animate({ center, zoom: targetZoom, duration: 450 })
+        }
+        window.setTimeout(() => {
+          programmaticMoveRef.current = false
+        }, 500)
+      },
+    })
+  }, [analysisZone, boundaryFocus])
+
+  // Switch basemap / place-name tiles
   useEffect(() => {
     const base = baseLayerRef.current
     const labels = labelsLayerRef.current
     if (!base) return
 
-    const bm = getBasemap(basemap)
-    base.setSource(bm.createSource())
+    base.setSource(createBasemapSource(basemap, showBasemapLabels))
     if (labels) {
-      labels.setVisible(basemap === 'topo')
+      labels.setVisible(basemapLabelOverlayVisible(basemap, showBasemapLabels))
     }
 
-    // Restyle vector layers for new basemap
     restyleVectorLayers()
-  }, [basemap, restyleVectorLayers])
+  }, [basemap, showBasemapLabels, restyleVectorLayers])
+
+  useEffect(() => {
+    syncVillageLayers()
+    regionLayerRef.current?.changed()
+    districtLayerRef.current?.changed()
+    wardLayerRef.current?.changed()
+  }, [showBoundaryLabels, syncVillageLayers])
+
+  useEffect(() => {
+    syncVillageLayers()
+  }, [boundaryVisibility, syncVillageLayers])
 
   useEffect(() => {
     restyleVectorLayers()
   }, [theme, restyleVectorLayers])
 
-  // Data layers — sync incrementally; cache GeoJSON per slug
+  // Data layers - sync incrementally; cache GeoJSON per slug
   useEffect(() => {
     const map = mapInstance.current
     if (!map || mapEpoch === 0) return
@@ -452,7 +1019,7 @@ export default function MapViewer({
         visible: visibleLayers.has(layer.id),
         zIndex: layerOlZIndex(layer),
         properties: { layerId: layer.id },
-        declutter: layer.layer_type === 'point',
+        declutter: layer.layer_type === 'point' ? 'mineral-data' : false,
       })
       map.addLayer(vectorLayer)
       vectorLayersRef.current.set(layer.id, vectorLayer)
@@ -529,6 +1096,74 @@ export default function MapViewer({
     view.animate({ zoom: (view.getZoom() ?? 6) + delta, duration: 200 })
   }, [])
 
+  const resetMapView = useCallback(() => {
+    onViewReset?.()
+    const map = mapInstance.current
+    if (!map) return
+    programmaticMoveRef.current = true
+    fitCountryView(map, countryFocusRef.current, isMobileRef.current, true)
+    window.setTimeout(() => {
+      programmaticMoveRef.current = false
+    }, isMobileRef.current ? 650 : 900)
+  }, [onViewReset])
+
+  const captureSnapshot = useCallback((): Promise<string | null> => {
+    const map = mapInstance.current
+    if (!map) return Promise.resolve(null)
+
+    return new Promise((resolve) => {
+      map.once('rendercomplete', () => {
+        try {
+          const size = map.getSize()
+          if (!size) {
+            resolve(null)
+            return
+          }
+          const [width, height] = size
+          const composite = document.createElement('canvas')
+          composite.width = width
+          composite.height = height
+          const ctx = composite.getContext('2d')
+          if (!ctx) {
+            resolve(null)
+            return
+          }
+          map.getViewport().querySelectorAll<HTMLCanvasElement>('.ol-layer canvas, canvas.ol-fixedoverlay').forEach((canvas) => {
+            if (!canvas.width || !canvas.height) return
+            const parent = canvas.parentElement as HTMLElement | null
+            const opacity = parent?.style.opacity
+            ctx.globalAlpha = opacity === '' || !opacity ? 1 : Number(opacity)
+            const matrix = canvas.style.transform.match(/matrix\(([^)]+)\)/)
+            if (matrix) {
+              const values = matrix[1].split(',').map((v) => parseFloat(v.trim()))
+              if (values.length === 6) {
+                ctx.setTransform(values[0], values[1], values[2], values[3], values[4], values[5])
+                ctx.drawImage(canvas, 0, 0)
+                ctx.setTransform(1, 0, 0, 1, 0, 0)
+                return
+              }
+            }
+            ctx.drawImage(canvas, 0, 0)
+          })
+          resolve(composite.toDataURL('image/png'))
+        } catch {
+          resolve(null)
+        }
+      })
+      map.renderSync()
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!onMapControlsReady || mapEpoch === 0) return
+    onMapControlsReady({
+      zoomIn: () => zoomMap(1),
+      zoomOut: () => zoomMap(-1),
+      resetView: resetMapView,
+      captureSnapshot,
+    })
+  }, [mapEpoch, onMapControlsReady, zoomMap, resetMapView, captureSnapshot])
+
   const legendLayers = [...layers]
     .sort((a, b) => a.z_index - b.z_index)
     .filter((l) => visibleLayers.has(l.id))
@@ -537,7 +1172,44 @@ export default function MapViewer({
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
-      {showLayerPanel && !minimalChrome && !isMobile && (
+      {!minimalChrome && (
+        <MapCoordinateReadout
+          mapCoordinate={pointerCoordinate}
+          coordinateSystem={coordinateSystem}
+          className={
+            isMobile
+              ? 'absolute z-20 left-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
+              : ''
+          }
+        />
+      )}
+      {minimalChrome && (
+        <div className="absolute z-10 bottom-3 right-3 pointer-events-none">
+          <MapZoomControls
+            onZoomIn={() => zoomMap(1)}
+            onZoomOut={() => zoomMap(-1)}
+            onResetView={resetMapView}
+          />
+        </div>
+      )}
+      {minimalChrome && showBoundaryControls && boundaryToggleLevels.length > 0 && (
+        <div className="absolute z-10 top-3 right-3 map-chrome rounded-xl p-2.5 pointer-events-auto">
+          <span className="block text-[11px] font-semibold uppercase tracking-wide map-text-muted px-0.5 mb-1.5">
+            {m.map.boundaryLayersTitle}
+          </span>
+          <BoundaryVisibilityToggles
+            availableLevels={boundaryToggleLevels}
+            value={boundaryVisibility}
+            onChange={onBoundaryVisibilityChange ?? (() => {})}
+            showBasemapLabels={showBasemapLabels}
+            onShowBasemapLabelsChange={setShowBasemapLabels}
+            showBoundaryLabels={showBoundaryLabels}
+            onShowBoundaryLabelsChange={setShowBoundaryLabels}
+            compact
+          />
+        </div>
+      )}
+      {showLayerPanel && layers.length > 0 && !minimalChrome && !isMobile && (
         <LayerPanel
           layers={layers}
           visibleLayers={visibleLayers}
@@ -545,13 +1217,31 @@ export default function MapViewer({
           onToggleType={toggleLayerType}
           onReorder={reorderLayers}
           allowReorder={allowReorder || editable}
+          layersLocked={staticMap}
         />
       )}
       {!minimalChrome && !isMobile && (
         <MapRightDock
           basemap={basemap}
           onBasemapChange={setBasemap}
+          showBasemapLabels={showBasemapLabels}
+          onShowBasemapLabelsChange={setShowBasemapLabels}
+          showBoundaryLabels={showBoundaryLabels}
+          onShowBoundaryLabelsChange={setShowBoundaryLabels}
           layers={legendLayers}
+          countries={countries}
+          countryCode={countryCode}
+          onCountryChange={onCountryChange ?? (() => {})}
+          availableBoundaryLevels={boundaryUiLevels}
+          boundaryVisibility={boundaryVisibility}
+          onBoundaryVisibilityChange={onBoundaryVisibilityChange ?? (() => {})}
+          boundaryFocus={boundaryFocus}
+          onClearBoundaryFocus={onClearBoundaryFocus}
+          villagesLoading={villagesLoading}
+          villagesError={villagesError}
+          lockedBoundaryLevels={lockedBoundaryLevels}
+          coordinateSystem={coordinateSystem}
+          onCoordinateSystemChange={setCoordinateSystem}
         />
       )}
       {isMobile && showLayerPanel && !minimalChrome && (
@@ -562,11 +1252,28 @@ export default function MapViewer({
           onToggleLayerType={toggleLayerType}
           basemap={basemap}
           onBasemapChange={setBasemap}
+          showBasemapLabels={showBasemapLabels}
+          onShowBasemapLabelsChange={setShowBasemapLabels}
+          showBoundaryLabels={showBoundaryLabels}
+          onShowBoundaryLabelsChange={setShowBoundaryLabels}
           legendLayers={legendLayers}
           onZoomIn={() => zoomMap(1)}
           onZoomOut={() => zoomMap(-1)}
-          onOpenAssistant={onOpenAssistant}
-          assistantActive={assistantActive}
+          onResetView={resetMapView}
+          countries={countries}
+          countryCode={countryCode}
+          onCountryChange={onCountryChange ?? (() => {})}
+          availableBoundaryLevels={boundaryUiLevels}
+          boundaryVisibility={boundaryVisibility}
+          onBoundaryVisibilityChange={onBoundaryVisibilityChange ?? (() => {})}
+          boundaryFocus={boundaryFocus}
+          onClearBoundaryFocus={onClearBoundaryFocus}
+          villagesLoading={villagesLoading}
+          villagesError={villagesError}
+          lockedBoundaryLevels={lockedBoundaryLevels}
+          staticMap={staticMap}
+          coordinateSystem={coordinateSystem}
+          onCoordinateSystemChange={setCoordinateSystem}
         />
       )}
     </div>

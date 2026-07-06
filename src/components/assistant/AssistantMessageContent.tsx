@@ -78,20 +78,29 @@ function formatInline(text: string, inverted = false): ReactNode[] {
 interface AssistantMessageContentProps {
   content: string
   role: 'user' | 'assistant'
+  compact?: boolean
+  className?: string
 }
 
-export default function AssistantMessageContent({ content, role }: AssistantMessageContentProps) {
+export default function AssistantMessageContent({
+  content,
+  role,
+  compact = false,
+  className = '',
+}: AssistantMessageContentProps) {
   if (role === 'user') {
-    return <span className="whitespace-pre-wrap break-words">{content}</span>
+    return <span className={`whitespace-pre-wrap break-words ${className}`}>{content}</span>
   }
 
   const blocks = parseBlocks(content)
   if (blocks.length === 0) {
-    return <span>{content}</span>
+    return <span className={className}>{content}</span>
   }
 
   return (
-    <div className="space-y-3 break-words leading-relaxed">
+    <div
+      className={`break-words leading-relaxed ${compact ? 'space-y-2 text-sm' : 'space-y-3'} ${className}`}
+    >
       {blocks.map((block, index) => {
         if (block.type === 'ul') {
           return (

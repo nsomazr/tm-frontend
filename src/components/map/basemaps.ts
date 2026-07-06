@@ -19,7 +19,7 @@ export const BASEMAPS: BasemapOption[] = [
     description: 'OpenStreetMap roads & labels',
     preview: 'linear-gradient(135deg, #f0f4f8 0%, #cbd5e1 100%)',
     attributions: '© OpenStreetMap',
-    createSource: () => new OSM(),
+    createSource: () => createBasemapSource('streets'),
   },
   {
     id: 'light',
@@ -27,12 +27,7 @@ export const BASEMAPS: BasemapOption[] = [
     description: 'Clean minimal base',
     preview: 'linear-gradient(135deg, #fafafa 0%, #e2e8f0 100%)',
     attributions: '© CARTO © OSM',
-    createSource: () =>
-      new XYZ({
-        url: 'https://{a-d}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
-        maxZoom: 20,
-        attributions: '© CARTO © OpenStreetMap',
-      }),
+    createSource: () => createBasemapSource('light'),
   },
   {
     id: 'satellite',
@@ -40,12 +35,7 @@ export const BASEMAPS: BasemapOption[] = [
     description: 'Esri world imagery',
     preview: 'linear-gradient(135deg, #1a3a2a 0%, #0f172a 50%, #1e293b 100%)',
     attributions: '© Esri',
-    createSource: () =>
-      new XYZ({
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19,
-        attributions: 'Tiles © Esri. Source: Esri, Maxar, Earthstar Geographics',
-      }),
+    createSource: () => createBasemapSource('satellite'),
   },
   {
     id: 'terrain',
@@ -53,12 +43,7 @@ export const BASEMAPS: BasemapOption[] = [
     description: 'Hillshade & elevation',
     preview: 'linear-gradient(135deg, #d4c4a8 0%, #8b7355 50%, #4a6741 100%)',
     attributions: '© OpenTopoMap © OSM',
-    createSource: () =>
-      new XYZ({
-        url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
-        maxZoom: 17,
-        attributions: '© OpenTopoMap © OpenStreetMap',
-      }),
+    createSource: () => createBasemapSource('terrain'),
   },
   {
     id: 'topo',
@@ -66,12 +51,7 @@ export const BASEMAPS: BasemapOption[] = [
     description: 'Imagery + place names',
     preview: 'linear-gradient(135deg, #2d5016 0%, #1e3a5f 100%)',
     attributions: '© Esri © CARTO',
-    createSource: () =>
-      new XYZ({
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maxZoom: 19,
-        attributions: '© Esri',
-      }),
+    createSource: () => createBasemapSource('topo'),
   },
   {
     id: 'dark',
@@ -79,17 +59,61 @@ export const BASEMAPS: BasemapOption[] = [
     description: 'Night-style base',
     preview: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
     attributions: '© CARTO © OSM',
-    createSource: () =>
-      new XYZ({
-        url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-        maxZoom: 20,
-        attributions: '© CARTO © OpenStreetMap',
-      }),
+    createSource: () => createBasemapSource('dark'),
   },
 ]
 
 export function getBasemap(id: BasemapId): BasemapOption {
   return BASEMAPS.find((b) => b.id === id) ?? BASEMAPS[0]
+}
+
+export function basemapLabelOverlayVisible(basemap: BasemapId, showPlaceNames: boolean) {
+  if (!showPlaceNames) return false
+  return basemap === 'topo' || basemap === 'satellite'
+}
+
+export function createBasemapSource(id: BasemapId, showPlaceNames = true): OSM | XYZ {
+  switch (id) {
+    case 'light':
+      return new XYZ({
+        url: `https://{a-d}.basemaps.cartocdn.com/${showPlaceNames ? 'light_all' : 'light_nolabels'}/{z}/{x}/{y}.png`,
+        maxZoom: 20,
+        attributions: '© CARTO © OpenStreetMap',
+      })
+    case 'dark':
+      return new XYZ({
+        url: `https://{a-d}.basemaps.cartocdn.com/${showPlaceNames ? 'dark_all' : 'dark_nolabels'}/{z}/{x}/{y}.png`,
+        maxZoom: 20,
+        attributions: '© CARTO © OpenStreetMap',
+      })
+    case 'streets':
+      if (showPlaceNames) return new OSM()
+      return new XYZ({
+        url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png',
+        maxZoom: 20,
+        attributions: '© CARTO © OpenStreetMap',
+      })
+    case 'satellite':
+      return new XYZ({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        attributions: 'Tiles © Esri. Source: Esri, Maxar, Earthstar Geographics',
+      })
+    case 'terrain':
+      return new XYZ({
+        url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        maxZoom: 17,
+        attributions: '© OpenTopoMap © OpenStreetMap',
+      })
+    case 'topo':
+      return new XYZ({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maxZoom: 19,
+        attributions: '© Esri',
+      })
+    default:
+      return new OSM()
+  }
 }
 
 export function isImageryBasemap(id: BasemapId): boolean {

@@ -1,40 +1,53 @@
+import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { mineralsApi } from '../../api'
+import { mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
+import {
+  layerDisplayColor,
+  layerStyleWithColor,
+} from '../../components/admin/layerColors'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 import { useAlternateName } from '../../i18n/useAlternateName'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import type { Mineral } from '../../types'
+import { toast } from '../../components/ui/toast'
+import type { MapLayer } from '../../types'
 
-function MineralEditor({
-  mineral,
+const LAYER_TYPE_LABELS: Record<string, string> = {
+  polygon: 'Polygon',
+  point: 'Point',
+  line: 'Line',
+}
+
+function CommodityEditor({
+  layer,
   onClose,
 }: {
-  mineral: Mineral
+  layer: MapLayer
   onClose: () => void
 }) {
   const qc = useQueryClient()
   const { isManager } = useAuth()
-  const [name, setName] = useState(mineral.name)
-  const [nameSw, setNameSw] = useState(mineral.name_sw)
-  const [color, setColor] = useState(mineral.color)
-  const [description, setDescription] = useState(mineral.description)
-  const [syncLayers, setSyncLayers] = useState(true)
+  const displayName = useDisplayName()
+  const [name, setName] = useState(layer.name)
+  const [nameSw, setNameSw] = useState(layer.name_sw || '')
+  const [color, setColor] = useState(layerDisplayColor(layer))
 
   const save = useMutation({
     mutationFn: () =>
-      mineralsApi.update(mineral.slug, {
+      mapsApi.updateLayer(layer.slug, {
         name,
         name_sw: nameSw,
-        color,
-        description,
-        sync_layer_colors: syncLayers,
-      } as Partial<Mineral> & { sync_layer_colors?: boolean }),
+        style: layerStyleWithColor(layer.style, layer.layer_type, color),
+      }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['minerals'] })
+      qc.invalidateQueries({ queryKey: ['admin-layers'] })
       qc.invalidateQueries({ queryKey: ['layers'] })
+      toast.success('Commodity updated')
       onClose()
     },
+    onError: () => toast.error('Could not save changes'),
   })
 
   if (!isManager) return null
@@ -42,7 +55,10 @@ function MineralEditor({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
       <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
-        <h2 className="text-lg font-bold text-slate-900 mb-4">Edit mineral</h2>
+        <h2 className="text-lg font-bold text-slate-900 mb-1">Edit commodity</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          This name and color appear on the map legend and search for {displayName(layer)}.
+        </p>
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Name (English)</label>
@@ -61,7 +77,7 @@ function MineralEditor({
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Legend color</label>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Map color</label>
             <div className="flex items-center gap-3">
               <input
                 type="color"
@@ -77,24 +93,6 @@ function MineralEditor({
               <span className="w-8 h-8 rounded-lg border border-slate-200" style={{ backgroundColor: color }} />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
-            />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={syncLayers}
-              onChange={(e) => setSyncLayers(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Update map layer colors to match
-          </label>
         </div>
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">
@@ -103,15 +101,12 @@ function MineralEditor({
           <button
             type="button"
             onClick={() => save.mutate()}
-            disabled={save.isPending}
+            disabled={save.isPending || !name.trim()}
             className="btn-primary text-sm !py-2 !px-4"
           >
             {save.isPending ? 'Saving…' : 'Save'}
           </button>
         </div>
-        {save.isError && (
-          <p className="text-xs text-red-600 mt-2">Could not save changes.</p>
-        )}
       </div>
     </div>
   )
@@ -119,64 +114,114 @@ function MineralEditor({
 
 export default function MineralsPage() {
   const { isManager } = useAuth()
-  const [editing, setEditing] = useState<Mineral | null>(null)
+  const [editing, setEditing] = useState<MapLayer | null>(null)
   const displayName = useDisplayName()
   const alternateName = useAlternateName()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['minerals'],
-    queryFn: () => mineralsApi.list().then((r) => r.data),
+    queryKey: ['admin-layers'],
+    queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
   })
 
-  const minerals = data?.results || []
+  const commodities = (data?.results ?? []).filter((layer) => (layer.feature_count ?? 0) > 0)
+  const pagination = usePagination(commodities, 25)
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Minerals</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Edit names and legend colors shown on the map and in search results.
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-app-text">Minerals / Commodities</h1>
+        <p className="text-sm text-app-muted mt-1 max-w-2xl">
+          Commodities come from your uploaded shapefiles. Each layer name is what appears on the map
+          and in analytics, not the old demo mineral catalog.
         </p>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
+        <p className="text-sm text-app-muted">Loading…</p>
+      ) : commodities.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-app-border bg-app-subtle px-6 py-12 text-center">
+          <p className="text-sm text-app-text-secondary">No uploaded commodities yet.</p>
+          <p className="text-sm text-app-muted mt-1">
+            Upload a shapefile under Layers. The layer name becomes your commodity on the map.
+          </p>
+          <Link
+            to="/admin/layers"
+            className="inline-block mt-4 text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline"
+          >
+            Go to Layers →
+          </Link>
+        </div>
       ) : (
-        <div className="grid gap-3">
-          {minerals.map((m) => (
-            <div
-              key={m.id}
-              className="rounded-xl border border-slate-200 bg-white p-4 flex items-start gap-4"
-            >
-              <span
-                className="w-10 h-10 rounded-lg shrink-0 border border-slate-100"
-                style={{ backgroundColor: m.color }}
-              />
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-slate-900">{displayName(m)}</h3>
-                <p className="text-sm text-slate-500">
-                  {alternateName(m) ? `${alternateName(m)} · ` : ''}{m.country_code}
-                </p>
-                {m.description && (
-                  <p className="text-sm text-slate-600 mt-1 line-clamp-2">{m.description}</p>
-                )}
-                <p className="text-xs text-slate-400 mt-1 font-mono">{m.color}</p>
-              </div>
-              {isManager && (
-                <button
-                  type="button"
-                  onClick={() => setEditing(m)}
-                  className="shrink-0 text-sm font-medium text-terra-600 hover:text-terra-700 px-3 py-1.5 rounded-lg hover:bg-terra-50"
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-          ))}
+        <div className="card overflow-hidden">
+          <div className="px-4 py-3 border-b app-divider">
+            <h2 className="text-sm font-bold text-app-text">
+              Mapped commodities ({commodities.length})
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th className="w-10" aria-label="Color" />
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th className="tabular-nums">Zones</th>
+                  <th>Color</th>
+                  {isManager && <th className="text-right">Actions</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {pagination.pageItems.map((layer) => {
+                  const color = layerDisplayColor(layer)
+                  return (
+                    <tr key={layer.id}>
+                      <td>
+                        <span
+                          className="inline-block h-7 w-7 rounded-md border border-app-border shrink-0"
+                          style={{ backgroundColor: color }}
+                          aria-hidden
+                        />
+                      </td>
+                      <td className="min-w-[10rem]">
+                        <div className="font-medium text-app-text">{displayName(layer)}</div>
+                        {alternateName(layer) && (
+                          <div className="text-xs text-app-text-muted mt-0.5">{alternateName(layer)}</div>
+                        )}
+                      </td>
+                      <td className="text-app-text-secondary capitalize whitespace-nowrap text-xs">
+                        {LAYER_TYPE_LABELS[layer.layer_type] ?? layer.layer_type}
+                      </td>
+                      <td className="tabular-nums text-app-text">{layer.feature_count}</td>
+                      <td className="text-[11px] font-mono text-app-text-muted whitespace-nowrap">{color}</td>
+                      {isManager && (
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            onClick={() => setEditing(layer)}
+                            className="text-xs text-terra-600 dark:text-terra-400 hover:underline"
+                          >
+                            Edit
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <ListPagination
+            page={pagination.page}
+            pageCount={pagination.pageCount}
+            total={pagination.total}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+            className="px-4 pb-4"
+          />
         </div>
       )}
 
-      {editing && <MineralEditor mineral={editing} onClose={() => setEditing(null)} />}
+      {editing && <CommodityEditor layer={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }

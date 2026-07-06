@@ -2,6 +2,10 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
+import ListPagination from '../../components/ui/ListPagination'
+import PasswordInput from '../../components/ui/PasswordInput'
+import { toast } from '../../components/ui/toast'
+import { usePagination } from '../../hooks/usePagination'
 import type { User } from '../../types'
 
 const ASSIGNABLE_ROLES: User['role'][] = ['free', 'subscriber', 'mineral_manager', 'admin', 'super_admin']
@@ -27,8 +31,6 @@ export default function UsersPage() {
     phone: '',
     role: 'admin' as 'admin' | 'super_admin',
   })
-  const [createError, setCreateError] = useState('')
-
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users'],
     queryFn: () => adminApi.users().then((r) => r.data),
@@ -46,15 +48,16 @@ export default function UsersPage() {
       qc.invalidateQueries({ queryKey: ['admin-users'] })
       setShowCreate(false)
       setForm({ email: '', password: '', first_name: '', last_name: '', phone: '', role: 'admin' })
-      setCreateError('')
+      toast.success('Admin account created')
     },
     onError: (err: { response?: { data?: { detail?: string; role?: string[] } } }) => {
       const detail = err.response?.data?.detail || err.response?.data?.role?.[0] || 'Could not create admin.'
-      setCreateError(String(detail))
+      toast.error('Could not create admin', { description: String(detail) })
     },
   })
 
   const users = data?.results || []
+  const pagination = usePagination(users)
 
   return (
     <div>
@@ -88,7 +91,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
+              {pagination.pageItems.map((u) => {
                 const options = roleOptionsForActor(isSuperAdmin, u)
                 const isSelf = u.id === currentUser?.id
                 return (
@@ -120,6 +123,14 @@ export default function UsersPage() {
               })}
             </tbody>
           </table>
+          <ListPagination
+            page={pagination.page}
+            pageCount={pagination.pageCount}
+            total={pagination.total}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+            className="px-4 pb-4"
+          />
         </div>
       )}
 
@@ -127,9 +138,6 @@ export default function UsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
           <div className="card w-full max-w-md">
             <h2 className="text-lg font-bold text-app-text mb-4">Create admin account</h2>
-            {createError && (
-              <p className="text-sm text-red-600 dark:text-red-400 mb-3">{createError}</p>
-            )}
             <div className="space-y-3">
               <input
                 type="email"
@@ -138,12 +146,10 @@ export default function UsersPage() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 className="input w-full"
               />
-              <input
-                type="password"
+              <PasswordInput
                 placeholder="Temporary password"
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="input w-full"
               />
               <div className="grid grid-cols-2 gap-3">
                 <input

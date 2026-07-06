@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi } from '../../api'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 
 export default function CompliancePage() {
   const qc = useQueryClient()
@@ -13,6 +15,11 @@ export default function CompliancePage() {
     queryKey: ['licenses'],
     queryFn: () => adminApi.licenses().then((r) => r.data),
   })
+
+  const licenseList = licenses?.results ?? []
+  const licensePagination = usePagination(licenseList)
+  const auditList = logs?.results ?? []
+  const auditPagination = usePagination(auditList)
 
   const approveLicense = useMutation({
     mutationFn: (id: number) => adminApi.updateLicense(id, { status: 'approved' }),
@@ -29,7 +36,7 @@ export default function CompliancePage() {
           <p className="text-sm text-app-muted">No license agreements.</p>
         ) : (
           <div className="app-divide-y">
-            {licenses.results.map((l) => (
+            {licensePagination.pageItems.map((l) => (
               <div key={l.id} className="pb-3 flex justify-between items-start not-first:pt-3">
                 <div>
                   <p className="font-medium text-app-text">{l.company_name}</p>
@@ -48,11 +55,19 @@ export default function CompliancePage() {
             ))}
           </div>
         )}
+        <ListPagination
+          page={licensePagination.page}
+          pageCount={licensePagination.pageCount}
+          total={licensePagination.total}
+          pageSize={licensePagination.pageSize}
+          onPageChange={licensePagination.setPage}
+          className="mt-4"
+        />
       </div>
 
       <div className="card">
         <h2 className="font-bold text-app-text mb-4">Audit Logs</h2>
-        <div className="max-h-96 overflow-y-auto">
+        <div>
           <table className="admin-table">
             <thead>
               <tr>
@@ -63,7 +78,7 @@ export default function CompliancePage() {
               </tr>
             </thead>
             <tbody>
-              {logs?.results.map((log) => (
+              {auditPagination.pageItems.map((log) => (
                 <tr key={log.id}>
                   <td>{new Date(log.created_at).toLocaleString()}</td>
                   <td>{log.actor_name || 'N/A'}</td>
@@ -73,6 +88,14 @@ export default function CompliancePage() {
               ))}
             </tbody>
           </table>
+          <ListPagination
+            page={auditPagination.page}
+            pageCount={auditPagination.pageCount}
+            total={auditPagination.total}
+            pageSize={auditPagination.pageSize}
+            onPageChange={auditPagination.setPage}
+            className="mt-4"
+          />
         </div>
       </div>
     </div>

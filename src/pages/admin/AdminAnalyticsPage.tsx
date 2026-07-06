@@ -310,17 +310,27 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
         </div>
       </Section>
 
-      {data.geology.minerals.length > 0 && (
+      {(data.geology.layers?.length || data.geology.minerals.length > 0) && (
         <Section title="Geological coverage" description="Prospects, layers, and regional distribution on the map.">
           <div className="grid lg:grid-cols-2 gap-6">
             <div>
-              <p className="text-xs font-medium text-app-muted mb-3 uppercase tracking-wide">Prospects by mineral</p>
+              <p className="text-xs font-medium text-app-muted mb-3 uppercase tracking-wide">
+                {data.geology.layers?.length ? 'Zones by uploaded layer' : 'Prospects by mineral'}
+              </p>
               <DonutChart
-                data={data.geology.minerals.map((m) => ({
-                  name: m.name,
-                  value: m.feature_count,
-                  color: m.color,
-                }))}
+                data={
+                  data.geology.layers?.length
+                    ? data.geology.layers.map((layer) => ({
+                        name: layer.name,
+                        value: layer.feature_count,
+                        color: layer.color,
+                      }))
+                    : data.geology.minerals.map((m) => ({
+                        name: m.name,
+                        value: m.feature_count,
+                        color: m.color,
+                      }))
+                }
                 height={280}
               />
             </div>
@@ -361,7 +371,7 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
         </Section>
       )}
 
-      {!data.geology.minerals.length && (
+      {!data.geology.layers?.length && !data.geology.minerals.length && (
       <section className="rounded-xl bg-app-surface px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="font-semibold text-app-text text-sm">Geological coverage</h2>

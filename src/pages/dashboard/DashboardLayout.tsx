@@ -9,14 +9,20 @@ const mainLinks = [
   { to: '/dashboard/subscription', label: 'Subscription' },
   { to: '/dashboard/billing', label: 'Billing' },
   { to: '/dashboard/analytics', label: 'Analytics' },
-  { to: '/downloads', label: 'Reports' },
-  { to: '/dashboard/reports', label: 'My reports' },
+  { to: '/downloads', label: 'Report catalog' },
+  { to: '/dashboard/reports', label: 'My downloads' },
+]
+
+const contentLinks = [
+  { to: '/admin/reports', label: 'Write & upload reports' },
+  { to: '/admin/layers', label: 'Map layers' },
+  { to: '/admin/minerals', label: 'Minerals' },
 ]
 
 const quickLinks = [{ to: '/', label: 'Map' }]
 
 export default function DashboardLayout() {
-  const { user, hasPaidAccess } = useAuth()
+  const { user, hasPaidAccess, isManager } = useAuth()
   const { pathname } = useLocation()
   const isAssistantPage = pathname === '/dashboard/assistant'
 
@@ -39,18 +45,17 @@ export default function DashboardLayout() {
             <p className="text-xs text-app-muted truncate mt-0.5">{user?.email}</p>
           </div>
         }
-        groups={[{ id: 'account', title: 'Account', links: accountLinks }]}
+        groups={[
+          { id: 'account', title: 'Account', links: accountLinks },
+          ...(isManager
+            ? [{ id: 'content', title: 'Content management', links: contentLinks }]
+            : []),
+        ]}
         footerLinks={quickLinks}
       />
 
-      <div className="md:hidden fixed top-16 inset-x-0 z-20 bg-app-surface/95 backdrop-blur-xl border-b app-divider px-4 py-2">
-        <WorkspaceTabs compact />
-      </div>
-
-      <WorkspaceMobileNav links={mainLinks} />
-
       <div
-        className={`flex-1 min-w-0 pb-16 md:pb-0 pt-12 md:pt-0 ${
+        className={`flex-1 min-w-0 pb-16 md:pb-0 ${
           isAssistantPage ? 'flex flex-col min-h-0 overflow-hidden' : 'overflow-auto'
         }`}
       >

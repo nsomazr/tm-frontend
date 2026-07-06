@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { geographyApi, mineralsApi, reportsApi } from '../../api'
 import ReportWritingAssistant from '../../components/reports/ReportWritingAssistant'
 import FileUploadField from '../../components/ui/FileUploadField'
+import { toast } from '../../components/ui/toast'
 import { useDisplayName } from '../../i18n/useDisplayName'
 
 const DOCUMENT_ACCEPT =
@@ -45,7 +46,6 @@ export default function ReportEditorPage() {
   })
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [regeneratePdf, setRegeneratePdf] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const { data: report, isLoading: loadingReport } = useQuery({
     queryKey: ['admin-report', slug],
@@ -135,12 +135,12 @@ export default function ReportEditorPage() {
     },
     onSuccess: (res) => {
       invalidate()
-      setError(null)
+      toast.success(isNew ? 'Report created' : 'Report saved')
       if (isNew) {
         navigate(`/admin/reports/${res.data.slug}/edit`, { replace: true })
       }
     },
-    onError: () => setError('Could not save report. Check required fields and try again.'),
+    onError: () => toast.error('Could not save report', { description: 'Check required fields and try again.' }),
   })
 
   const hasWrittenContent =
@@ -148,14 +148,13 @@ export default function ReportEditorPage() {
 
   function handleSave() {
     if (reportMode === 'upload' && isNew && !documentFile) {
-      setError('Choose a PDF or Word document to upload.')
+      toast.error('Choose a PDF or Word document to upload')
       return
     }
     if (reportMode === 'write' && !hasWrittenContent) {
-      setError('Write content or apply an AI draft before saving.')
+      toast.error('Add content before saving', { description: 'Write content or apply an AI draft first.' })
       return
     }
-    setError(null)
     save.mutate()
   }
 
@@ -205,12 +204,6 @@ export default function ReportEditorPage() {
           </Link>
         )}
       </div>
-
-      {error && (
-        <div className="mb-4 rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-800 dark:text-red-300">
-          {error}
-        </div>
-      )}
 
       <div className="card !p-0 overflow-hidden">
         <div className="px-5 py-4 border-b app-divider">
@@ -308,7 +301,6 @@ export default function ReportEditorPage() {
                     executive_summary: executiveSummary,
                     key_findings: keyFindings,
                   }))
-                  setError(null)
                 }}
               />
 

@@ -71,6 +71,7 @@ export default function DashboardTerraAssistant() {
           insight={null}
           mode="account"
           layout="fill"
+          insightExport
         />
       </section>
     </div>

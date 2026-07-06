@@ -56,6 +56,20 @@ function resolvePlanAction(
   return 'switch'
 }
 
+function paidPlanFeatures(
+  plan: SubscriptionPlan,
+  p: ReturnType<typeof useTranslation>['m']['pricing'],
+  t: ReturnType<typeof useTranslation>['t']
+) {
+  const credits = plan.included_assistant_credits || (plan.billing_cycle === 'annual' ? 5000 : 3000)
+  const downloads = plan.included_report_downloads || (plan.billing_cycle === 'annual' ? 10 : 3)
+  return [
+    t('pricing.paidFeatureCredits', { count: credits.toLocaleString() }),
+    t('pricing.paidFeatureDownloads', { count: downloads }),
+    ...p.paidFeatures,
+  ]
+}
+
 function CheckIcon({ ok }: { ok: boolean | string }) {
   if (typeof ok === 'string') {
     return <span className="text-xs font-medium text-app-secondary">{ok}</span>
@@ -257,6 +271,7 @@ function SubscriptionsPageContent() {
     if (value === 'payPerReport') return p.payPerReport
     if (value === 'previewOnly') return p.previewOnly
     if (value === 'highlightsOnly') return p.highlightsOnly
+    if (value === 'top3Preview') return p.top3Preview
     if (value === 'included') return p.included
     return value
   }
@@ -372,7 +387,11 @@ function SubscriptionsPageContent() {
                       )}
                     </div>
                     <ul className="mt-6 text-sm text-slate-600 space-y-3 flex-1">
-                      {p.paidFeatures.map((f) => (
+                      <li className="flex items-start gap-2">
+                        <span className="text-terra-600 mt-0.5">✓</span>
+                        <span>{p.paidFeaturesIntro}</span>
+                      </li>
+                      {paidPlanFeatures(plan, p, t).map((f) => (
                         <li key={f} className="flex items-start gap-2">
                           <span className="text-terra-600 mt-0.5">✓</span>
                           <span>{f}</span>

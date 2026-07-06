@@ -1,7 +1,15 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { mapsApi } from '../../api'
+import { geographyApi, mapsApi } from '../../api'
 import MapViewer from '../../components/map/MapViewer'
+import {
+  DEFAULT_BOUNDARY_VISIBILITY,
+  boundaryLevelsFromGeoJson,
+  type BoundaryLevelKey,
+  type BoundaryVisibility,
+} from '../../components/map/adminBoundaryStyles'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 import { useDisplayName } from '../../i18n/useDisplayName'
 
 export default function CoordinatesEditor() {
@@ -14,9 +22,29 @@ export default function CoordinatesEditor() {
     label: '',
   })
 
+  const [boundaryVisibility, setBoundaryVisibility] = useState<BoundaryVisibility>(
+    DEFAULT_BOUNDARY_VISIBILITY
+  )
+
+  const { data: boundariesData } = useQuery({
+    queryKey: ['country-boundaries', 'TZ'],
+    queryFn: () => geographyApi.boundaries('TZ', '0,1,2,3,4').then((r) => r.data),
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const availableBoundaryLevels = useMemo(
+    () => boundaryLevelsFromGeoJson(boundariesData),
+    [boundariesData]
+  )
+
+  const boundaryToggleLevels = useMemo(
+    () => availableBoundaryLevels.filter((level) => level === 'regions' || level === 'districts'),
+    [availableBoundaryLevels]
+  )
+
   const { data: layers } = useQuery({
     queryKey: ['admin-layers'],
-    queryFn: () => mapsApi.layers().then((r) => r.data),
+    queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
   })
 
   const { data: features, refetch } = useQuery({
@@ -56,7 +84,9 @@ export default function CoordinatesEditor() {
 
   const layerList = layers?.results || []
   const selectedLayer = layerList.find((l) => l.id === selectedLayerId)
-  const featureCount = features?.results.length ?? 0
+  const featureList = features?.results ?? []
+  const featurePagination = usePagination(featureList)
+  const featureCount = featureList.length
 
   return (
     <div className="space-y-6">
@@ -103,6 +133,12 @@ export default function CoordinatesEditor() {
                 layers={[selectedLayer]}
                 minimalChrome
                 showLayerPanel={false}
+                showBoundaryControls={boundaryToggleLevels.length > 0}
+                boundaryControlLevels={boundaryToggleLevels}
+                boundariesGeoJson={boundariesData}
+                boundaryVisibility={boundaryVisibility}
+                onBoundaryVisibilityChange={setBoundaryVisibility}
+                countryCode="TZ"
                 className="h-[min(52vh,480px)] w-full"
               />
             </div>
@@ -157,8 +193,8 @@ export default function CoordinatesEditor() {
               <h2 className="font-semibold text-app-text">Features</h2>
               <p className="text-xs text-app-text-muted mt-0.5">{featureCount} in this layer</p>
             </div>
-            <div className="max-h-[min(60vh,520px)] overflow-y-auto divide-y divide-app-border/35">
-              {features?.results.map((f) => (
+            <div className="divide-y divide-app-border/35">
+              {featurePagination.pageItems.map((f) => (
                 <div key={f.id} className="flex justify-between items-start gap-3 px-4 py-3 text-sm">
                   <div className="min-w-0">
                     <p className="font-medium text-app-text truncate">
@@ -184,6 +220,14 @@ export default function CoordinatesEditor() {
                 </p>
               )}
             </div>
+            <ListPagination
+              page={featurePagination.page}
+              pageCount={featurePagination.pageCount}
+              total={featurePagination.total}
+              pageSize={featurePagination.pageSize}
+              onPageChange={featurePagination.setPage}
+              className="px-4 pb-4"
+            />
           </aside>
         </div>
       ) : (

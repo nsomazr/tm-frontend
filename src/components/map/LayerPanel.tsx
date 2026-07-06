@@ -11,6 +11,10 @@ interface LayerPanelProps {
   onToggleType: (type: string, visible: boolean) => void
   onReorder?: (layers: MapLayer[]) => void
   allowReorder?: boolean
+  /** Render inside left dock (no absolute positioning). */
+  embedded?: boolean
+  /** All layers visible; checkboxes and bulk toggles disabled (free map preview). */
+  layersLocked?: boolean
   className?: string
 }
 
@@ -23,6 +27,8 @@ export default function LayerPanel({
   onToggleType,
   onReorder,
   allowReorder = false,
+  embedded = false,
+  layersLocked = false,
   className = '',
 }: LayerPanelProps) {
   const { m } = useTranslation()
@@ -68,12 +74,12 @@ export default function LayerPanel({
 
   const layerCount = layers.length
 
+  const shellClass = embedded
+    ? 'relative map-chrome rounded-xl text-sm flex flex-col overflow-hidden w-full min-h-0 flex-1'
+    : 'absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-3 left-3 w-72 max-h-[calc(100%-1.5rem)] hidden md:flex'
+
   return (
-    <div
-      className={`absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-3 left-3 w-72 hidden md:flex ${
-        open ? 'bottom-3' : ''
-      } ${className}`}
-    >
+    <div className={`${shellClass} ${className}`}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -89,7 +95,7 @@ export default function LayerPanel({
       </button>
 
       {open && (
-        <div className="border-t border-app-border min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-2 pb-4 pr-1 space-y-3 scrollbar-pane">
+        <div className="border-t border-app-border min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-2 pb-3 pr-1 space-y-3 scrollbar-pane">
           {grouped.map(({ type, layers: typeLayers }) => {
             const allOn = typeAllVisible(type, typeLayers)
             return (
@@ -102,6 +108,7 @@ export default function LayerPanel({
                         ({typeLayers.length})
                       </span>
                     </span>
+                    {!layersLocked && (
                     <button
                       type="button"
                       onClick={() => onToggleType(type, !allOn)}
@@ -109,8 +116,9 @@ export default function LayerPanel({
                     >
                       {allOn ? m.map.hideAll : m.map.showAll}
                     </button>
+                    )}
                   </div>
-                  {type === 'line' && (
+                  {type === 'line' && !layersLocked && (
                     <p className="text-xs map-text-secondary mt-1 leading-snug">{m.map.linesOffByDefault}</p>
                   )}
                 </div>
@@ -120,19 +128,20 @@ export default function LayerPanel({
                     return (
                       <li
                         key={layer.id}
-                        draggable={allowReorder}
-                        onDragStart={() => allowReorder && setDragIndex(index)}
-                        onDragOver={(e) => allowReorder && e.preventDefault()}
-                        onDrop={() => allowReorder && handleDrop(index)}
-                        className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-app-subtle ${
-                          allowReorder ? 'cursor-grab' : ''
-                        }`}
+                        draggable={allowReorder && !layersLocked}
+                        onDragStart={() => allowReorder && !layersLocked && setDragIndex(index)}
+                        onDragOver={(e) => allowReorder && !layersLocked && e.preventDefault()}
+                        onDrop={() => allowReorder && !layersLocked && handleDrop(index)}
+                        className={`flex items-center gap-2.5 px-2 py-1.5 rounded-lg ${
+                          layersLocked ? '' : 'hover:bg-app-subtle'
+                        } ${allowReorder && !layersLocked ? 'cursor-grab' : ''}`}
                       >
                         <input
                           type="checkbox"
                           checked={isVisible}
+                          disabled={layersLocked}
                           onChange={() => onToggle(layer.id)}
-                          className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5"
+                          className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5 disabled:opacity-70"
                         />
                         <LayerTypeSymbol layer={layer} />
                         <span className="flex-1 min-w-0 map-text text-sm font-medium leading-snug break-words">

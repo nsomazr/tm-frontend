@@ -1,6 +1,14 @@
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import MarketingHero from '../components/marketing/MarketingHero'
 import MarketingCta, { MarketingCtaLink } from '../components/marketing/MarketingCta'
+import MineralPeriodicTable from '../components/map/MineralPeriodicTable'
+import CommodityInsightPanel from '../components/map/CommodityInsightPanel'
+import { analyticsApi } from '../api'
+import { useAuth } from '../auth/AuthContext'
 import { useTranslation } from '../i18n/LocaleContext'
+import type { MineralCatalogEntry } from '../types'
 
 const PILLAR_ACCENTS = [
   'from-amber-400/20 to-amber-600/5',
@@ -12,6 +20,35 @@ const PILLAR_ACCENTS = [
 export default function AboutPage() {
   const { m } = useTranslation()
   const a = m.about
+  const navigate = useNavigate()
+  const { hasPaidAccess } = useAuth()
+  const [selectedCommodity, setSelectedCommodity] = useState<MineralCatalogEntry | null>(null)
+
+  const { data: catalogData } = useQuery({
+    queryKey: ['mineral-catalog', 'TZ'],
+    queryFn: () => analyticsApi.mineralCatalog('TZ').then((r) => r.data),
+    staleTime: 60_000,
+    refetchOnWindowFocus: true,
+  })
+
+  const layerCount = catalogData?.stats?.layer_count
+
+  const stats = useMemo(() => {
+    return a.stats.map((s, index) => {
+      if (index !== 0 || layerCount == null) return s
+      return { ...s, value: String(layerCount) }
+    })
+  }, [a.stats, layerCount])
+
+  const handleCommoditySelect = (entry: MineralCatalogEntry | null) => {
+    if (!entry?.is_mapped) return
+    setSelectedCommodity(entry)
+  }
+
+  const handleShowOnMap = () => {
+    if (!selectedCommodity?.is_mapped || !hasPaidAccess) return
+    navigate(`/?mineral=${encodeURIComponent(selectedCommodity.slug)}`)
+  }
 
   return (
     <div className="animate-fade-in">
@@ -24,7 +61,7 @@ export default function AboutPage() {
 
       <section className="border-b border-slate-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 grid grid-cols-2 sm:grid-cols-4 gap-6">
-          {a.stats.map((s) => (
+          {stats.map((s) => (
             <div key={s.label} className="text-center sm:text-left">
               <p
                 className={`font-bold text-terra-700 leading-snug ${
@@ -39,31 +76,37 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="bg-slate-50 py-16 sm:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-terra-600 mb-3">{a.visionEyebrow}</p>
-            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 leading-snug">{a.visionTitle}</h2>
-            <p className="text-slate-600 mt-4 leading-relaxed">{a.visionBody}</p>
-            <p className="text-slate-500 mt-3 leading-relaxed text-sm">{a.visionNote}</p>
-          </div>
-          <div className="relative">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <div className="grid grid-cols-3 gap-3">
-                {a.sampleMinerals.map((mineral, i) => (
-                  <div
-                    key={mineral}
-                    className="rounded-xl bg-slate-50 border border-slate-100 px-2 py-3 text-center text-xs font-medium text-slate-700"
-                    style={{ opacity: 1 - i * 0.05 }}
-                  >
-                    {mineral}
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-slate-400 mt-4 text-center">{a.sampleLayers}</p>
-            </div>
-            <div className="absolute -z-10 -inset-4 rounded-3xl bg-gradient-to-br from-terra-100/80 to-gold-400/20 blur-2xl" />
-          </div>
+      <section className="bg-slate-50 py-10 sm:py-14 lg:py-16 border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-terra-600 mb-2 text-center sm:text-left">
+            {m.map.periodicTableTitle}
+          </p>
+        </div>
+        <div className="px-2 sm:px-6 max-w-6xl mx-auto">
+          <MineralPeriodicTable
+            showcase
+            catalog={catalogData?.minerals ?? []}
+            selectedSlug={selectedCommodity?.slug}
+            onSelect={handleCommoditySelect}
+          />
+        </div>
+      </section>
+
+      {selectedCommodity && (
+        <CommodityInsightPanel
+          entry={selectedCommodity}
+          hasPaidAccess={hasPaidAccess}
+          onClose={() => setSelectedCommodity(null)}
+          onShowOnMap={handleShowOnMap}
+        />
+      )}
+
+      <section className="bg-white py-14 sm:py-16 lg:py-20">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-terra-600 mb-3">{a.visionEyebrow}</p>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-slate-900 leading-snug">{a.visionTitle}</h2>
+          <p className="text-slate-600 mt-5 leading-relaxed text-base sm:text-lg">{a.visionBody}</p>
+          <p className="text-slate-500 mt-4 leading-relaxed text-sm sm:text-base">{a.visionNote}</p>
         </div>
       </section>
 

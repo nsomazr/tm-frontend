@@ -35,10 +35,11 @@ export const adminNavGroups: AdminNavGroup[] = [
     roles: ['admin', 'manager'],
     items: [
       { to: '/admin/coverage', label: 'Coverage', roles: ['admin', 'manager'] },
+      { to: '/admin/boundaries', label: 'Boundary layers', roles: ['admin'] },
       { to: '/admin/layers', label: 'Layers', roles: ['admin', 'manager'] },
       { to: '/admin/coordinates', label: 'Coordinates', roles: ['admin', 'manager'] },
       { to: '/admin/reports', label: 'Reports', roles: ['admin', 'manager'] },
-      { to: '/admin/minerals', label: 'Minerals', roles: ['admin', 'manager'] },
+      { to: '/admin/minerals', label: 'Minerals / Commodities', roles: ['admin', 'manager'] },
     ],
   },
   {

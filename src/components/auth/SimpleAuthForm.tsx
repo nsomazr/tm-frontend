@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Logo from '../brand/Logo'
 import OtpInput from './OtpInput'
+import PasswordInput from '../ui/PasswordInput'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
 import { useTranslation } from '../../i18n/LocaleContext'
@@ -257,12 +258,10 @@ export default function SimpleAuthForm({
             <p className="text-sm text-slate-600 text-center truncate">
               {normalizeIdentifier(identifier, isEmail)}
             </p>
-            <input
-              type="password"
+            <PasswordInput
               placeholder={mode === 'register' ? 'Create password (min 8 chars)' : 'Password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="input"
               required
               minLength={isLogin ? undefined : 8}
               autoFocus

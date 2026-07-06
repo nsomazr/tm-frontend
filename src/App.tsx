@@ -22,6 +22,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 import AdminCoveragePage from './pages/admin/AdminCoveragePage'
+import AdminBoundariesPage from './pages/admin/AdminBoundariesPage'
 import { AdminOnly } from './pages/admin/AdminGuard'
 import UsersPage from './pages/admin/UsersPage'
 import MineralsPage from './pages/admin/MineralsPage'
@@ -79,6 +80,14 @@ export default function App() {
         >
           <Route index element={<AdminDashboard />} />
           <Route path="coverage" element={<AdminCoveragePage />} />
+          <Route
+            path="boundaries"
+            element={
+              <AdminOnly>
+                <AdminBoundariesPage />
+              </AdminOnly>
+            }
+          />
           <Route
             path="analytics"
             element={

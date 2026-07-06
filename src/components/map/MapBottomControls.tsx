@@ -6,7 +6,15 @@ import type { BasemapId } from './basemaps'
 import { BASEMAPS, saveBasemapPreference } from './basemaps'
 import LegendPanel from './LegendPanel'
 import LayerTypeSymbol from './LayerTypeSymbol'
-import { TerraAssistantAvatar } from '../assistant/AssistantIcons'
+import MapZoomControls from './MapZoomControls'
+
+import type { BoundaryLevelKey, BoundaryVisibility } from './adminBoundaryStyles'
+import type { BoundaryFocus } from './boundaryFocus'
+import CountryBoundaryPanel from './CountryBoundaryPanel'
+import CoordinateSystemPicker from './CoordinateSystemPicker'
+import type { CoordinateSystemId } from './coordinateSystems'
+import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
+import type { Country } from '../../types'
 
 interface MapBottomControlsProps {
   layers: MapLayer[]
@@ -15,11 +23,28 @@ interface MapBottomControlsProps {
   onToggleLayerType: (type: string, visible: boolean) => void
   basemap: BasemapId
   onBasemapChange: (id: BasemapId) => void
+  showBasemapLabels: boolean
+  onShowBasemapLabelsChange: (next: boolean) => void
+  showBoundaryLabels: boolean
+  onShowBoundaryLabelsChange: (next: boolean) => void
   legendLayers: MapLayer[]
   onZoomIn: () => void
   onZoomOut: () => void
-  onOpenAssistant?: () => void
-  assistantActive?: boolean
+  onResetView?: () => void
+  countries: Country[]
+  countryCode: string
+  onCountryChange: (code: string) => void
+  availableBoundaryLevels: BoundaryLevelKey[]
+  boundaryVisibility: BoundaryVisibility
+  onBoundaryVisibilityChange: (next: BoundaryVisibility) => void
+  boundaryFocus?: BoundaryFocus | null
+  onClearBoundaryFocus?: () => void
+  villagesLoading?: boolean
+  villagesError?: boolean
+  lockedBoundaryLevels?: BoundaryLevelKey[]
+  staticMap?: boolean
+  coordinateSystem: CoordinateSystemId
+  onCoordinateSystemChange: (id: CoordinateSystemId) => void
 }
 
 type Panel = 'layers' | 'basemap' | 'legend' | null
@@ -28,27 +53,6 @@ const TYPE_ORDER = ['polygon', 'point', 'line']
 
 const SHEET_CLASS_EXTRA = 'max-h-[min(36vh,260px)]'
 const LAYERS_SHEET_CLASS_EXTRA = 'max-h-[min(58vh,420px)]'
-
-function ZoomControls({ onZoomIn, onZoomOut, zoomInLabel, zoomOutLabel }: {
-  onZoomIn: () => void
-  onZoomOut: () => void
-  zoomInLabel: string
-  zoomOutLabel: string
-}) {
-  const btnClass =
-    'flex flex-1 items-center justify-center text-lg font-medium map-text-secondary transition-colors active:bg-app-subtle hover:bg-app-surface/80'
-  return (
-    <div className="map-chrome flex w-11 shrink-0 flex-col self-stretch overflow-hidden rounded-xl">
-      <button type="button" aria-label={zoomInLabel} onClick={onZoomIn} className={btnClass}>
-        +
-      </button>
-      <div className="h-px shrink-0 bg-app-border" />
-      <button type="button" aria-label={zoomOutLabel} onClick={onZoomOut} className={btnClass}>
-        −
-      </button>
-    </div>
-  )
-}
 
 function LayersIcon({ className }: { className?: string }) {
   return (
@@ -142,11 +146,28 @@ export default function MapBottomControls({
   onToggleLayerType,
   basemap,
   onBasemapChange,
+  showBasemapLabels,
+  onShowBasemapLabelsChange,
+  showBoundaryLabels,
+  onShowBoundaryLabelsChange,
   legendLayers,
   onZoomIn,
   onZoomOut,
-  onOpenAssistant,
-  assistantActive = false,
+  onResetView,
+  countries,
+  countryCode,
+  onCountryChange,
+  availableBoundaryLevels,
+  boundaryVisibility,
+  onBoundaryVisibilityChange,
+  boundaryFocus,
+  onClearBoundaryFocus,
+  villagesLoading = false,
+  villagesError = false,
+  lockedBoundaryLevels = [],
+  staticMap = false,
+  coordinateSystem,
+  onCoordinateSystemChange,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
@@ -173,6 +194,9 @@ export default function MapBottomControls({
 
   const togglePanel = (next: Panel) => setPanel((p) => (p === next ? null : next))
   const currentBasemap = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
+  const showLayersBtn = layers.length > 0
+  const showLegendBtn = legendLayers.length > 0
+  const toolbarCols = 1 + (showLayersBtn ? 1 : 0) + (showLegendBtn ? 1 : 0)
 
   const sheetClass =
     'pointer-events-auto mb-2 overflow-hidden rounded-2xl map-chrome'
@@ -215,6 +239,7 @@ export default function MapBottomControls({
                               ({typeLayers.length})
                             </span>
                           </span>
+                          {!staticMap && (
                           <button
                             type="button"
                             onClick={() => onToggleLayerType(type, !allOn)}
@@ -222,8 +247,9 @@ export default function MapBottomControls({
                           >
                             {allOn ? m.map.hideAll : m.map.showAll}
                           </button>
+                          )}
                         </div>
-                        {type === 'line' && (
+                        {type === 'line' && !staticMap && (
                           <p className="text-xs map-text-secondary mt-1 leading-snug">{m.map.linesOffByDefault}</p>
                         )}
                       </div>
@@ -233,8 +259,9 @@ export default function MapBottomControls({
                             <input
                               type="checkbox"
                               checked={visibleLayers.has(layer.id)}
+                              disabled={staticMap}
                               onChange={() => onToggleLayer(layer.id)}
-                              className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5"
+                              className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5 disabled:opacity-70"
                             />
                             <LayerTypeSymbol layer={layer} />
                             <span className="text-sm font-medium leading-snug map-text min-w-0 break-words">{displayName(layer)}</span>
@@ -288,7 +315,7 @@ export default function MapBottomControls({
             </>
           )}
 
-        {panel === 'legend' &&
+        {panel === 'legend' && showLegendBtn &&
           renderSheet(
             <>
               <SheetHandle />
@@ -302,31 +329,66 @@ export default function MapBottomControls({
             </>
           )}
 
-        <div className="pointer-events-auto flex flex-col items-center gap-1">
-          {onOpenAssistant && (
-            <button
-              type="button"
-              onClick={onOpenAssistant}
-              aria-pressed={assistantActive}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold shadow-md transition-all active:scale-[0.97] ${
-                assistantActive
-                  ? 'bg-gradient-to-r from-terra-600 to-terra-700 text-white ring-2 ring-terra-400/40'
-                  : 'map-chrome map-text hover:bg-app-subtle/90'
-              }`}
-            >
-              <TerraAssistantAvatar className="h-5 w-5" />
-              {m.assistant.buttonLabel}
-            </button>
-          )}
+        {countries.length > 0 ? (
+          <div className="pointer-events-auto mb-2 map-chrome rounded-xl p-2">
+            <CountryBoundaryPanel
+              countries={countries}
+              countryCode={countryCode}
+              onCountryChange={onCountryChange}
+              availableBoundaryLevels={availableBoundaryLevels}
+              boundaryVisibility={boundaryVisibility}
+              onBoundaryVisibilityChange={onBoundaryVisibilityChange}
+              showBasemapLabels={showBasemapLabels}
+              onShowBasemapLabelsChange={onShowBasemapLabelsChange}
+              showBoundaryLabels={showBoundaryLabels}
+              onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
+              boundaryFocus={boundaryFocus}
+              onClearBoundaryFocus={onClearBoundaryFocus}
+              villagesLoading={villagesLoading}
+              villagesError={villagesError}
+              lockedBoundaryLevels={lockedBoundaryLevels}
+              compact
+            />
+          </div>
+        ) : (
+          <div className="pointer-events-auto mb-2 map-chrome rounded-xl p-2">
+            <span className="block text-[11px] font-semibold uppercase tracking-wide map-text-muted px-0.5 mb-1.5">
+              {m.map.boundaryLayersTitle}
+            </span>
+            <BoundaryVisibilityToggles
+              availableLevels={[]}
+              value={boundaryVisibility}
+              onChange={onBoundaryVisibilityChange}
+              showBasemapLabels={showBasemapLabels}
+              onShowBasemapLabelsChange={onShowBasemapLabelsChange}
+              showBoundaryLabels={showBoundaryLabels}
+              onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
+              compact
+            />
+          </div>
+        )}
 
+        <div className="pointer-events-auto mb-2 map-chrome rounded-xl overflow-hidden">
+          <CoordinateSystemPicker
+            value={coordinateSystem}
+            onChange={onCoordinateSystemChange}
+          />
+        </div>
+
+        <div className="pointer-events-auto flex flex-col items-center gap-1">
           <div className="map-chrome flex w-full items-stretch gap-1.5 rounded-2xl p-1.5">
-          <ZoomControls
+          <MapZoomControls
             onZoomIn={onZoomIn}
             onZoomOut={onZoomOut}
-            zoomInLabel={m.map.zoomIn}
-            zoomOutLabel={m.map.zoomOut}
+            onResetView={onResetView}
+            className="w-11 shrink-0 self-stretch [&_button]:flex-1 [&_button]:w-full [&_button]:h-auto"
           />
-          <nav className="grid min-w-0 flex-1 grid-cols-3 gap-1">
+          <nav
+            className={`grid min-w-0 flex-1 gap-1 ${
+              toolbarCols === 3 ? 'grid-cols-3' : toolbarCols === 2 ? 'grid-cols-2' : 'grid-cols-1'
+            }`}
+          >
+            {showLayersBtn && (
             <ToolbarButton
               active={panel === 'layers'}
               onClick={() => togglePanel('layers')}
@@ -334,6 +396,7 @@ export default function MapBottomControls({
               label={m.map.layersShort}
               badge={layers.length}
             />
+            )}
             <ToolbarButton
               active={panel === 'basemap'}
               onClick={() => togglePanel('basemap')}
@@ -346,6 +409,7 @@ export default function MapBottomControls({
                 />
               }
             />
+            {showLegendBtn && (
             <ToolbarButton
               active={panel === 'legend'}
               onClick={() => togglePanel('legend')}
@@ -353,6 +417,7 @@ export default function MapBottomControls({
               label={m.map.legendTitle}
               badge={legendLayers.length}
             />
+            )}
           </nav>
         </div>
         </div>

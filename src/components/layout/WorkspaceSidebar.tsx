@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext'
+import { useTranslation } from '../../i18n/LocaleContext'
 
 export interface SidebarLink {
   to: string
@@ -82,6 +84,60 @@ function readSectionState(storageKey: string, groups: SidebarGroup[]): Record<st
   return Object.fromEntries(groups.map((g) => [g.id, g.defaultOpen !== false]))
 }
 
+function CollapsedWorkspaceTabs() {
+  const { isManager } = useAuth()
+  const { m } = useTranslation()
+
+  if (!isManager) {
+    return (
+      <NavLink
+        to="/dashboard"
+        title={m.nav.account}
+        className={({ isActive }) =>
+          `flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-bold transition-colors ${
+            isActive
+              ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300'
+              : 'text-app-muted hover:bg-app-subtle hover:text-app-text'
+          }`
+        }
+      >
+        A
+      </NavLink>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <NavLink
+        to="/dashboard"
+        title={m.nav.account}
+        className={({ isActive }) =>
+          `flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-bold transition-colors ${
+            isActive
+              ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300'
+              : 'text-app-muted hover:bg-app-subtle hover:text-app-text'
+          }`
+        }
+      >
+        A
+      </NavLink>
+      <NavLink
+        to="/admin"
+        title={m.nav.admin}
+        className={({ isActive }) =>
+          `flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-bold transition-colors ${
+            isActive
+              ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300'
+              : 'text-app-muted hover:bg-app-subtle hover:text-app-text'
+          }`
+        }
+      >
+        Ad
+      </NavLink>
+    </div>
+  )
+}
+
 export default function WorkspaceSidebar({
   storageKey,
   workspaceTabs,
@@ -133,6 +189,11 @@ export default function WorkspaceSidebar({
         >
           <PanelToggleIcon collapsed />
         </button>
+        {workspaceTabs ? (
+          <div className="mt-3">
+            <CollapsedWorkspaceTabs />
+          </div>
+        ) : null}
       </aside>
     )
   }

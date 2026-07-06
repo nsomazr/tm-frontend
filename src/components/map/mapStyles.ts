@@ -70,6 +70,21 @@ export function buildLayerStyle(
     const zoomBoost = Math.max(0, zoom - 6) * 0.15
     const width = Math.min(baseWidth + zoomBoost, main ? 2.5 : 1.8)
     const lowZoom = zoom < 6
+    const customLine = parseColor(
+      (style.stroke as string) || (style.fill as string) || '',
+      ''
+    )
+    if (customLine) {
+      return new Style({
+        stroke: new Stroke({
+          color: hexWithAlpha(customLine, lowZoom ? 0.78 : 0.95),
+          width: lowZoom ? Math.max(0.9, width * 0.85) : width,
+          lineCap: 'round',
+          lineJoin: 'round',
+          lineDash: main ? undefined : [6, 4],
+        }),
+      })
+    }
     return new Style({
       stroke: new Stroke({
         color: lineStrokeColor(main, lowZoom, theme === 'dark'),
@@ -117,9 +132,10 @@ export function buildHighlightStyle(layer: MapLayer, basemap: BasemapId): Style 
   }
 
   if (layer.layer_type === 'line') {
+    const stroke = parseColor((style.stroke as string) || (style.fill as string) || '', '#E87722')
     return new Style({
       stroke: new Stroke({
-        color: '#E87722',
+        color: stroke,
         width: 2.5,
         lineCap: 'round',
       }),

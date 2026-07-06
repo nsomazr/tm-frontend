@@ -232,6 +232,36 @@ export interface MineralManagerAssignment {
   assigned_at: string
 }
 
+export interface Country {
+  id: number
+  code: string
+  name: string
+  name_sw: string
+  center_lat?: number | null
+  center_lng?: number | null
+  default_zoom?: number
+  bounds?: { west: number; south: number; east: number; north: number }
+  is_active: boolean
+}
+
+export interface CountryFocus {
+  code: string
+  name: string
+  name_sw?: string
+  center: { lat: number; lng: number }
+  default_zoom: number
+  bounds: { west: number; south: number; east: number; north: number }
+  geojson?: {
+    type: 'FeatureCollection'
+    features: Array<{
+      type: 'Feature'
+      properties?: Record<string, unknown>
+      geometry: { type: string; coordinates: unknown }
+    }>
+  }
+  boundary_levels?: number[]
+}
+
 export interface Region {
   id: number
   country: number
@@ -271,8 +301,10 @@ export interface PaginatedResponse<T> {
 }
 
 export interface MineralSearchInsight {
-  type?: 'mineral' | 'region'
+  type?: 'mineral' | 'region' | 'layer' | 'region_boundary' | 'district_boundary' | 'ward_boundary' | 'village_boundary'
   id: number
+  boundary_id?: number
+  boundary_level?: number
   name: string
   name_sw: string
   slug: string
@@ -281,11 +313,102 @@ export interface MineralSearchInsight {
   feature_count: number
   layer_count: number
   total_layer_count: number
-  top_regions: { region: string; count: number }[]
-  top_minerals?: { slug: string; name: string; name_sw?: string; color: string; count: number }[]
+  top_regions: { region: string; count: number; area_km2?: number }[]
+  top_minerals?: {
+    slug: string
+    name: string
+    name_sw?: string
+    color: string
+    count: number
+    area_km2?: number
+  }[]
   center: { lat: number; lng: number } | null
+  bounds?: { west: number; south: number; east: number; north: number } | null
   zoom?: number
   has_full_data: boolean
+}
+
+export interface AerialAccess {
+  default_analysis_km2?: number
+  analysis_area_km2: number
+  included_km2: number
+  purchased_extra_km2?: number
+  using_extended_area?: boolean
+  extension_available?: boolean
+  extension_options_km2?: number[]
+  allowed: boolean
+  requires_subscription?: boolean
+  aerial_price_per_km2: number
+  aerial_total_price?: number
+  zone_center?: { lat: number; lng: number }
+  zone_bounds?: { south: number; north: number; west: number; east: number }
+}
+
+export interface AdminBoundaryRef {
+  id: number
+  level: number
+  name: string
+  name_sw?: string
+  code: string
+  region_id?: number | null
+  center?: { lat: number; lng: number }
+  bounds?: { west: number; south: number; east: number; north: number } | null
+}
+
+export interface AdminBoundaryAtResponse {
+  region: AdminBoundaryRef | null
+  district: AdminBoundaryRef | null
+  ward: AdminBoundaryRef | null
+  village: AdminBoundaryRef | null
+}
+
+export interface AdminBoundaryStats {
+  country: string
+  counts: { '0': number; '1': number; '2': number; '3': number; '4': number }
+  last_updated: string | null
+}
+
+export interface MineralCatalogEntry {
+  id: number
+  slug: string
+  name: string
+  name_sw: string
+  color: string
+  description: string
+  feature_count: number
+  is_mapped: boolean
+  periodic_z?: number | null
+  periodic_special?: string | null
+  layer_slug?: string
+}
+
+export interface MineralCatalogResponse {
+  minerals: MineralCatalogEntry[]
+  country: string
+  stats?: {
+    layer_count: number
+    mapped_layer_count: number
+  }
+}
+
+export interface MineralBoundaryCoverage {
+  slug: string
+  name: string
+  color: string
+  feature_count: number
+  region_ids: number[]
+  district_ids: number[]
+  village_ids: number[]
+  bounds: { west: number; south: number; east: number; north: number } | null
+  center: { lat: number; lng: number } | null
+}
+
+export interface MineralHighlightSpec {
+  slug: string
+  color: string
+  regionIds: number[]
+  districtIds: number[]
+  villageIds: number[]
 }
 
 export interface AreaInsight {
@@ -293,7 +416,19 @@ export interface AreaInsight {
   lng: number
   zoom: number
   region: string | null
-  minerals: { slug: string; name: string; name_sw?: string; color: string; count: number }[]
+  geographic_region?: string | null
+  region_boundary?: AdminBoundaryRef | null
+  district_boundary?: AdminBoundaryRef | null
+  ward_boundary?: AdminBoundaryRef | null
+  village_boundary?: AdminBoundaryRef | null
+  minerals: {
+    slug: string
+    name: string
+    name_sw?: string
+    color: string
+    count: number
+    area_km2?: number
+  }[]
   feature_count: number
   labels: string[]
   has_mapped_data?: boolean
@@ -302,10 +437,19 @@ export interface AreaInsight {
   insight_tier?: 'basic' | 'highlight' | 'full' | 'none'
   has_detail_access?: boolean
   requires_subscription?: boolean
+  requires_aerial_purchase?: boolean
+  requires_extension_purchase?: boolean
+  requires_zoom_in?: boolean
   upgrade_message?: string
+  aerial?: AerialAccess
   follow_up_limit?: number | null
   follow_ups_remaining?: number | null
   assistant_credits?: AssistantCredits | null
+  top_regions?: { region: string; count: number; area_km2?: number }[]
+  total_area_km2?: number
+  search_name?: string
+  description?: string
+  search_type?: string
 }
 
 export interface AssistantMessage {
@@ -367,6 +511,13 @@ export interface AdminPlatformAnalytics {
     regions_covered: number
     layer_by_type: { layer_type: string; count: number }[]
     hotspots_by_region: { region: string; count: number }[]
+    layers?: {
+      slug: string
+      name: string
+      color: string
+      feature_count: number
+      layer_type: string
+    }[]
     minerals: {
       name: string
       slug: string

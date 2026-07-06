@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { reportsApi, subscriptionsApi } from '../../api'
+import { useAuth } from '../../auth/AuthContext'
+import { toast } from '../../components/ui/toast'
 import type { MyReport } from '../../types'
 import { EmptyState, PageHeader } from './DashboardUi'
 
@@ -23,8 +25,8 @@ function normalizePurchases(data: unknown): MyReport[] {
 }
 
 export default function DashboardReports() {
+  const { isManager } = useAuth()
   const [downloading, setDownloading] = useState<string | null>(null)
-  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['purchases'],
@@ -35,12 +37,12 @@ export default function DashboardReports() {
 
   const handleDownload = async (slug: string) => {
     setDownloading(slug)
-    setDownloadError(null)
     try {
       const { data: blob } = await reportsApi.download(slug)
       downloadBlob(new Blob([blob]), `${slug}.pdf`)
+      toast.success('Download started')
     } catch {
-      setDownloadError('Download failed. Open the report preview and try again.')
+      toast.error('Download failed', { description: 'Open the report preview and try again.' })
     } finally {
       setDownloading(null)
     }
@@ -48,10 +50,16 @@ export default function DashboardReports() {
 
   return (
     <>
-      <PageHeader title="My reports" description="Reports you have purchased or downloaded with your subscription." />
+      <PageHeader title="My downloads" description="Reports you have purchased or downloaded with your subscription." />
 
-      {downloadError && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{downloadError}</div>
+      {isManager && (
+        <div className="mb-5 rounded-xl border border-terra-500/25 bg-terra-500/10 px-4 py-3 text-sm text-app-text">
+          To write or upload reports for the catalog, use{' '}
+          <Link to="/admin/reports" className="font-medium text-terra-600 dark:text-terra-400 hover:underline">
+            Admin → Reports
+          </Link>
+          .
+        </div>
       )}
 
       {isLoading ? (

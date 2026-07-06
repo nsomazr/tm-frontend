@@ -1,8 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
-import { adminApi, paymentsApi, analyticsApi } from '../../api'
+import { Link } from 'react-router-dom'
+
+import { adminApi, analyticsApi, paymentsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import { Link } from 'react-router-dom'
+
+type Mineral = {
+  name: string
+  name_sw?: string
+  slug: string
+  color: string
+  layer_count: number
+  report_count: number
+}
+
+type InvestorResponse = {
+  layers: unknown[]
+  minerals: Mineral[]
+}
 
 function StatCard({
   label,
@@ -19,11 +34,18 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl bg-app-surface p-5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">{label}</p>
-      <p className="text-2xl font-bold text-app-text mt-1 tabular-nums">{value}</p>
-      {hint && <p className="text-xs text-app-text-muted mt-1">{hint}</p>}
+      <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-app-text">
+        {value}
+      </p>
+      {hint && <p className="mt-1 text-xs text-app-text-muted">{hint}</p>}
       {link && linkLabel && (
-        <Link to={link} className="text-xs text-terra-600 dark:text-terra-400 hover:underline mt-2 inline-block">
+        <Link
+          to={link}
+          className="mt-2 inline-block text-xs text-terra-600 hover:underline dark:text-terra-400"
+        >
           {linkLabel}
         </Link>
       )}
@@ -47,7 +69,7 @@ export default function AdminDashboard() {
     enabled: isAdmin,
   })
 
-  const { data: investor } = useQuery({
+  const { data: investor } = useQuery<InvestorResponse>({
     queryKey: ['investor'],
     queryFn: () => analyticsApi.investor().then((r) => r.data),
   })
@@ -57,62 +79,79 @@ export default function AdminDashboard() {
     queryFn: () => analyticsApi.hotspots().then((r) => r.data),
   })
 
-  const regions = (hotspots?.hotspots ?? []) as { region: string; feature_count: number }[]
+  const regions = (hotspots?.hotspots ?? []) as {
+    region: string
+    feature_count: number
+  }[]
+
   const topRegion = regions[0]
+  const mappedLayerCount = investor?.layers.length ?? 0
 
   return (
     <div>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-app-text">Overview</h1>
-        <p className="text-app-muted text-sm mt-1">
+        <p className="mt-1 text-sm text-app-muted">
           {isAdmin
             ? 'Platform health, revenue, and geological data at a glance.'
             : 'Your assigned minerals, layers, and map coverage.'}
         </p>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {isAdmin && (
           <>
             <StatCard
               label="Total revenue"
-              value={`${Number(revenue?.total_revenue || 0).toLocaleString()} TZS`}
+              value={`${Number(
+                revenue?.total_revenue ?? 0,
+              ).toLocaleString()} TZS`}
               link="/admin/revenue"
               linkLabel="View revenue →"
             />
+
             <StatCard
               label="Users"
-              value={users?.count || 0}
+              value={users?.count ?? 0}
               link="/admin/users"
               linkLabel="Manage users →"
             />
           </>
         )}
+
         <StatCard
-          label="Minerals tracked"
-          value={investor?.minerals?.length || 0}
+          label="Mapped layers"
+          value={mappedLayerCount}
           link="/admin/coverage"
           linkLabel="View coverage →"
         />
+
         <StatCard
           label="Top region"
-          value={topRegion?.region || 'N/A'}
-          hint={topRegion ? `${topRegion.feature_count} prospect zones` : undefined}
+          value={topRegion?.region ?? '-'}
+          hint={
+            topRegion
+              ? `${topRegion.feature_count} mapped zones`
+              : 'No mapped data yet. Upload layers in Admin'
+          }
         />
       </div>
 
       {isAdmin && (
-        <div className="rounded-xl bg-app-surface p-5 mb-8">
+        <div className="mb-8 rounded-xl bg-app-surface p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h2 className="font-semibold text-app-text">Platform analytics</h2>
-              <p className="text-sm text-app-muted mt-0.5">
+              <h2 className="font-semibold text-app-text">
+                Platform analytics
+              </h2>
+              <p className="mt-0.5 text-sm text-app-muted">
                 Users, conversions, revenue, subscriptions, and B2B pipeline.
               </p>
             </div>
+
             <Link
               to="/admin/analytics"
-              className="shrink-0 text-sm font-medium text-terra-600 dark:text-terra-400 px-4 py-2 rounded-lg bg-terra-500/10 hover:bg-terra-500/15 transition-colors"
+              className="shrink-0 rounded-lg bg-terra-500/10 px-4 py-2 text-sm font-medium text-terra-600 transition-colors hover:bg-terra-500/15 dark:text-terra-400"
             >
               Open analytics →
             </Link>
@@ -120,47 +159,75 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 gap-4 mb-8">
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
           to="/admin/layers"
-          className="rounded-xl bg-app-surface p-4 hover:bg-app-subtle transition-colors"
+          className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
         >
-          <p className="font-medium text-app-text text-sm">Manage layers</p>
-          <p className="text-xs text-app-muted mt-1">Upload shapefiles and configure map layers</p>
+          <p className="text-sm font-medium text-app-text">Manage layers</p>
+          <p className="mt-1 text-xs text-app-muted">
+            Upload shapefiles and configure map layers
+          </p>
         </Link>
+
+        <Link
+          to="/admin/reports"
+          className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
+        >
+          <p className="text-sm font-medium text-app-text">
+            Write & upload reports
+          </p>
+          <p className="mt-1 text-xs text-app-muted">
+            Draft with AI or attach PDF / Word documents
+          </p>
+        </Link>
+
         <Link
           to="/admin/coordinates"
-          className="rounded-xl bg-app-surface p-4 hover:bg-app-subtle transition-colors"
+          className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
         >
-          <p className="font-medium text-app-text text-sm">Edit coordinates</p>
-          <p className="text-xs text-app-muted mt-1">Adjust prospect zone geometry</p>
+          <p className="text-sm font-medium text-app-text">
+            Edit coordinates
+          </p>
+          <p className="mt-1 text-xs text-app-muted">
+            Adjust prospect zone geometry
+          </p>
         </Link>
       </div>
 
-      {investor?.minerals && (
+      {investor?.minerals?.some((m) => m.layer_count > 0) && (
         <div className="rounded-xl bg-app-surface p-5">
-          <h2 className="font-semibold text-app-text mb-4">Mineral inventory</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {investor.minerals.map(
-              (m: {
-                name: string
-                name_sw?: string
-                slug: string
-                color: string
-                layer_count: number
-                report_count: number
-              }) => (
-                <div key={m.slug} className="flex items-center gap-3 py-2">
-                  <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm text-app-text">{displayName(m)}</p>
+          <h2 className="mb-4 font-semibold text-app-text">
+            Mapped minerals
+          </h2>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {investor.minerals
+              .filter((m) => m.layer_count > 0)
+              .map((m) => (
+                <div
+                  key={m.slug}
+                  className="flex items-center gap-3 py-2"
+                >
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: m.color }}
+                  />
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-app-text">
+                      {displayName(m)}
+                    </p>
+
                     <p className="text-xs text-app-muted">
-                      {m.layer_count} layers · {m.report_count} reports
+                      {m.layer_count} mapped layer
+                      {m.layer_count !== 1 ? 's' : ''} ·{' '}
+                      {m.report_count} report
+                      {m.report_count !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
-              ),
-            )}
+              ))}
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import OtpInput from '../auth/OtpInput'
+import PasswordInput from '../ui/PasswordInput'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
 import {
@@ -420,12 +421,10 @@ export default function SubscribeCheckoutModal({
         {step === 'password' && (
           <form onSubmit={handlePasswordAuth} className="space-y-3 mt-2">
             <p className="text-sm text-slate-600 truncate">{emailNormalized}</p>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 8 characters"
-              className="input w-full"
               minLength={8}
               autoFocus
               autoComplete="new-password"

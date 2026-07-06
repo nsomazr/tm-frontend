@@ -46,13 +46,9 @@ export default function AdminLayout() {
         footerLinks={[{ to: '/', label: 'Open map' }]}
       />
 
-      <div className="md:hidden fixed top-16 inset-x-0 z-20 bg-app-surface/95 backdrop-blur-xl border-b app-divider px-4 py-2">
-        <WorkspaceTabs compact />
-      </div>
-
       <WorkspaceMobileNav links={mobileLinks} />
 
-      <div className="flex-1 min-w-0 pb-16 md:pb-0 pt-12 md:pt-0 overflow-auto">
+      <div className="flex-1 min-w-0 pb-16 md:pb-0 overflow-auto">
         <div className="max-w-5xl mx-auto px-4 sm:px-8 py-8">
           <Outlet />
         </div>

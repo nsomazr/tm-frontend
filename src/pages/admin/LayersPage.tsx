@@ -1,10 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, geographyApi, mapsApi, mineralsApi } from '../../api'
+import { adminApi, geographyApi, mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import FileUploadField from '../../components/ui/FileUploadField'
+import ListPagination from '../../components/ui/ListPagination'
+import { toast } from '../../components/ui/toast'
+import { usePagination } from '../../hooks/usePagination'
 import { useAlternateName } from '../../i18n/useAlternateName'
 import { useDisplayName } from '../../i18n/useDisplayName'
+import LayerArrangeSection from '../../components/admin/LayerArrangeSection'
+import {
+  layerDisplayColor,
+  layerFillColor,
+  layerStyleWithColor,
+  suggestLayerStyle,
+} from '../../components/admin/layerColors'
+import {
+  applyDefaultTypeStack,
+  moveLayerInStack,
+  sortLayersBottomToTop,
+  sortLayersTopToBottom,
+  stackPositionLabel,
+} from '../../components/admin/layerOrder'
 import type { AuditLog, LayerUpload, MapLayer } from '../../types'
 
 const LAYER_TYPES = [
@@ -22,8 +40,13 @@ function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['layer-versions'] })
 }
 
+function formatWhenShort(iso?: string | null) {
+  if (!iso) return '-'
+  return new Date(iso).toLocaleDateString()
+}
+
 function formatWhen(iso?: string | null) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso).toLocaleString()
 }
 
@@ -56,22 +79,24 @@ function uploadStatusClass(status: LayerUpload['status']) {
   }
 }
 
-function LayerVersionHistory({ layerId }: { layerId: number }) {
+function LayerVersionHistory({ layerId, className = 'mt-3' }: { layerId: number; className?: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ['layer-versions', layerId],
     queryFn: () => mapsApi.versions({ layer: String(layerId) }).then((r) => r.data),
   })
+  const versions = data?.results ?? []
+  const pagination = usePagination(versions)
 
   if (isLoading) {
-    return <p className="text-xs text-app-text-muted mt-3">Loading upload history…</p>
+    return <p className={`text-xs text-app-text-muted ${className}`}>Loading upload history…</p>
   }
 
-  if (!data?.results.length) {
-    return <p className="text-xs text-app-text-muted mt-3">No uploads recorded yet.</p>
+  if (!versions.length) {
+    return <p className={`text-xs text-app-text-muted ${className}`}>No uploads recorded yet.</p>
   }
 
   return (
-    <div className="mt-3 rounded-lg border border-app-border/50 overflow-hidden">
+    <div className={`${className} rounded-lg border border-app-border/50 overflow-hidden`}>
       <table className="admin-table">
         <thead>
           <tr>
@@ -82,7 +107,7 @@ function LayerVersionHistory({ layerId }: { layerId: number }) {
           </tr>
         </thead>
         <tbody>
-          {data.results.map((version) => (
+          {pagination.pageItems.map((version) => (
             <tr key={version.id}>
               <td className="text-app-text">v{version.version_number}</td>
               <td>
@@ -96,6 +121,15 @@ function LayerVersionHistory({ layerId }: { layerId: number }) {
           ))}
         </tbody>
       </table>
+      <div className="px-3 pb-3">
+        <ListPagination
+          page={pagination.page}
+          pageCount={pagination.pageCount}
+          total={pagination.total}
+          pageSize={pagination.pageSize}
+          onPageChange={pagination.setPage}
+        />
+      </div>
     </div>
   )
 }
@@ -103,32 +137,26 @@ function LayerVersionHistory({ layerId }: { layerId: number }) {
 export default function LayersPage() {
   const qc = useQueryClient()
   const { isAdmin } = useAuth()
+  const navigate = useNavigate()
   const displayName = useDisplayName()
   const alternateName = useAlternateName()
   const [selectedLayer, setSelectedLayer] = useState('')
   const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null)
-  const [actionStatus, setActionStatus] = useState<string | null>(null)
-  const [showHidden, setShowHidden] = useState(true)
+  const [showHidden, setShowHidden] = useState(false)
   const [expandedLayerId, setExpandedLayerId] = useState<number | null>(null)
 
   const [newName, setNewName] = useState('')
   const [newNameSw, setNewNameSw] = useState('')
-  const [newMineralId, setNewMineralId] = useState('')
   const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>('polygon')
   const [newRegionId, setNewRegionId] = useState('')
   const [newPreview, setNewPreview] = useState(false)
-  const [createStatus, setCreateStatus] = useState<string | null>(null)
+  const [newColor, setNewColor] = useState('#0D9488')
+  const [colorTouched, setColorTouched] = useState(false)
   const [layerMode, setLayerMode] = useState<'create' | 'import'>('import')
 
   const { data: layers } = useQuery({
     queryKey: ['admin-layers'],
     queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
-  })
-
-  const { data: minerals } = useQuery({
-    queryKey: ['minerals'],
-    queryFn: () => mineralsApi.list().then((r) => r.data),
   })
 
   const { data: regions } = useQuery({
@@ -152,22 +180,46 @@ export default function LayersPage() {
   const allLayers = layers?.results ?? []
   const visibleLayers = showHidden ? allLayers : allLayers.filter((l) => l.is_active)
   const importableLayers = allLayers.filter((l) => l.is_active)
+  const stackableLayers = allLayers.filter((l) => l.is_active)
+  const orderedStackLayers = sortLayersTopToBottom(stackableLayers)
+  const orderedVisibleLayers = [
+    ...orderedStackLayers,
+    ...sortLayersTopToBottom(visibleLayers.filter((layer) => !layer.is_active)),
+  ]
+  const layerPagination = usePagination(orderedVisibleLayers, 25)
+  const managerUploadsList = managerUploads?.results ?? []
+  const uploadsPagination = usePagination(managerUploadsList)
+  const auditLogsList = layerAudit?.results ?? []
+  const auditPagination = usePagination(auditLogsList)
+
+  const usedLayerColors = useMemo(
+    () => allLayers.map((layer) => layerFillColor(layer.style)).filter(Boolean),
+    [allLayers]
+  )
+
+  useEffect(() => {
+    if (colorTouched) return
+    const suggested = suggestLayerStyle(newName, usedLayerColors)
+    setNewColor(suggested.fill)
+  }, [newName, usedLayerColors, colorTouched])
 
   const createLayer = useMutation({
     mutationFn: () => {
-      if (!newName.trim() || !newMineralId) throw new Error('Name and mineral are required')
-      const mineral = minerals?.results.find((m) => String(m.id) === newMineralId)
+      if (!newName.trim()) throw new Error('Layer name is required')
+      const style = suggestLayerStyle(newName, usedLayerColors)
+      const fill = colorTouched ? newColor : style.fill
       const payload: Partial<MapLayer> = {
         name: newName.trim(),
         name_sw: newNameSw.trim(),
         layer_type: newLayerType,
-        mineral: Number(newMineralId),
-        z_index: (layers?.results.length ?? 0) + 1,
+        z_index: stackableLayers.length,
         is_preview: newPreview,
         is_active: true,
-        style: mineral?.color
-          ? { fill: mineral.color, stroke: mineral.color, strokeWidth: 1 }
-          : {},
+        style: {
+          fill,
+          stroke: fill,
+          strokeWidth: style.strokeWidth,
+        },
       }
       if (newRegionId) payload.region = Number(newRegionId)
       return mapsApi.createLayer(payload)
@@ -177,15 +229,17 @@ export default function LayersPage() {
       invalidateLayerQueries(qc)
       setSelectedLayer(slug)
       setLayerMode('import')
-      setCreateStatus(null)
-      setUploadStatus(`Layer "${res.data.name}" created. Select your file and upload.`)
+      toast.info(`Layer "${res.data.name}" created`, {
+        description: 'Select your file below and upload to add map features.',
+      })
       setNewName('')
       setNewNameSw('')
       setNewRegionId('')
       setNewPreview(false)
+      setColorTouched(false)
     },
     onError: (err: Error) => {
-      setCreateStatus(`Could not create layer: ${err.message}`)
+      toast.error('Could not create layer', { description: err.message })
     },
   })
 
@@ -194,10 +248,9 @@ export default function LayersPage() {
       mapsApi.updateLayer(slug, data),
     onSuccess: () => {
       invalidateLayerQueries(qc)
-      setActionStatus(null)
     },
     onError: (err: Error) => {
-      setActionStatus(`Update failed: ${err.message}`)
+      toast.error('Update failed', { description: err.message })
     },
   })
 
@@ -206,12 +259,55 @@ export default function LayersPage() {
     onSuccess: (_res, slug) => {
       invalidateLayerQueries(qc)
       setSelectedLayer((current) => (current === slug ? '' : current))
-      setActionStatus(null)
+      toast.success('Layer deleted')
     },
     onError: (err: Error) => {
-      setActionStatus(`Delete failed: ${err.message}`)
+      toast.error('Delete failed', { description: err.message })
     },
   })
+
+  const persistLayerStack = async (orderedActive: MapLayer[]) => {
+    const bottomToTop = sortLayersBottomToTop(orderedActive)
+    const inactive = sortLayersBottomToTop(allLayers.filter((layer) => !layer.is_active))
+    const layerIds = [
+      ...bottomToTop.map((layer) => layer.id),
+      ...inactive.map((layer) => layer.id),
+    ]
+    await mapsApi.reorder(layerIds)
+  }
+
+  const reorderStack = useMutation({
+    mutationFn: (orderedActive: MapLayer[]) => persistLayerStack(orderedActive),
+    onSuccess: () => {
+      invalidateLayerQueries(qc)
+      toast.success('Layer draw order updated')
+    },
+    onError: (err: Error) => {
+      toast.error('Could not update layer order', { description: err.message })
+    },
+  })
+
+  const handleMoveLayer = (
+    layerId: number,
+    direction: 'front' | 'forward' | 'backward' | 'back'
+  ) => {
+    const next = moveLayerInStack(stackableLayers, layerId, direction)
+    reorderStack.mutate(next)
+  }
+
+  const handleDefaultStack = () => {
+    if (stackableLayers.length === 0) return
+    reorderStack.mutate(applyDefaultTypeStack(stackableLayers))
+  }
+
+  const handleLayerColorChange = (layer: MapLayer, color: string) => {
+    updateLayer.mutate({
+      slug: layer.slug,
+      data: {
+        style: layerStyleWithColor(layer.style, layer.layer_type, color),
+      },
+    })
+  }
 
   const importLayer = useMutation({
     mutationFn: () => {
@@ -223,36 +319,53 @@ export default function LayersPage() {
       else if (name.endsWith('.zip')) fileType = 'zip'
       return mapsApi.bulkImport(layer.slug, uploadFile, fileType)
     },
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
+      const slug = selectedLayer
+      const layerName =
+        res.data?.layer_name ||
+        allLayers.find((l) => l.slug === slug)?.name ||
+        slug
+      const filename = uploadFile?.name ?? res.data?.filename ?? 'file'
+
       invalidateLayerQueries(qc)
       setUploadFile(null)
-      const status = res.data?.status
-      setUploadStatus(status === 'completed' ? 'Import completed successfully.' : 'Import started…')
+
+      if (res.data?.status === 'failed') {
+        toast.error('Import failed', {
+          description: res.data.error_message || 'The upload could not be processed.',
+        })
+        return
+      }
+
+      if (res.data?.status === 'completed') {
+        const { data } = await mapsApi.layers({ include_inactive: '1' })
+        const updated = data.results.find((layer) => layer.slug === slug)
+        const featureCount = updated?.feature_count ?? 0
+        toast.success('Upload successful', {
+          description: `Imported ${featureCount.toLocaleString()} features into "${layerName}" from ${filename}.`,
+          action:
+            featureCount > 0
+              ? { label: 'View on map', onClick: () => navigate('/') }
+              : undefined,
+        })
+        return
+      }
+
+      toast.info('Import started', {
+        description: `Processing ${filename} for "${layerName}". Refresh in a moment if features do not appear.`,
+      })
     },
     onError: (err: Error) => {
-      setUploadStatus(`Import failed: ${err.message}`)
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
+      toast.error('Import failed', { description: detail || err.message })
     },
   })
-
-  const downloadSample = async (slug: string) => {
-    try {
-      const { data } = await mapsApi.sampleShapefile(slug)
-      const url = URL.createObjectURL(data as Blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${slug}-sample.zip`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      alert('Sample shapefile not found. Run: python manage.py generate_sample_shapefiles')
-    }
-  }
 
   const handleToggleActive = (layer: MapLayer) => {
     const nextActive = !layer.is_active
     if (!window.confirm(`${nextActive ? 'Show' : 'Hide'} "${displayName(layer)}" on the map?`)) return
     updateLayer.mutate({ slug: layer.slug, data: { is_active: nextActive } })
-    setActionStatus(nextActive ? `Showing ${displayName(layer)}…` : `Hiding ${displayName(layer)}…`)
+    toast.info(nextActive ? `Showing ${displayName(layer)}` : `Hiding ${displayName(layer)}`)
   }
 
   const handleTogglePreview = (layer: MapLayer) => {
@@ -268,7 +381,6 @@ export default function LayersPage() {
       return
     }
     deleteLayer.mutate(layer.slug)
-    setActionStatus(`Deleting ${displayName(layer)}…`)
   }
 
   return (
@@ -276,7 +388,17 @@ export default function LayersPage() {
       <h1 className="text-2xl font-bold text-app-text mb-2">Map Layers</h1>
       <p className="text-sm text-app-muted mb-6">
         Create a new empty layer or import a shapefile / GeoJSON to replace features on an existing
-        layer.
+        mineral or commodity layer.
+        {isAdmin && (
+          <>
+            {' '}
+            For country, region, district, ward, or village boundaries, use{' '}
+            <Link to="/admin/boundaries?level=4" className="text-terra-600 dark:text-terra-400 hover:underline">
+              Boundary layers
+            </Link>
+            .
+          </>
+        )}
       </p>
 
       <div className="card !p-0 overflow-hidden mb-8">
@@ -337,19 +459,34 @@ export default function LayersPage() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm font-medium text-app-text-secondary">Mineral</span>
-                  <select
-                    value={newMineralId}
-                    onChange={(e) => setNewMineralId(e.target.value)}
-                    className="input mt-1.5 w-full"
-                  >
-                    <option value="">Select mineral</option>
-                    {minerals?.results.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {displayName(m)}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="text-sm font-medium text-app-text-secondary">Map color</span>
+                  <div className="mt-1.5 flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={newColor}
+                      onChange={(e) => {
+                        setColorTouched(true)
+                        setNewColor(e.target.value)
+                      }}
+                      className="h-10 w-14 cursor-pointer rounded-lg border border-app-border bg-app-bg p-1"
+                      aria-label="Layer color"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm text-app-text-secondary">
+                        {colorTouched ? 'Custom color' : 'Suggested from your layer list'}
+                      </p>
+                      <p className="text-xs text-app-text-muted font-mono truncate">{newColor}</p>
+                    </div>
+                    {colorTouched && (
+                      <button
+                        type="button"
+                        onClick={() => setColorTouched(false)}
+                        className="text-xs text-terra-600 hover:underline shrink-0"
+                      >
+                        Use suggestion
+                      </button>
+                    )}
+                  </div>
                 </label>
                 <label className="block">
                   <span className="text-sm font-medium text-app-text-secondary">Geometry type</span>
@@ -392,17 +529,13 @@ export default function LayersPage() {
               </div>
             </div>
             <div className="px-5 py-4 border-t app-divider flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              {createStatus ? (
-                <p className="text-sm text-app-text-secondary order-2 sm:order-1">{createStatus}</p>
-              ) : (
-                <p className="text-xs text-app-text-muted order-2 sm:order-1">
-                  After creating, switch to Import data to upload your file.
-                </p>
-              )}
+              <p className="text-xs text-app-text-muted order-2 sm:order-1">
+                After creating, switch to Import data to upload your file.
+              </p>
               <button
                 type="button"
                 onClick={() => createLayer.mutate()}
-                disabled={!newName.trim() || !newMineralId || createLayer.isPending}
+                disabled={!newName.trim() || createLayer.isPending}
                 className="btn-primary order-1 sm:order-2 shrink-0 self-end sm:self-auto"
               >
                 {createLayer.isPending ? 'Creating…' : 'Create layer'}
@@ -439,13 +572,9 @@ export default function LayersPage() {
             </div>
 
             <div className="px-5 py-4 border-t app-divider flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              {uploadStatus ? (
-                <p className="text-sm text-app-text-secondary order-2 sm:order-1">{uploadStatus}</p>
-              ) : (
-                <p className="text-xs text-app-text-muted order-2 sm:order-1">
-                  Import replaces every feature in the selected layer.
-                </p>
-              )}
+              <p className="text-xs text-app-text-muted order-2 sm:order-1">
+                Import replaces every feature in the selected layer.
+              </p>
               <button
                 type="button"
                 onClick={() => importLayer.mutate()}
@@ -459,117 +588,186 @@ export default function LayersPage() {
         )}
       </div>
 
+      <LayerArrangeSection
+        layers={stackableLayers}
+        onMove={handleMoveLayer}
+        onResetDefault={handleDefaultStack}
+        busy={reorderStack.isPending}
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 className="font-bold text-app-text">All layers ({visibleLayers.length})</h2>
-        <label className="flex items-center gap-2 text-sm text-app-text-secondary">
-          <input
-            type="checkbox"
-            checked={showHidden}
-            onChange={(e) => setShowHidden(e.target.checked)}
-            className="rounded border-app-border"
-          />
-          Include hidden layers
-        </label>
+        <div>
+          <h2 className="font-bold text-app-text">All layers ({visibleLayers.length})</h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-app-text-secondary">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.target.checked)}
+              className="rounded border-app-border"
+            />
+            Include hidden layers
+          </label>
+        </div>
       </div>
 
-      {actionStatus && <p className="mb-4 text-sm text-app-text-secondary">{actionStatus}</p>}
+      {visibleLayers.length === 0 ? (
+        <p className="text-sm text-app-muted">
+          {allLayers.length > 0
+            ? 'No active layers. Check “Include hidden layers” to review or delete old demo layers.'
+            : 'No layers yet. Create one above.'}
+        </p>
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Layer</th>
+                  <th>Type</th>
+                  <th className="tabular-nums">Features</th>
+                  <th>Stack</th>
+                  <th>Last upload</th>
+                  <th>Color</th>
+                  <th className="text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {layerPagination.pageItems.map((layer) => {
+                  const displayColor = layerDisplayColor(layer)
+                  const stackIndex = sortLayersBottomToTop(stackableLayers).findIndex(
+                    (item) => item.id === layer.id
+                  )
+                  const stackLabel =
+                    layer.is_active && stackableLayers.length > 0 && stackIndex >= 0
+                      ? stackPositionLabel(stackIndex, stackableLayers.length)
+                      : '-'
 
-      <div className="grid gap-4">
-        {visibleLayers.map((layer) => (
-          <div
-            key={layer.id}
-            className={`card ${!layer.is_active ? 'opacity-75 border-dashed' : ''}`}
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold text-app-text">{displayName(layer)}</h3>
-                  {!layer.is_active && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-app-subtle text-app-text-muted border border-app-border">
-                      Hidden
-                    </span>
-                  )}
-                  {layer.is_preview && (
-                    <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-terra-500/10 text-terra-600 dark:text-terra-400 border border-terra-500/25">
-                      Preview
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-app-text-secondary">
-                  {alternateName(layer) ? `${alternateName(layer)} · ` : ''}
-                  {layer.layer_type}
-                </p>
-                <p className="text-xs text-app-text-muted mt-1">
-                  {layer.mineral_name} · z-index {layer.z_index} · {layer.feature_count} features
-                </p>
-                <p className="text-xs text-app-text-muted mt-1">
-                  Created by {layer.created_by_name ?? 'Unknown'}
-                  {layer.created_at ? ` · ${formatWhen(layer.created_at)}` : ''}
-                </p>
-                <p className="text-xs text-app-text-muted mt-0.5">
-                  Last upload by {layer.last_uploaded_by_name ?? '—'}
-                  {layer.last_uploaded_at ? ` · ${formatWhen(layer.last_uploaded_at)}` : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => downloadSample(layer.slug)}
-                  className="text-xs px-2 py-1 border border-app-border rounded-lg hover:bg-app-subtle text-app-text-secondary"
-                >
-                  Sample ZIP
-                </button>
-                <span
-                  className="w-6 h-6 rounded flex-shrink-0 border border-app-border"
-                  style={{ backgroundColor: (layer.style?.fill as string) || '#ccc' }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t app-divider flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setExpandedLayerId((current) => (current === layer.id ? null : layer.id))
-                }
-                className="text-xs px-3 py-1.5 rounded-lg border border-app-border hover:bg-app-subtle text-app-text-secondary"
-              >
-                {expandedLayerId === layer.id ? 'Hide upload history' : 'Upload history'}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleToggleActive(layer)}
-                disabled={updateLayer.isPending}
-                className="text-xs px-3 py-1.5 rounded-lg border border-app-border hover:bg-app-subtle text-app-text-secondary"
-              >
-                {layer.is_active ? 'Hide from map' : 'Show on map'}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTogglePreview(layer)}
-                disabled={updateLayer.isPending}
-                className="text-xs px-3 py-1.5 rounded-lg border border-app-border hover:bg-app-subtle text-app-text-secondary"
-              >
-                {layer.is_preview ? 'Remove preview flag' : 'Mark as preview'}
-              </button>
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => handleDelete(layer)}
-                  disabled={deleteLayer.isPending}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10"
-                >
-                  Delete permanently
-                </button>
-              )}
-            </div>
-            {expandedLayerId === layer.id && <LayerVersionHistory layerId={layer.id} />}
+                  return (
+                    <Fragment key={layer.id}>
+                      <tr
+                        className={!layer.is_active ? 'opacity-70' : undefined}
+                      >
+                        <td className="min-w-[10rem]">
+                          <div className="font-medium text-app-text">{displayName(layer)}</div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            {!layer.is_active && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-app-subtle text-app-text-muted border border-app-border">
+                                Hidden
+                              </span>
+                            )}
+                            {layer.is_preview && (
+                              <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-terra-500/10 text-terra-600 dark:text-terra-400 border border-terra-500/25">
+                                Preview
+                              </span>
+                            )}
+                            {alternateName(layer) && (
+                              <span className="text-xs text-app-text-muted truncate max-w-[12rem]">
+                                {alternateName(layer)}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="text-app-text-secondary capitalize whitespace-nowrap">
+                          {layer.layer_type}
+                        </td>
+                        <td className="tabular-nums text-app-text">{layer.feature_count}</td>
+                        <td className="text-xs text-app-text-muted whitespace-nowrap">
+                          {stackLabel}
+                          <span className="block text-[11px]">z{layer.z_index}</span>
+                        </td>
+                        <td className="text-xs text-app-text-muted whitespace-nowrap">
+                          <span className="text-app-text-secondary">
+                            {layer.last_uploaded_by_name ?? '-'}
+                          </span>
+                          {layer.last_uploaded_at && (
+                            <span className="block">{formatWhenShort(layer.last_uploaded_at)}</span>
+                          )}
+                        </td>
+                        <td>
+                          <label
+                            className="inline-flex items-center gap-1.5"
+                            title="Change layer color"
+                          >
+                            <input
+                              type="color"
+                              value={displayColor.startsWith('#') ? displayColor : '#0D9488'}
+                              onChange={(e) => handleLayerColorChange(layer, e.target.value)}
+                              disabled={updateLayer.isPending}
+                              className="h-7 w-8 cursor-pointer rounded border border-app-border bg-transparent p-0.5"
+                              aria-label={`Color for ${displayName(layer)}`}
+                            />
+                            <span className="text-[10px] font-mono text-app-text-muted hidden lg:inline">
+                              {displayColor}
+                            </span>
+                          </label>
+                        </td>
+                        <td className="text-right">
+                          <div className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-xs whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedLayerId((current) =>
+                                  current === layer.id ? null : layer.id
+                                )
+                              }
+                              className="text-terra-600 dark:text-terra-400 hover:underline"
+                            >
+                              {expandedLayerId === layer.id ? 'Hide history' : 'History'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(layer)}
+                              disabled={updateLayer.isPending}
+                              className="text-app-text-secondary hover:underline"
+                            >
+                              {layer.is_active ? 'Hide' : 'Show'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePreview(layer)}
+                              disabled={updateLayer.isPending}
+                              className="text-app-text-secondary hover:underline"
+                            >
+                              {layer.is_preview ? 'Unpreview' : 'Preview'}
+                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(layer)}
+                                disabled={deleteLayer.isPending}
+                                className="text-red-600 dark:text-red-400 hover:underline"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expandedLayerId === layer.id && (
+                        <tr>
+                          <td colSpan={7} className="!py-3 bg-app-subtle/40">
+                            <LayerVersionHistory layerId={layer.id} className="mx-1" />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        ))}
-        {visibleLayers.length === 0 && (
-          <p className="text-sm text-app-muted">No layers yet. Create one above.</p>
-        )}
-      </div>
+          <ListPagination
+            page={layerPagination.page}
+            pageCount={layerPagination.pageCount}
+            total={layerPagination.total}
+            pageSize={layerPagination.pageSize}
+            onPageChange={layerPagination.setPage}
+            className="px-4 pb-4"
+          />
+        </div>
+      )}
 
       {isAdmin && (
         <div className="mt-10 space-y-6">
@@ -593,7 +791,7 @@ export default function LayersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {managerUploads.results.map((upload) => (
+                    {uploadsPagination.pageItems.map((upload) => (
                       <tr key={upload.id}>
                         <td className="text-app-text-muted whitespace-nowrap">
                           {formatWhen(upload.created_at)}
@@ -616,6 +814,14 @@ export default function LayersPage() {
                   </tbody>
                 </table>
               )}
+              <ListPagination
+                page={uploadsPagination.page}
+                pageCount={uploadsPagination.pageCount}
+                total={uploadsPagination.total}
+                pageSize={uploadsPagination.pageSize}
+                onPageChange={uploadsPagination.setPage}
+                className="px-4 pb-4"
+              />
             </div>
           </div>
 
@@ -624,9 +830,9 @@ export default function LayersPage() {
             <p className="text-sm text-app-muted mb-4">
               Creates, uploads, updates, and deletes recorded for map layers.
             </p>
-            <div className="card overflow-hidden max-h-96 overflow-y-auto">
+            <div className="card overflow-hidden">
               {!layerAudit?.results.length ? (
-                <p className="text-sm text-app-muted">No layer activity logged yet.</p>
+                <p className="text-sm text-app-muted p-4">No layer activity logged yet.</p>
               ) : (
                 <table className="admin-table">
                   <thead>
@@ -637,7 +843,7 @@ export default function LayersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {layerAudit.results.map((log) => (
+                    {auditPagination.pageItems.map((log) => (
                       <tr key={log.id}>
                         <td className="text-app-text-muted whitespace-nowrap">
                           {formatWhen(log.created_at)}
@@ -649,6 +855,14 @@ export default function LayersPage() {
                   </tbody>
                 </table>
               )}
+              <ListPagination
+                page={auditPagination.page}
+                pageCount={auditPagination.pageCount}
+                total={auditPagination.total}
+                pageSize={auditPagination.pageSize}
+                onPageChange={auditPagination.setPage}
+                className="px-4 pb-4"
+              />
             </div>
           </div>
         </div>
