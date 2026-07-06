@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapLayer } from '../../types'
 import { layerDisplayColor } from '../admin/layerColors'
+import { resolveStructureRank, structureRankLegendHeight } from './structureLineRank'
 
 interface LegendPanelProps {
   layers: MapLayer[]
@@ -11,7 +12,26 @@ interface LegendPanelProps {
   defaultOpen?: boolean
 }
 
-const TYPE_SYMBOL: Record<string, { render: (color: string) => ReactNode }> = {
+function lineLegendSymbol(color: string, layer?: MapLayer) {
+  const rank = layer ? resolveStructureRank(layer) : 2
+  const barHeight = structureRankLegendHeight(rank)
+  return (
+    <span
+      className="w-4 h-4 shrink-0 flex items-center justify-center rounded border border-app-border-strong bg-app-surface shadow-sm"
+      aria-hidden
+    >
+      <span
+        className="block w-3 rounded-full"
+        style={{
+          height: barHeight,
+          backgroundColor: color === '#888' ? '#1f2937' : color,
+        }}
+      />
+    </span>
+  )
+}
+
+const TYPE_SYMBOL: Record<string, { render: (color: string, layer?: MapLayer) => ReactNode }> = {
   polygon: {
     render: (color) => (
       <span
@@ -21,17 +41,7 @@ const TYPE_SYMBOL: Record<string, { render: (color: string) => ReactNode }> = {
     ),
   },
   line: {
-    render: (color) => (
-      <span
-        className="w-4 h-4 shrink-0 flex items-center justify-center rounded border border-app-border-strong bg-app-surface shadow-sm"
-        aria-hidden
-      >
-        <span
-          className="block w-3 h-[3px] rounded-full"
-          style={{ backgroundColor: color === '#888' ? '#1f2937' : color }}
-        />
-      </span>
-    ),
+    render: (color, layer) => lineLegendSymbol(color, layer),
   },
   point: {
     render: (color) => (
@@ -56,6 +66,7 @@ export default function LegendPanel({ layers, embedded, sheetMode, defaultOpen =
     return [...layers]
       .sort((a, b) => a.z_index - b.z_index)
       .map((layer) => ({
+        layer,
         id: layer.id,
         name: displayName(layer),
         type: layer.layer_type,
@@ -76,7 +87,7 @@ export default function LegendPanel({ layers, embedded, sheetMode, defaultOpen =
               const sym = TYPE_SYMBOL[entry.type] ?? TYPE_SYMBOL.polygon
               return (
                 <li key={entry.id} className="flex items-center gap-2 rounded-md px-1 py-1">
-                  {sym.render(entry.color)}
+                  {sym.render(entry.color, entry.layer)}
                   <span className="min-w-0 leading-snug map-text">{entry.name}</span>
                 </li>
               )
@@ -113,7 +124,7 @@ export default function LegendPanel({ layers, embedded, sheetMode, defaultOpen =
                 const sym = TYPE_SYMBOL[entry.type] ?? TYPE_SYMBOL.polygon
                 return (
                   <li key={entry.id} className="flex items-start gap-1.5 px-1 py-0.5 rounded-md hover:bg-app-subtle">
-                    {sym.render(entry.color)}
+                    {sym.render(entry.color, entry.layer)}
                     <span className="map-text leading-snug break-words min-w-0">{entry.name}</span>
                   </li>
                 )

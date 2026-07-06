@@ -4,6 +4,12 @@ import type { FeatureLike } from 'ol/Feature'
 import type { BasemapId } from './basemaps'
 import { isImageryBasemap } from './basemaps'
 import { zoomFromResolution } from './mapUtils'
+import {
+  resolveStructureRank,
+  structureRankDash,
+  structureRankLineWidth,
+  type StructureLineRank,
+} from './structureLineRank'
 
 export type MapColorTheme = 'light' | 'dark'
 
@@ -30,34 +36,79 @@ function parseColor(hex: string, fallback: string) {
   return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : fallback
 }
 
-function isMainStructure(layer: MapLayer) {
-  return /main-structures|mikuu|css/i.test(layer.slug + layer.name)
+function featureProperties(feature?: FeatureLike): Record<string, unknown> | null {
+  if (!feature || typeof feature.getProperties !== 'function') return null
+  const props = feature.getProperties()
+  if (!props || typeof props !== 'object') return null
+  const { geometry: _geometry, ...rest } = props as Record<string, unknown>
+  return rest
 }
 
-function lineStrokeColor(main: boolean, lowZoom: boolean, darkTheme: boolean) {
+function lineStrokeColor(rank: StructureLineRank, lowZoom: boolean, darkTheme: boolean) {
   if (darkTheme) {
-    return main
-      ? lowZoom
-        ? 'rgba(255,255,255,0.55)'
-        : 'rgba(255,255,255,0.88)'
-      : lowZoom
-        ? 'rgba(255,255,255,0.4)'
-        : 'rgba(255,255,255,0.68)'
+    if (rank === 1) {
+      return lowZoom ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.9)'
+    }
+    if (rank === 2) {
+      return lowZoom ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.78)'
+    }
+    return lowZoom ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.62)'
   }
-  return main
-    ? lowZoom
-      ? 'rgba(20,20,20,0.45)'
-      : 'rgba(20,20,20,0.72)'
-    : lowZoom
-      ? 'rgba(60,60,60,0.35)'
-      : 'rgba(60,60,60,0.55)'
+  if (rank === 1) {
+    return lowZoom ? 'rgba(20,20,20,0.45)' : 'rgba(20,20,20,0.78)'
+  }
+  if (rank === 2) {
+    return lowZoom ? 'rgba(40,40,40,0.38)' : 'rgba(40,40,40,0.62)'
+  }
+  return lowZoom ? 'rgba(60,60,60,0.32)' : 'rgba(60,60,60,0.52)'
+}
+
+function buildLineStyle(
+  layer: MapLayer,
+  basemap: BasemapId,
+  zoom: number,
+  theme: MapColorTheme,
+  feature?: FeatureLike
+) {
+  const style = layer.style || {}
+  const rank = resolveStructureRank(layer, featureProperties(feature))
+  const lowZoom = zoom < 6
+  const width = structureRankLineWidth(rank, zoom, lowZoom)
+  const lineDash = structureRankDash(rank)
+  const customLine = parseColor(
+    (style.stroke as string) || (style.fill as string) || '',
+    ''
+  )
+
+  if (customLine) {
+    return new Style({
+      stroke: new Stroke({
+        color: hexWithAlpha(customLine, lowZoom ? 0.78 : 0.95),
+        width,
+        lineCap: 'round',
+        lineJoin: 'round',
+        lineDash,
+      }),
+    })
+  }
+
+  return new Style({
+    stroke: new Stroke({
+      color: lineStrokeColor(rank, lowZoom, theme === 'dark'),
+      width,
+      lineCap: 'round',
+      lineJoin: 'round',
+      lineDash,
+    }),
+  })
 }
 
 export function buildLayerStyle(
   layer: MapLayer,
   basemap: BasemapId,
   zoom = 8,
-  theme: MapColorTheme = 'light'
+  theme: MapColorTheme = 'light',
+  feature?: FeatureLike
 ): Style {
   const style = layer.style || {}
   const onImagery = isImageryBasemap(basemap)
@@ -71,35 +122,7 @@ export function buildLayerStyle(
   }
 
   if (layer.layer_type === 'line') {
-    const main = isMainStructure(layer)
-    const baseWidth = main ? 1.8 : 1.2
-    const zoomBoost = Math.max(0, zoom - 6) * 0.15
-    const width = Math.min(baseWidth + zoomBoost, main ? 2.5 : 1.8)
-    const lowZoom = zoom < 6
-    const customLine = parseColor(
-      (style.stroke as string) || (style.fill as string) || '',
-      ''
-    )
-    if (customLine) {
-      return new Style({
-        stroke: new Stroke({
-          color: hexWithAlpha(customLine, lowZoom ? 0.78 : 0.95),
-          width: lowZoom ? Math.max(0.9, width * 0.85) : width,
-          lineCap: 'round',
-          lineJoin: 'round',
-          lineDash: main ? undefined : [6, 4],
-        }),
-      })
-    }
-    return new Style({
-      stroke: new Stroke({
-        color: lineStrokeColor(main, lowZoom, theme === 'dark'),
-        width: lowZoom ? Math.max(0.9, width * 0.85) : width,
-        lineCap: 'round',
-        lineJoin: 'round',
-        lineDash: main ? undefined : [6, 4],
-      }),
-    })
+    return buildLineStyle(layer, basemap, zoom, theme, feature)
   }
 
   const fillOpacity = (style.fillOpacity as number) ?? (onImagery ? 0.62 : 0.52)
@@ -113,17 +136,17 @@ export function buildLayerStyle(
 }
 
 export function buildLayerStyleFunction(layer: MapLayer, basemap: BasemapId, theme: MapColorTheme = 'light') {
-  return (_feature: FeatureLike, resolution: number) => {
+  return (feature: FeatureLike, resolution: number) => {
     const zoom = zoomFromResolution(resolution)
     // Mobile country view is ~zoom 4–5; still draw faint lines when the user enables them.
     if (layer.layer_type === 'line' && zoom < 4) {
       return undefined
     }
-    return buildLayerStyle(layer, basemap, zoom, theme)
+    return buildLayerStyle(layer, basemap, zoom, theme, feature)
   }
 }
 
-export function buildHighlightStyle(layer: MapLayer, basemap: BasemapId): Style {
+export function buildHighlightStyle(layer: MapLayer, basemap: BasemapId, feature?: FeatureLike): Style {
   const style = layer.style || {}
   const fill = parseColor((style.fill as string) || '', '#E87722')
 
@@ -135,11 +158,14 @@ export function buildHighlightStyle(layer: MapLayer, basemap: BasemapId): Style 
 
   if (layer.layer_type === 'line') {
     const stroke = parseColor((style.stroke as string) || (style.fill as string) || '', '#E87722')
+    const rank = resolveStructureRank(layer, featureProperties(feature))
+    const width = structureRankLineWidth(rank, 10, false) + 0.6
     return new Style({
       stroke: new Stroke({
         color: stroke,
-        width: 2.5,
+        width,
         lineCap: 'round',
+        lineJoin: 'round',
       }),
     })
   }

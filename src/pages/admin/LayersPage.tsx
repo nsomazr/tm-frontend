@@ -17,6 +17,13 @@ import {
   layerStyleWithColor,
   suggestLayerStyle,
 } from '../../components/admin/layerColors'
+import {
+  STRUCTURE_RANK_OPTIONS,
+  layerStyleWithStructureRank,
+  resolveStructureRank,
+  suggestStructureRank,
+  type StructureLineRank,
+} from '../../components/map/structureLineRank'
 import { colorRecordForLayer, formatColorCodes } from '../../lib/mineralColorUtils'
 import {
   applyDefaultTypeStack,
@@ -153,6 +160,8 @@ export default function LayersPage() {
   const [newPreview, setNewPreview] = useState(false)
   const [newColor, setNewColor] = useState('#0D9488')
   const [colorTouched, setColorTouched] = useState(false)
+  const [newStructureRank, setNewStructureRank] = useState<StructureLineRank>(2)
+  const [structureRankTouched, setStructureRankTouched] = useState(false)
   const [layerMode, setLayerMode] = useState<'create' | 'import'>('import')
 
   const { data: layers } = useQuery({
@@ -199,11 +208,21 @@ export default function LayersPage() {
     setNewColor(suggested.fill)
   }, [newName, usedLayerColors, newLayerType, colorTouched])
 
+  useEffect(() => {
+    if (structureRankTouched || newLayerType !== 'line') return
+    setNewStructureRank(suggestStructureRank(newName, newLayerType))
+  }, [newName, newLayerType, structureRankTouched])
+
   const createLayer = useMutation({
     mutationFn: () => {
       if (!newName.trim()) throw new Error('Layer name is required')
       const style = suggestLayerStyle(newName, usedLayerColors, newLayerType)
       const fill = colorTouched ? newColor : style.fill
+      const baseStyle = layerStyleWithColor(
+        { fill, stroke: fill, strokeWidth: style.strokeWidth },
+        newLayerType,
+        fill
+      )
       const payload: Partial<MapLayer> = {
         name: newName.trim(),
         name_sw: newNameSw.trim(),
@@ -211,11 +230,10 @@ export default function LayersPage() {
         z_index: stackableLayers.length,
         is_preview: newPreview,
         is_active: true,
-        style: layerStyleWithColor(
-          { fill, stroke: fill, strokeWidth: style.strokeWidth },
-          newLayerType,
-          fill
-        ),
+        style:
+          newLayerType === 'line'
+            ? layerStyleWithStructureRank(baseStyle, newStructureRank)
+            : baseStyle,
       }
       return mapsApi.createLayer(payload)
     },
@@ -231,6 +249,8 @@ export default function LayersPage() {
       setNewNameSw('')
       setNewPreview(false)
       setColorTouched(false)
+      setStructureRankTouched(false)
+      setNewStructureRank(2)
     },
     onError: (err: Error) => {
       toast.error('Could not create layer', { description: err.message })
@@ -296,6 +316,15 @@ export default function LayersPage() {
       slug: layer.slug,
       data: {
         style: layerStyleWithColor(layer.style, layer.layer_type, color),
+      },
+    })
+  }
+
+  const handleStructureRankChange = (layer: MapLayer, rank: StructureLineRank) => {
+    updateLayer.mutate({
+      slug: layer.slug,
+      data: {
+        style: layerStyleWithStructureRank(layer.style, rank),
       },
     })
   }
@@ -508,6 +537,32 @@ export default function LayersPage() {
                     ))}
                   </select>
                 </label>
+                {newLayerType === 'line' && (
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium text-app-text-secondary">
+                      Structure importance
+                    </span>
+                    <select
+                      value={newStructureRank}
+                      onChange={(e) => {
+                        setStructureRankTouched(true)
+                        setNewStructureRank(Number(e.target.value) as StructureLineRank)
+                      }}
+                      className="input mt-1.5 w-full max-w-md"
+                    >
+                      {STRUCTURE_RANK_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-app-text-muted mt-1.5 max-w-xl">
+                      Controls line thickness on the map. You can also name layers with
+                      major/minor or primary/secondary/tertiary, or include rank fields in
+                      uploaded shapefiles.
+                    </p>
+                  </label>
+                )}
                 <label className="flex items-center gap-2 text-sm text-app-text-secondary self-end pb-2">
                   <input
                     type="checkbox"
@@ -621,6 +676,7 @@ export default function LayersPage() {
                   <th>Stack</th>
                   <th>Last upload</th>
                   <th>Color</th>
+                  <th>Line weight</th>
                   <th className="text-right">Actions</th>
                 </tr>
               </thead>
@@ -693,6 +749,30 @@ export default function LayersPage() {
                               {displayColor}
                             </span>
                           </label>
+                        </td>
+                        <td>
+                          {layer.layer_type === 'line' ? (
+                            <select
+                              value={resolveStructureRank(layer)}
+                              onChange={(e) =>
+                                handleStructureRankChange(
+                                  layer,
+                                  Number(e.target.value) as StructureLineRank
+                                )
+                              }
+                              disabled={updateLayer.isPending}
+                              className="input !py-1 !px-2 text-xs max-w-[9rem]"
+                              aria-label={`Line weight for ${displayName(layer)}`}
+                            >
+                              {STRUCTURE_RANK_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.shortLabel}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-app-text-muted">—</span>
+                          )}
                         </td>
                         <td className="text-right">
                           <div className="flex flex-wrap justify-end gap-x-2 gap-y-1 text-xs whitespace-nowrap">
