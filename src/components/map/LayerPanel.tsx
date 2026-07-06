@@ -118,9 +118,6 @@ export default function LayerPanel({
                     </button>
                     )}
                   </div>
-                  {type === 'line' && !layersLocked && (
-                    <p className="text-xs map-text-secondary mt-1 leading-snug">{m.map.linesOffByDefault}</p>
-                  )}
                 </div>
                 <ul className="space-y-0.5">
                   {typeLayers.map((layer, index) => {

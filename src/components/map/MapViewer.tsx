@@ -1059,7 +1059,17 @@ export default function MapViewer({
   useEffect(() => {
     const map = mapInstance.current
     if (!map || mapEpoch === 0) return
-    syncMineralHeatmapLayer(map, heatmapLayerRef, mineralHeatmap, isMobileRef.current)
+    let cancelled = false
+    void syncMineralHeatmapLayer(
+      map,
+      heatmapLayerRef,
+      mineralHeatmap,
+      isMobileRef.current,
+      () => cancelled,
+    )
+    return () => {
+      cancelled = true
+    }
   }, [mineralHeatmap, mapEpoch, isMobile])
 
   useEffect(() => {
@@ -1398,16 +1408,6 @@ export default function MapViewer({
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
-      {mineralHeatmap?.points?.length ? (
-        <MineralHeatmapColorbar
-          spec={mineralHeatmap}
-          className={
-            isMobile
-              ? 'absolute z-20 left-3 bottom-[calc(6.75rem+env(safe-area-inset-bottom,0px))]'
-              : 'absolute z-20 bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))] left-[max(calc(min(18rem,100vw-1.5rem)+0.75rem),calc(0.75rem+env(safe-area-inset-left,0px)))]'
-          }
-        />
-      ) : null}
       {!minimalChrome && showCoordinateReadout && (
         <MapCoordinateReadout
           mapCoordinate={pointerCoordinate}
@@ -1448,15 +1448,24 @@ export default function MapViewer({
         </div>
       )}
       {showLayerPanel && layers.length > 0 && !minimalChrome && !isMobile && hasPaidAccess && (
-        <LayerPanel
-          layers={layers}
-          visibleLayers={visibleLayers}
-          onToggle={toggleLayer}
-          onToggleType={toggleLayerType}
-          onReorder={reorderLayers}
-          allowReorder={allowReorder || editable}
-          layersLocked={staticMap}
-        />
+        <div className="absolute z-10 top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] w-[min(18rem,calc(100vw-1.5rem))] max-h-[min(calc(100%-6rem),85vh)] hidden md:flex flex-col gap-1.5 pointer-events-none">
+          <LayerPanel
+            embedded
+            layers={layers}
+            visibleLayers={visibleLayers}
+            onToggle={toggleLayer}
+            onToggleType={toggleLayerType}
+            onReorder={reorderLayers}
+            allowReorder={allowReorder || editable}
+            layersLocked={staticMap}
+            className="pointer-events-auto min-h-0 max-h-[min(40vh,calc(100%-6rem))]"
+          />
+          <MineralHeatmapColorbar
+            embedded
+            spec={mineralHeatmap?.points?.length ? mineralHeatmap : null}
+            className="pointer-events-none shrink-0 w-full"
+          />
+        </div>
       )}
       {!minimalChrome && !isMobile && (
         <MapRightDock
@@ -1523,6 +1532,7 @@ export default function MapViewer({
           hasPaidAccess={hasPaidAccess ?? false}
           assistantMapContext={assistantMapContext ?? null}
           getMapSnapshot={getMapSnapshot}
+          mineralHeatmap={mineralHeatmap?.points?.length ? mineralHeatmap : null}
         />
       )}
     </div>

@@ -1,8 +1,8 @@
 import type { MapLayer } from '../../types'
 
-/** Default visible layers: polygons/points on; structural lines off until user enables them. */
+/** Default visible layers: polygons, points, and lines all on. */
 export function defaultVisibleLayerIds(layers: MapLayer[]): Set<number> {
-  return new Set(layers.filter((l) => l.layer_type !== 'line').map((l) => l.id))
+  return new Set(layers.map((l) => l.id))
 }
 
 /** Unpaid static map: every mineral layer stays visible. */

@@ -8,6 +8,8 @@ import LegendPanel from './LegendPanel'
 import LayerTypeSymbol from './LayerTypeSymbol'
 import MapZoomControls from './MapZoomControls'
 import TerraAssistantLauncher from './TerraAssistantLauncher'
+import MineralHeatmapColorbar from './MineralHeatmapColorbar'
+import type { MineralHeatmapSpec } from './mineralHeatmapLayer'
 
 import type { BoundaryLevelKey, BoundaryVisibility } from './adminBoundaryStyles'
 import type { BoundaryFocus } from './boundaryFocus'
@@ -56,6 +58,7 @@ interface MapBottomControlsProps {
   hasPaidAccess: boolean
   assistantMapContext: TerraAssistantMapContext | null
   getMapSnapshot?: () => Promise<string | null>
+  mineralHeatmap?: MineralHeatmapSpec | null
 }
 
 type Panel = 'layers' | 'basemap' | 'legend' | null
@@ -213,6 +216,7 @@ export default function MapBottomControls({
   hasPaidAccess,
   assistantMapContext,
   getMapSnapshot,
+  mineralHeatmap = null,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
@@ -333,9 +337,6 @@ export default function MapBottomControls({
                           </button>
                           )}
                         </div>
-                        {type === 'line' && !staticMap && (
-                          <p className="text-xs map-text-secondary mt-1 leading-snug">{m.map.linesOffByDefault}</p>
-                        )}
                       </div>
                       <ul className="space-y-0.5">
                         {typeLayers.map((layer) => (
@@ -359,6 +360,11 @@ export default function MapBottomControls({
                   <p className="py-2 text-xs map-text-muted">{m.map.noLayers}</p>
                 )}
               </div>
+              {mineralHeatmap && (
+                <div className="shrink-0 border-t app-divider px-3 py-2.5">
+                  <MineralHeatmapColorbar embedded spec={mineralHeatmap} />
+                </div>
+              )}
             </>,
             true
           )}
@@ -515,6 +521,12 @@ export default function MapBottomControls({
               value={coordinateSystem}
               onChange={onCoordinateSystemChange}
             />
+          </div>
+        )}
+
+        {panel !== 'layers' && mineralHeatmap && (
+          <div className="pointer-events-none mb-1.5">
+            <MineralHeatmapColorbar embedded spec={mineralHeatmap} className="w-full" />
           </div>
         )}
 
