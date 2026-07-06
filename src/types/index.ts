@@ -9,8 +9,19 @@ export interface User {
   organization: string
   profile_complete: boolean
   has_paid_access?: boolean
+  can_save_explorations?: boolean
   assistant_credits?: AssistantCredits | null
+  mineral_exploration?: MineralExplorationQuota | null
   created_at: string
+}
+
+export interface SavedExploration {
+  id: number
+  name: string
+  mode: 'point' | 'line' | 'polygon'
+  points: [number, number][]
+  created_at: string
+  updated_at: string
 }
 
 export interface Mineral {
@@ -23,6 +34,7 @@ export interface Mineral {
   country: number
   country_code: string
   color: string
+  color_rgba?: string
   icon: string
   description: string
   is_active: boolean
@@ -92,6 +104,7 @@ export interface MapFeature {
   latitude: string | null
   longitude: string | null
   label: string
+  created_by?: number | null
   is_active: boolean
 }
 
@@ -109,6 +122,8 @@ export interface SubscriptionPlan {
   included_report_downloads?: number
   included_assistant_credits?: number
   includes_chat_history?: boolean
+  includes_saved_explorations?: boolean
+  max_explorable_minerals?: number | null
 }
 
 export interface AssistantCredits {
@@ -120,6 +135,17 @@ export interface AssistantCredits {
   tier: 'free' | 'paid' | 'anonymous' | 'unlimited'
   unlimited?: boolean
   chat_history?: boolean
+}
+
+export interface MineralExplorationQuota {
+  limit: number | null
+  used: number
+  remaining: number | null
+  explored_slugs: string[]
+  period_end: string | null
+  period_label: 'monthly' | null
+  tier: 'free' | 'starter' | 'growth' | 'premium' | 'unlimited' | 'anonymous'
+  unlimited?: boolean
 }
 
 export interface DownloadQuota {
@@ -374,6 +400,7 @@ export interface MineralCatalogEntry {
   name: string
   name_sw: string
   color: string
+  color_rgba?: string
   description: string
   feature_count: number
   is_mapped: boolean
@@ -401,6 +428,7 @@ export interface MineralBoundaryCoverage {
   village_ids: number[]
   bounds: { west: number; south: number; east: number; north: number } | null
   center: { lat: number; lng: number } | null
+  exploration_quota?: MineralExplorationQuota
 }
 
 export interface MineralHighlightSpec {
@@ -409,6 +437,21 @@ export interface MineralHighlightSpec {
   regionIds: number[]
   districtIds: number[]
   villageIds: number[]
+}
+
+export interface MineralHeatmapPoint {
+  lat: number
+  lng: number
+  weight: number
+}
+
+export interface MineralHeatmapData {
+  slug: string
+  name: string
+  color: string
+  feature_count: number
+  point_count: number
+  points: MineralHeatmapPoint[]
 }
 
 export interface AreaInsight {
@@ -528,6 +571,50 @@ export interface AdminPlatformAnalytics {
     }[]
   }
   licenses: { total: number; active: number; pending: number; approved: number }
+}
+
+export interface ManagerPerformanceRow {
+  user_id: number
+  username: string
+  full_name: string
+  email: string
+  is_active: boolean
+  rank: number
+  assigned_minerals: number
+  mineral_names: string[]
+  can_publish: boolean
+  layers_managed: number
+  layers_created: number
+  reports_published: number
+  features: {
+    points: number
+    lines: number
+    polygons: number
+    other: number
+    total: number
+    recent_30d: number
+    on_managed_layers: number
+    on_managed_layers_breakdown: {
+      points: number
+      lines: number
+      polygons: number
+    }
+  }
+  uploads: {
+    total: number
+    completed: number
+    failed: number
+    pending: number
+    recent_30d: number
+  }
+  versions: number
+  last_activity: string | null
+  contribution_score: number
+}
+
+export interface ManagerPerformanceReview {
+  managers: ManagerPerformanceRow[]
+  generated_at: string
 }
 
 export namespace GeoJSON {

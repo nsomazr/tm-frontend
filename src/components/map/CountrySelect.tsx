@@ -80,16 +80,18 @@ export default function CountrySelect({
   }, [open])
 
   const buttonClass = compact
-    ? 'px-2 py-1.5 text-sm'
-    : 'px-3 py-2 text-sm'
+    ? 'px-2 py-1 text-xs'
+    : 'px-2.5 py-1.5 text-sm'
 
   if (sorted.length <= 1 && selected) {
     return (
       <div
-        className={`flex items-center justify-between gap-2 rounded-lg border border-app-border bg-app-subtle/60 px-3 py-2 text-sm ${className}`}
+        className={`flex items-center justify-between gap-2 rounded-md border border-app-border bg-app-subtle/60 ${
+          compact ? 'px-2 py-1 text-xs' : 'px-2.5 py-1.5 text-sm'
+        } ${className}`}
       >
         <span className="truncate font-medium map-text">{displayName(selected)}</span>
-        <span className="shrink-0 text-xs font-mono map-text-muted">{selected.code}</span>
+        <span className="shrink-0 font-mono text-[10px] map-text-muted">{selected.code}</span>
       </div>
     )
   }
@@ -100,20 +102,20 @@ export default function CountrySelect({
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className={`flex w-full items-center gap-2 rounded-lg border border-app-border bg-app-bg text-left map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25 ${buttonClass}`}
+        className={`flex w-full items-center gap-1.5 rounded-md border border-app-border bg-app-bg text-left map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25 ${buttonClass}`}
       >
         {selected ? (
           <>
             <span className="min-w-0 flex-1">
               <span className="block truncate font-medium">{displayName(selected)}</span>
-              {showCountHint && sorted.length > 1 && (
-                <span className="block text-[11px] map-text-muted">
+              {showCountHint && !compact && sorted.length > 1 && (
+                <span className="block text-[10px] map-text-muted leading-tight">
                   {m.map.countriesWithBoundaries.replace('{count}', String(sorted.length))}
                 </span>
               )}
             </span>
-            <span className="shrink-0 text-xs font-mono map-text-muted">{selected.code}</span>
-            <span className="shrink-0 text-sm map-text-muted" aria-hidden>
+            <span className="shrink-0 font-mono text-[10px] map-text-muted">{selected.code}</span>
+            <span className="shrink-0 text-xs map-text-muted" aria-hidden>
               {open ? '−' : '+'}
             </span>
           </>
@@ -123,22 +125,22 @@ export default function CountrySelect({
       </button>
 
       {open && (
-        <div className="mt-1 overflow-hidden rounded-lg border border-app-border bg-app-surface">
+        <div className="mt-0.5 overflow-hidden rounded-md border border-app-border bg-app-surface">
           {showSearch && (
-            <div className="border-b border-app-border p-2">
+            <div className="border-b border-app-border p-1.5">
               <input
                 ref={searchRef}
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={placeholder}
-                className="w-full rounded-md border border-app-border bg-app-bg px-2.5 py-1.5 text-sm map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25"
+                className="w-full rounded-md border border-app-border bg-app-bg px-2 py-1 text-xs map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25"
               />
             </div>
           )}
-          <ul className="max-h-48 overflow-y-auto py-1">
+          <ul className="max-h-40 overflow-y-auto py-0.5">
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-sm map-text-muted">No matches</li>
+              <li className="px-2 py-1.5 text-xs map-text-muted">No matches</li>
             ) : (
               filtered.map((c) => (
                 <li key={c.code}>
@@ -148,7 +150,7 @@ export default function CountrySelect({
                       onChange(c.code)
                       setOpen(false)
                     }}
-                    className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-app-subtle ${
+                    className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-app-subtle ${
                       c.code === value
                         ? 'bg-app-accent-soft font-medium text-terra-800 dark:text-terra-300'
                         : 'map-text-secondary'

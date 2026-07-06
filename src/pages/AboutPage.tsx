@@ -7,6 +7,7 @@ import MineralPeriodicTable from '../components/map/MineralPeriodicTable'
 import CommodityInsightPanel from '../components/map/CommodityInsightPanel'
 import { analyticsApi } from '../api'
 import { useAuth } from '../auth/AuthContext'
+import { canExploreMineral } from '../lib/mineralExploration'
 import { useTranslation } from '../i18n/LocaleContext'
 import type { MineralCatalogEntry } from '../types'
 
@@ -21,7 +22,7 @@ export default function AboutPage() {
   const { m } = useTranslation()
   const a = m.about
   const navigate = useNavigate()
-  const { hasPaidAccess } = useAuth()
+  const { hasPaidAccess, mineralExploration } = useAuth()
   const [selectedCommodity, setSelectedCommodity] = useState<MineralCatalogEntry | null>(null)
 
   const { data: catalogData } = useQuery({
@@ -46,7 +47,10 @@ export default function AboutPage() {
   }
 
   const handleShowOnMap = () => {
-    if (!selectedCommodity?.is_mapped || !hasPaidAccess) return
+    if (!selectedCommodity?.is_mapped) return
+    if (!canExploreMineral(mineralExploration, selectedCommodity.slug)) {
+      return
+    }
     navigate(`/?mineral=${encodeURIComponent(selectedCommodity.slug)}`)
   }
 

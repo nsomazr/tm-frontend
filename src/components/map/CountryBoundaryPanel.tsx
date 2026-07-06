@@ -48,42 +48,43 @@ export default function CountryBoundaryPanel({
 
   if (countries.length === 0) return null
 
-  const layerPadding = compact ? 'px-0.5' : 'px-1'
+  const dense = compact
+  const sectionGap = dense ? 'gap-1' : 'gap-1.5'
+  const layerPadding = dense ? 'px-0' : 'px-0.5'
+  const sectionLabel =
+    'text-[10px] font-semibold uppercase tracking-wide map-text-muted leading-none'
   const showLayersSection =
     availableBoundaryLevels.length > 0 ||
     onShowBasemapLabelsChange != null ||
     onShowBoundaryLabelsChange != null
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
-      <label className={`flex flex-col gap-1 ${layerPadding}`}>
-        <span className="text-[11px] font-semibold uppercase tracking-wide map-text-muted">
-          {m.map.boundaryCountryLabel}
-        </span>
+    <div className={`flex flex-col ${sectionGap} ${className}`}>
+      <label className={`flex flex-col gap-0.5 ${layerPadding}`}>
+        <span className={sectionLabel}>{m.map.boundaryCountryLabel}</span>
         <CountrySelect
           countries={countries}
           value={countryCode}
           onChange={onCountryChange}
           compact={compact}
+          showCountHint={!compact}
           placeholder={m.map.searchCountries}
         />
       </label>
 
       {showLayersSection && (
         <div className={layerPadding}>
-          <span className="text-[11px] font-semibold uppercase tracking-wide map-text-muted">
-            {m.map.boundaryLayersTitle}
-          </span>
+          <span className={sectionLabel}>{m.map.boundaryLayersTitle}</span>
           {boundaryFocus && (
-            <div className="mt-1.5 mb-1 rounded-lg border border-terra-500/25 bg-terra-500/8 px-2 py-1.5">
-              <p className="text-[11px] text-app-text-secondary leading-snug">
+            <div className="mb-0.5 mt-1 rounded-md border border-terra-500/25 bg-terra-500/8 px-2 py-1">
+              <p className="text-[10px] text-app-text-secondary leading-snug">
                 {t('map.boundaryFocusHint', { name: boundaryFocus.name })}
               </p>
               {onClearBoundaryFocus && (
                 <button
                   type="button"
                   onClick={onClearBoundaryFocus}
-                  className="mt-1 text-[11px] font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                  className="mt-0.5 text-[10px] font-medium text-terra-600 dark:text-terra-400 hover:underline"
                 >
                   {m.map.showAllBoundaries}
                 </button>
@@ -102,7 +103,7 @@ export default function CountryBoundaryPanel({
             villagesLoading={villagesLoading}
             villagesError={villagesError}
             compact={compact}
-            className="mt-1.5"
+            className={dense ? 'mt-0.5' : 'mt-1'}
           />
         </div>
       )}

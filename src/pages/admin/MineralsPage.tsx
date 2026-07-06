@@ -5,8 +5,11 @@ import { mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import {
   layerDisplayColor,
+  layerFillRgba,
   layerStyleWithColor,
 } from '../../components/admin/layerColors'
+import MineralColorReference from '../../components/admin/MineralColorReference'
+import { colorRecordForLayer, formatColorCodes } from '../../lib/mineralColorUtils'
 import ListPagination from '../../components/ui/ListPagination'
 import { usePagination } from '../../hooks/usePagination'
 import { useAlternateName } from '../../i18n/useAlternateName'
@@ -23,9 +26,11 @@ const LAYER_TYPE_LABELS: Record<string, string> = {
 function CommodityEditor({
   layer,
   onClose,
+  usedColors,
 }: {
   layer: MapLayer
   onClose: () => void
+  usedColors: string[]
 }) {
   const qc = useQueryClient()
   const { isManager } = useAuth()
@@ -33,6 +38,7 @@ function CommodityEditor({
   const [name, setName] = useState(layer.name)
   const [nameSw, setNameSw] = useState(layer.name_sw || '')
   const [color, setColor] = useState(layerDisplayColor(layer))
+  const colorRecord = colorRecordForLayer(color, layer.layer_type)
 
   const save = useMutation({
     mutationFn: () =>
@@ -53,8 +59,8 @@ function CommodityEditor({
   if (!isManager) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
-      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg p-6 my-6 max-h-[min(92vh,720px)] overflow-y-auto">
         <h2 className="text-lg font-bold text-slate-900 mb-1">Edit commodity</h2>
         <p className="text-sm text-slate-500 mb-4">
           This name and color appear on the map legend and search for {displayName(layer)}.
@@ -92,7 +98,15 @@ function CommodityEditor({
               />
               <span className="w-8 h-8 rounded-lg border border-slate-200" style={{ backgroundColor: color }} />
             </div>
+            <p className="text-[11px] font-mono text-slate-500 mt-1">{formatColorCodes(colorRecord)}</p>
           </div>
+          <MineralColorReference
+            layerName={name}
+            layerType={layer.layer_type}
+            usedColors={usedColors}
+            selectedColor={color}
+            onSelect={setColor}
+          />
         </div>
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">
@@ -192,7 +206,12 @@ export default function MineralsPage() {
                         {LAYER_TYPE_LABELS[layer.layer_type] ?? layer.layer_type}
                       </td>
                       <td className="tabular-nums text-app-text">{layer.feature_count}</td>
-                      <td className="text-[11px] font-mono text-app-text-muted whitespace-nowrap">{color}</td>
+                      <td className="text-[11px] font-mono text-app-text-muted whitespace-nowrap">
+                        <div>{color}</div>
+                        {layerFillRgba(layer.style) && (
+                          <div className="text-[10px] opacity-80">{layerFillRgba(layer.style)}</div>
+                        )}
+                      </td>
                       {isManager && (
                         <td className="text-right">
                           <button
@@ -221,7 +240,13 @@ export default function MineralsPage() {
         </div>
       )}
 
-      {editing && <CommodityEditor layer={editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <CommodityEditor
+          layer={editing}
+          usedColors={commodities.map((l) => layerDisplayColor(l))}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
   )
 }

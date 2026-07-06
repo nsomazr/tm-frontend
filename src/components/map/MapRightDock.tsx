@@ -33,6 +33,8 @@ interface MapRightDockProps {
   lockedBoundaryLevels?: BoundaryLevelKey[]
   coordinateSystem: CoordinateSystemId
   onCoordinateSystemChange: (id: CoordinateSystemId) => void
+  hasPaidAccess?: boolean
+  showCoordinateSystem?: boolean
 }
 
 export default function MapRightDock({
@@ -56,15 +58,17 @@ export default function MapRightDock({
   lockedBoundaryLevels = [],
   coordinateSystem,
   onCoordinateSystemChange,
+  hasPaidAccess = false,
+  showCoordinateSystem = false,
 }: MapRightDockProps) {
   const { m } = useTranslation()
   const current = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
 
   return (
-    <aside className="absolute z-10 flex-col gap-2 pointer-events-none max-h-[calc(100%-4rem)] overflow-y-auto
-      top-3 right-3 w-64 hidden md:flex">
+    <aside className="absolute z-10 flex-col gap-1.5 pointer-events-none max-h-[calc(100%-4rem)] overflow-y-auto
+      top-3 right-3 w-60 hidden md:flex">
       {countries.length > 0 ? (
-        <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2.5">
+        <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2">
           <CountryBoundaryPanel
             countries={countries}
             countryCode={countryCode}
@@ -81,11 +85,12 @@ export default function MapRightDock({
             villagesLoading={villagesLoading}
             villagesError={villagesError}
             lockedBoundaryLevels={lockedBoundaryLevels}
+            compact
           />
         </div>
       ) : (
-        <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2.5">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide map-text-muted px-0.5 mb-1.5">
+        <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2">
+          <span className="mb-1 block px-0.5 text-[10px] font-semibold uppercase tracking-wide leading-none map-text-muted">
             {m.map.boundaryLayersTitle}
           </span>
           <BoundaryVisibilityToggles
@@ -100,13 +105,17 @@ export default function MapRightDock({
           />
         </div>
       )}
-      <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
-        <CoordinateSystemPicker value={coordinateSystem} onChange={onCoordinateSystemChange} />
-      </div>
+      {showCoordinateSystem && (
+        <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
+          <CoordinateSystemPicker value={coordinateSystem} onChange={onCoordinateSystemChange} />
+        </div>
+      )}
       <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
         <BasemapSwitcher value={basemap} onChange={onBasemapChange} embedded current={current} />
       </div>
-      {layers.length > 0 && (
+      {/* Paid users get the interactive LayerPanel (which doubles as the legend);
+          unpaid users only get this read-only legend. */}
+      {!hasPaidAccess && layers.length > 0 && (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
           <LegendPanel layers={layers} embedded defaultOpen />
         </div>

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { analyticsApi, geographyApi, mapsApi } from '../api'
@@ -27,11 +27,23 @@ import {
 import MapSidebar from '../components/map/MapSidebar'
 import MapSearchBar from '../components/map/MapSearchBar'
 import TerraAssistantLauncher from '../components/map/TerraAssistantLauncher'
+import ExploreDrawTool from '../components/map/ExploreDrawTool'
+import {
+  explorationBounds,
+  explorationCentroid,
+  explorationReady,
+  type ExplorationMode,
+} from '../components/map/explorationGeometry'
+import { useCoordinateSystemState } from '../components/map/useCoordinateSystemState'
+import { parseCoordinateQuery } from '../components/map/parseCoordinate'
 import type { TerraAssistantMapContext } from '../components/assistant/TerraAssistantPanel'
 import { useAuth } from '../auth/AuthContext'
+import { toast } from '../components/ui/toast'
+import { canExploreMineral } from '../lib/mineralExploration'
 import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
 import type { AreaInsight, MineralCatalogEntry, MineralHighlightSpec, MineralSearchInsight } from '../types'
+import type { MineralHeatmapSpec } from '../components/map/mineralHeatmapLayer'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { allVisibleLayerIds, defaultVisibleLayerIds } from '../components/map/mapUtils'
 
@@ -74,7 +86,9 @@ function focusSearchResult(
 }
 
 export default function FullMapPage() {
-  const { hasPaidAccess, hasFullMapAccess } = useAuth()
+  const { hasPaidAccess, hasFullMapAccess, canSaveExplorations, mineralExploration, refreshUser } =
+    useAuth()
+  const queryClient = useQueryClient()
   const { m } = useTranslation()
   const displayName = useDisplayName()
   const [search, setSearch] = useState('')
@@ -99,9 +113,78 @@ export default function FullMapPage() {
   const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY_CODE)
   const [catalogMineralSlug, setCatalogMineralSlug] = useState<string | null>(null)
   const [mineralHighlight, setMineralHighlight] = useState<MineralHighlightSpec | null>(null)
+  const [mineralHeatmap, setMineralHeatmap] = useState<MineralHeatmapSpec | null>(null)
   const [searchParams] = useSearchParams()
   const mineralParamHandled = useRef(false)
   const isMobile = useMediaQuery('(max-width: 767px)')
+
+  // Draw-and-explore tool (paid users): manually enter/click points to form a
+  // point, line, or polygon, then zoom to and explore the area.
+  const [exploreOpen, setExploreOpen] = useState(false)
+  const [drawMode, setDrawMode] = useState<ExplorationMode>('point')
+  const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
+  const [coordinateSystem] = useCoordinateSystemState()
+  const explorationDraw = useMemo(
+    () => (drawPoints.length ? { mode: drawMode, points: drawPoints } : null),
+    [drawMode, drawPoints]
+  )
+  const coordinateResult = useMemo(
+    () => parseCoordinateQuery(debouncedSearch),
+    [debouncedSearch]
+  )
+
+  const addDrawPoint = useCallback(
+    (lng: number, lat: number) => {
+      setDrawPoints((prev) =>
+        drawMode === 'point' ? [[lng, lat]] : [...prev, [lng, lat]]
+      )
+    },
+    [drawMode]
+  )
+  const removeDrawPoint = useCallback((index: number) => {
+    setDrawPoints((prev) => prev.filter((_, i) => i !== index))
+  }, [])
+  const clearDraw = useCallback(() => setDrawPoints([]), [])
+  const handleDrawModeChange = useCallback((next: ExplorationMode) => {
+    setDrawMode(next)
+    if (next === 'point') setDrawPoints((prev) => prev.slice(-1))
+  }, [])
+
+  const { data: savedExplorationsData } = useQuery({
+    queryKey: ['saved-explorations'],
+    queryFn: () => mapsApi.savedExplorations().then((r) => r.data),
+    enabled: hasPaidAccess,
+    staleTime: 5 * 60 * 1000,
+  })
+  const savedExplorations = savedExplorationsData?.results ?? []
+
+  const [savingExploration, setSavingExploration] = useState(false)
+  const handleSaveExploration = useCallback(async () => {
+    if (!drawPoints.length) return
+    const name = window.prompt('Name this exploration:')?.trim()
+    if (!name) return
+    setSavingExploration(true)
+    try {
+      await mapsApi.createSavedExploration({ name, mode: drawMode, points: drawPoints })
+      await queryClient.invalidateQueries({ queryKey: ['saved-explorations'] })
+    } finally {
+      setSavingExploration(false)
+    }
+  }, [drawMode, drawPoints, queryClient])
+
+  const handleLoadExploration = useCallback((mode: ExplorationMode, points: [number, number][]) => {
+    setDrawMode(mode)
+    setDrawPoints(points)
+    setExploreOpen(true)
+  }, [])
+
+  const handleDeleteExploration = useCallback(
+    async (id: number) => {
+      await mapsApi.deleteSavedExploration(id)
+      await queryClient.invalidateQueries({ queryKey: ['saved-explorations'] })
+    },
+    [queryClient]
+  )
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
@@ -122,11 +205,66 @@ export default function FullMapPage() {
 
   const mineralCatalog = mineralCatalogData?.minerals ?? []
 
+  const loadMineralMapOverlay = useCallback(
+    async (slug: string) => {
+      if (!canExploreMineral(mineralExploration, slug)) {
+        toast.error(m.map.mineralExplorationBlocked)
+        return null
+      }
+      try {
+        const coverageRes = await analyticsApi.mineralCoverage(slug, {
+          country: countryCode,
+          includeVillages: hasPaidAccess,
+        })
+        const quota = coverageRes.data.exploration_quota
+        if (quota) {
+          void refreshUser()
+        }
+        let heatmapRes
+        try {
+          heatmapRes = await analyticsApi.mineralHeatmap(slug, { country: countryCode })
+        } catch {
+          heatmapRes = null
+        }
+        const data = coverageRes.data
+        setMineralHighlight({
+          slug: data.slug,
+          color: data.color,
+          regionIds: data.region_ids,
+          districtIds: data.district_ids,
+          villageIds: data.village_ids,
+        })
+        if (heatmapRes?.data) {
+          setMineralHeatmap({
+            slug: heatmapRes.data.slug,
+            color: heatmapRes.data.color,
+            points: heatmapRes.data.points,
+          })
+        } else {
+          setMineralHeatmap(null)
+        }
+        setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
+        return data
+      } catch (error: unknown) {
+        const err = error as { response?: { status?: number; data?: { detail?: string } } }
+        if (err.response?.status === 403) {
+          toast.error(err.response.data?.detail || m.map.mineralExplorationBlocked)
+          void refreshUser()
+        }
+        setMineralHighlight(null)
+        setMineralHeatmap(null)
+        return null
+      }
+    },
+    [countryCode, hasPaidAccess, mineralExploration, m.map.mineralExplorationBlocked, refreshUser]
+  )
+
   const applyCatalogMineral = useCallback(
     async (entry: MineralCatalogEntry | null) => {
       if (!entry) {
         setCatalogMineralSlug(null)
         setMineralHighlight(null)
+        setMineralHeatmap(null)
         return
       }
 
@@ -135,30 +273,18 @@ export default function FullMapPage() {
       setSelectedResult(null)
       setMineral('')
 
-      try {
-        const { data } = await analyticsApi.mineralCoverage(entry.slug, {
-          country: countryCode,
-          includeVillages: hasPaidAccess,
-        })
-        setMineralHighlight({
-          slug: data.slug,
-          color: data.color,
-          regionIds: data.region_ids,
-          districtIds: data.district_ids,
-          villageIds: data.village_ids,
-        })
-        setBoundaryVisibility(DEFAULT_BOUNDARY_VISIBILITY)
-        if (data.bounds) {
-          setAdminFitBounds({ ...data.bounds, key: Date.now() })
-        } else if (data.center) {
-          setMapFocus({ lat: data.center.lat, lng: data.center.lng, zoom: 8, key: Date.now() })
-        }
-      } catch {
-        setMineralHighlight(null)
+      const data = await loadMineralMapOverlay(entry.slug)
+      if (!data) {
         setCatalogMineralSlug(null)
+        return
+      }
+      if (data.bounds) {
+        setAdminFitBounds({ ...data.bounds, key: Date.now() })
+      } else if (data.center) {
+        setMapFocus({ lat: data.center.lat, lng: data.center.lng, zoom: 8, key: Date.now() })
       }
     },
-    [countryCode, hasPaidAccess]
+    [loadMineralMapOverlay]
   )
 
   useEffect(() => {
@@ -294,12 +420,82 @@ export default function FullMapPage() {
     })
   }, [])
 
+  const handleGoToCoordinate = useCallback(() => {
+    if (!coordinateResult) return
+    const { lat, lng } = coordinateResult
+    // Mark the searched point on the map overlay.
+    setDrawMode('point')
+    setDrawPoints([[lng, lat]])
+    setAdminFitBounds(null)
+    setBoundaryFocus(null)
+    focusOn(lat, lng, 13)
+    // Collapse the search panel so the marked point is visible.
+    setSearch('')
+    setDebouncedSearch('')
+    setPanelDismissed(true)
+  }, [coordinateResult, focusOn])
+
+  const handleExplore = useCallback(async () => {
+    const draw = { mode: drawMode, points: drawPoints }
+    if (!explorationReady(draw)) return
+    const centroid = explorationCentroid(drawPoints)
+    if (!centroid) return
+
+    // Zoom/fit to the drawn geometry (not the containing admin boundary).
+    setBoundaryFocus(null)
+    const bounds = explorationBounds(drawPoints)
+    if (drawMode !== 'point' && bounds && (bounds.east > bounds.west || bounds.north > bounds.south)) {
+      const padLng = Math.max((bounds.east - bounds.west) * 0.15, 0.02)
+      const padLat = Math.max((bounds.north - bounds.south) * 0.15, 0.02)
+      setMapFocus(null)
+      setAdminFitBounds({
+        west: bounds.west - padLng,
+        south: bounds.south - padLat,
+        east: bounds.east + padLng,
+        north: bounds.north + padLat,
+        key: Date.now(),
+      })
+    } else {
+      setAdminFitBounds(null)
+      focusOn(centroid.lat, centroid.lng, 12)
+    }
+
+    // Run exploration insight at the centroid + open Ask Terra with that context.
+    setPanelDismissed(false)
+    setCatalogMineralSlug(null)
+    setMineralHighlight(null)
+    setMineralHeatmap(null)
+    setInsightLoading(true)
+    setAreaInsight(null)
+    const label = `Exploration ${drawMode} (${drawPoints.length} pt${drawPoints.length === 1 ? '' : 's'})`
+    setAssistantMapContext({
+      lat: centroid.lat,
+      lng: centroid.lng,
+      zoom: 12,
+      fromMapClick: true,
+      countryCode: DEFAULT_COUNTRY_CODE,
+      searchLabel: label,
+    })
+    setAssistantOpen(true)
+    try {
+      const { data } = await analyticsApi.areaInsights(centroid.lat, centroid.lng, 12, {
+        country: DEFAULT_COUNTRY_CODE,
+      })
+      setAreaInsight(data)
+    } catch {
+      setAreaInsight(null)
+    } finally {
+      setInsightLoading(false)
+    }
+  }, [drawMode, drawPoints, focusOn])
+
   const handleAreaInspect = useCallback(
     async (lat: number, lng: number, zoom: number, featureIds?: number[]) => {
       setPanelDismissed(false)
       setInsightLoading(true)
       setCatalogMineralSlug(null)
       setMineralHighlight(null)
+      setMineralHeatmap(null)
 
       let boundaryId: number | undefined
       let regionBoundaryName: string | undefined
@@ -469,6 +665,7 @@ export default function FullMapPage() {
     setPanelDismissed(false)
     setCatalogMineralSlug(null)
     setMineralHighlight(null)
+    setMineralHeatmap(null)
     setSelectedResult(item)
     setSearch('')
     setDebouncedSearch('')
@@ -493,17 +690,19 @@ export default function FullMapPage() {
         setVisibleLayers(new Set([item.id]))
       }
       setBoundaryFocus(null)
+      void loadMineralMapOverlay(item.slug)
     } else {
       if (hasPaidAccess) {
         setMineral(item.slug)
       }
       setBoundaryFocus(null)
+      void loadMineralMapOverlay(item.slug)
     }
 
     if (item.center || item.bounds) {
       focusSearchResult(item, setAdminFitBounds, setMapFocus, focusOn)
     }
-  }, [mergedBoundaries, focusOn, loadSearchPreview, hasPaidAccess])
+  }, [mergedBoundaries, focusOn, loadSearchPreview, hasPaidAccess, loadMineralMapOverlay])
 
   useEffect(() => {
     if (debouncedSearch.length < 2 || searchLoading || searchResults.length !== 1) return
@@ -520,6 +719,7 @@ export default function FullMapPage() {
     setMineral('')
     setCatalogMineralSlug(null)
     setMineralHighlight(null)
+    setMineralHeatmap(null)
     setSelectedResult(null)
     setSearchPreview(null)
     setSearchPreviewLoading(false)
@@ -613,6 +813,8 @@ export default function FullMapPage() {
             askTerraLoading={askTerraFromSearch}
             isMobile={isMobile}
             onClose={handleClosePanel}
+            coordinateResult={coordinateResult}
+            onGoToCoordinate={handleGoToCoordinate}
           />
         </>
       )}
@@ -624,6 +826,30 @@ export default function FullMapPage() {
             setSearch(v)
             if (v.trim().length >= 2) setPanelDismissed(false)
           }}
+          exploreEnabled={hasPaidAccess}
+          exploreOpen={exploreOpen}
+          onExploreOpenChange={setExploreOpen}
+          explorePanel={
+            <ExploreDrawTool
+              mode={drawMode}
+              points={drawPoints}
+              coordinateSystem={coordinateSystem}
+              canExplore={explorationReady({ mode: drawMode, points: drawPoints })}
+              canSave={canSaveExplorations}
+              saving={savingExploration}
+              savedExplorations={savedExplorations}
+              onModeChange={handleDrawModeChange}
+              onAddPoint={addDrawPoint}
+              onRemovePoint={removeDrawPoint}
+              onClear={clearDraw}
+              onExplore={handleExplore}
+              onSave={handleSaveExploration}
+              onLoad={handleLoadExploration}
+              onDelete={handleDeleteExploration}
+              onClose={() => setExploreOpen(false)}
+              embedded
+            />
+          }
         />
 
         {selectedResult && panelDismissed && (
@@ -680,6 +906,7 @@ export default function FullMapPage() {
             onAreaInspect={handleAreaInspect}
             staticMap={!hasPaidAccess}
             mineralHighlight={mineralHighlight}
+            mineralHeatmap={mineralHeatmap}
             assistantOpen={assistantOpen}
             onAssistantToggle={toggleAssistantPanel}
             onAssistantClose={handleCloseAssistant}
@@ -688,6 +915,11 @@ export default function FullMapPage() {
             hasPaidAccess={hasPaidAccess}
             assistantMapContext={assistantMapContext}
             getMapSnapshot={mapControls?.captureSnapshot}
+            showCoordinateSystem={false}
+            showCoordinateReadout
+            explorationDraw={explorationDraw}
+            drawActive={exploreOpen && hasPaidAccess}
+            onDrawPoint={addDrawPoint}
           />
         )}
         {isFetching && !initialLoad && (

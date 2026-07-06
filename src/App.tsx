@@ -27,12 +27,14 @@ import { AdminOnly } from './pages/admin/AdminGuard'
 import UsersPage from './pages/admin/UsersPage'
 import MineralsPage from './pages/admin/MineralsPage'
 import MineralManagersPage from './pages/admin/MineralManagersPage'
+import ManagerPerformancePage from './pages/admin/ManagerPerformancePage'
 import LayersPage from './pages/admin/LayersPage'
 import CoordinatesEditor from './pages/admin/CoordinatesEditor'
 import ReportsPage from './pages/admin/ReportsPage'
 import ReportEditorPage from './pages/admin/ReportEditorPage'
 import RevenuePage from './pages/admin/RevenuePage'
 import CompliancePage from './pages/admin/CompliancePage'
+import AdminMapSettingsPage from './pages/admin/AdminMapSettingsPage'
 
 export default function App() {
   return (
@@ -89,6 +91,14 @@ export default function App() {
             }
           />
           <Route
+            path="map-settings"
+            element={
+              <AdminOnly>
+                <AdminMapSettingsPage />
+              </AdminOnly>
+            }
+          />
+          <Route
             path="analytics"
             element={
               <AdminOnly>
@@ -110,6 +120,14 @@ export default function App() {
             element={
               <AdminOnly>
                 <MineralManagersPage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="manager-performance"
+            element={
+              <AdminOnly>
+                <ManagerPerformancePage />
               </AdminOnly>
             }
           />

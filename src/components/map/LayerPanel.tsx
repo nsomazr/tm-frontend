@@ -76,26 +76,26 @@ export default function LayerPanel({
 
   const shellClass = embedded
     ? 'relative map-chrome rounded-xl text-sm flex flex-col overflow-hidden w-full min-h-0 flex-1'
-    : 'absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-3 left-3 w-72 max-h-[calc(100%-1.5rem)] hidden md:flex'
+    : 'absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] w-[min(18rem,calc(100vw-1.5rem))] max-h-[min(40vh,calc(100%-6rem))] hidden md:flex'
 
   return (
     <div className={`${shellClass} ${className}`}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full shrink-0 px-3 py-2.5 font-semibold map-text text-left flex justify-between items-center gap-2 hover:bg-app-subtle/80"
+        className="w-full shrink-0 px-2.5 py-2 font-semibold text-xs map-text text-left flex justify-between items-center gap-2 hover:bg-app-subtle/80"
       >
         <span>
           {m.map.layersTitle}
           {layerCount > 0 && (
-            <span className="ml-1.5 text-xs font-normal map-text-muted">({layerCount})</span>
+            <span className="ml-1 text-[10px] font-normal map-text-muted">({layerCount})</span>
           )}
         </span>
-        <span className="map-text-muted shrink-0">{open ? '−' : '+'}</span>
+        <span className="map-text-muted shrink-0 text-xs">{open ? '−' : '+'}</span>
       </button>
 
       {open && (
-        <div className="border-t border-app-border min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-2 pb-3 pr-1 space-y-3 scrollbar-pane">
+        <div className="border-t border-app-border min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-1.5 pb-2 space-y-2 scrollbar-pane">
           {grouped.map(({ type, layers: typeLayers }) => {
             const allOn = typeAllVisible(type, typeLayers)
             return (

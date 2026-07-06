@@ -14,7 +14,7 @@ const TANZANIA_RING: number[][] = [
 const PRESETS: Record<string, CountryFocus> = {
   TZ: {
     code: 'TZ', name: 'Tanzania', name_sw: 'Tanzania',
-    center: { lat: -6.5, lng: 34.8 }, default_zoom: 6,
+    center: { lat: -6.5, lng: 34.8 }, default_zoom: 6.5,
     bounds: { west: 29.34, south: -11.75, east: 40.44, north: -0.99 },
     geojson: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { kind: 'country' }, geometry: { type: 'Polygon', coordinates: [TANZANIA_RING] } }] },
   },

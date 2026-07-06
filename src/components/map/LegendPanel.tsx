@@ -88,27 +88,27 @@ export default function LegendPanel({ layers, embedded, sheetMode, defaultOpen =
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full px-3 py-2.5 font-semibold text-sm map-text flex justify-between items-center gap-2 hover:bg-app-subtle/80"
+        className="w-full px-2.5 py-2 font-semibold text-xs map-text flex justify-between items-center gap-2 hover:bg-app-subtle/80"
       >
         <span className="text-left">
           {m.map.legendTitle}
           {count > 0 && (
-            <span className="ml-1.5 text-xs font-normal map-text-muted">({count})</span>
+            <span className="ml-1 text-[10px] font-normal map-text-muted">({count})</span>
           )}
         </span>
-        <span className="map-text-muted shrink-0">{open ? '−' : '+'}</span>
+        <span className="map-text-muted shrink-0 text-xs">{open ? '−' : '+'}</span>
       </button>
 
       {open && (
         <div className="border-t app-divider">
           {count === 0 ? (
-            <p className="text-xs map-text-muted px-3 py-3 leading-relaxed">{m.map.legendEmpty}</p>
+            <p className="text-[11px] map-text-muted px-2.5 py-2 leading-snug">{m.map.legendEmpty}</p>
           ) : (
-            <ul className="max-h-[min(42vh,320px)] overflow-y-auto p-2 space-y-1 text-xs">
+            <ul className="max-h-[min(42vh,280px)] overflow-y-auto p-1.5 space-y-0.5 text-[11px]">
               {entries.map((entry) => {
                 const sym = TYPE_SYMBOL[entry.type] ?? TYPE_SYMBOL.polygon
                 return (
-                  <li key={entry.id} className="flex items-start gap-2 px-1.5 py-1 rounded-lg hover:bg-app-subtle">
+                  <li key={entry.id} className="flex items-start gap-1.5 px-1 py-0.5 rounded-md hover:bg-app-subtle">
                     {sym.render(entry.color)}
                     <span className="map-text leading-snug break-words min-w-0">{entry.name}</span>
                   </li>

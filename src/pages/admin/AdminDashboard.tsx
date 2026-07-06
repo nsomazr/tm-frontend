@@ -141,6 +141,25 @@ export default function AdminDashboard() {
         <div className="mb-8 rounded-xl bg-app-surface p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
+              <h2 className="font-semibold text-app-text">Map settings</h2>
+              <p className="mt-0.5 text-sm text-app-muted">
+                Coordinate reference system (Arc 1960, UTM zones, WGS 84) for the public map.
+              </p>
+            </div>
+            <Link
+              to="/admin/map-settings"
+              className="shrink-0 rounded-lg bg-terra-500/10 px-4 py-2 text-sm font-medium text-terra-600 transition-colors hover:bg-terra-500/15 dark:text-terra-400"
+            >
+              Change CRS →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {isAdmin && (
+        <div className="mb-8 rounded-xl bg-app-surface p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
               <h2 className="font-semibold text-app-text">
                 Platform analytics
               </h2>

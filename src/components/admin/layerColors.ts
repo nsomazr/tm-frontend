@@ -1,3 +1,6 @@
+import { matchGeologicalColor } from '../../constants/geologicalMineralColors'
+import { colorRecordForLayer, normalizeHex } from '../../lib/mineralColorUtils'
+
 export const LAYER_COLOR_PALETTE = [
   '#0D9488',
   '#E87722',
@@ -20,10 +23,12 @@ export type LayerStyleSuggestion = {
   fill: string
   stroke: string
   strokeWidth: number
+  fillRgba: string
+  strokeRgba: string
 }
 
 function normalizeColor(color: string) {
-  return color.trim().toLowerCase()
+  return normalizeHex(color).toLowerCase()
 }
 
 function hashHue(seed: string) {
@@ -36,23 +41,43 @@ function hashHue(seed: string) {
 
 export function suggestLayerStyle(
   layerName: string,
-  usedColors: string[] = []
+  usedColors: string[] = [],
+  layerType: string = 'polygon'
 ): LayerStyleSuggestion {
   const used = new Set(usedColors.map(normalizeColor))
+  const geological = matchGeologicalColor(layerName)
+  if (geological && !used.has(normalizeColor(geological.hex))) {
+    const record = colorRecordForLayer(geological.hex, layerType)
+    return {
+      fill: record.hex,
+      stroke: record.hex,
+      strokeWidth: 1.5,
+      fillRgba: record.fillRgba,
+      strokeRgba: record.strokeRgba,
+    }
+  }
+
   const fromPalette = LAYER_COLOR_PALETTE.find((color) => !used.has(normalizeColor(color)))
   const fill =
     fromPalette ??
     LAYER_COLOR_PALETTE[hashHue(layerName || 'layer') % LAYER_COLOR_PALETTE.length]
 
+  const record = colorRecordForLayer(fill, layerType)
   return {
-    fill,
-    stroke: fill,
+    fill: record.hex,
+    stroke: record.hex,
     strokeWidth: 1.5,
+    fillRgba: record.fillRgba,
+    strokeRgba: record.strokeRgba,
   }
 }
 
-export function layerFillColor(style: { fill?: unknown; stroke?: unknown } | null | undefined) {
+export function layerFillColor(style: { fill?: unknown; stroke?: unknown; fillRgba?: unknown } | null | undefined) {
   return typeof style?.fill === 'string' ? style.fill : ''
+}
+
+export function layerFillRgba(style: { fillRgba?: unknown } | null | undefined) {
+  return typeof style?.fillRgba === 'string' ? style.fillRgba : ''
 }
 
 export function layerDisplayColor(layer: { layer_type: string; style?: Record<string, unknown> | null }) {
@@ -70,14 +95,17 @@ export function layerStyleWithColor(
   layerType: string,
   color: string
 ) {
+  const record = colorRecordForLayer(color, layerType)
   const style = { ...(current || {}) }
   if (layerType === 'line') {
-    style.stroke = color
-    style.fill = color
+    style.stroke = record.hex
+    style.fill = record.hex
   } else {
-    style.fill = color
-    style.stroke = color
+    style.fill = record.hex
+    style.stroke = record.hex
   }
+  style.fillRgba = record.fillRgba
+  style.strokeRgba = record.strokeRgba
   if (style.strokeWidth == null) style.strokeWidth = 1.5
   return style
 }

@@ -27,6 +27,8 @@ interface MapSidebarProps {
   askTerraLoading?: boolean
   isMobile?: boolean
   onClose: () => void
+  coordinateResult?: { lat: number; lng: number } | null
+  onGoToCoordinate?: () => void
 }
 
 function SearchResultsList({
@@ -530,10 +532,12 @@ export default function MapSidebar({
   askTerraLoading,
   isMobile = false,
   onClose,
+  coordinateResult = null,
+  onGoToCoordinate,
 }: MapSidebarProps) {
   const { m } = useTranslation()
 
-  const showSearch = debouncedSearch.length >= 2 || !!selectedMineral
+  const showSearch = debouncedSearch.length >= 2 || !!selectedMineral || !!coordinateResult
   const mobileBottom = 'bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
 
   return (
@@ -561,7 +565,25 @@ export default function MapSidebar({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
-        {showSearch &&
+        {coordinateResult && !selectedMineral && (
+          <button
+            type="button"
+            onClick={() => onGoToCoordinate?.()}
+            className="mb-3 flex w-full items-center gap-3 rounded-lg border border-terra-200/80 bg-terra-50/40 px-3 py-2.5 text-left transition-colors hover:bg-terra-50 dark:border-terra-800/50 dark:bg-terra-950/20"
+          >
+            <svg className="h-5 w-5 shrink-0 text-terra-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6-5.686-6-10a6 6 0 1 1 12 0c0 4.314-6 10-6 10Z" />
+              <circle cx="12" cy="11" r="2" />
+            </svg>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold map-text">{m.map.goToCoordinates}</span>
+              <span className="block text-xs map-text-muted tabular-nums">
+                {coordinateResult.lat.toFixed(5)}, {coordinateResult.lng.toFixed(5)}
+              </span>
+            </span>
+          </button>
+        )}
+        {showSearch && !(coordinateResult && !selectedMineral) &&
           (selectedMineral && isRegionSearchResult(selectedMineral) ? (
             <RegionDetailCard
               region={selectedMineral}

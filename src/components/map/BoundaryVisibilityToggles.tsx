@@ -4,7 +4,7 @@ import { BOUNDARY_LEVEL_OPTIONS } from './boundaryLevelOptions'
 import { useTranslation } from '../../i18n/LocaleContext'
 
 const rowClass =
-  'flex items-center gap-2 text-xs map-text-secondary cursor-pointer min-h-[1.375rem]'
+  'flex items-center gap-1.5 text-[11px] map-text-secondary cursor-pointer py-0.5'
 
 const LEVEL_BY_KEY: Record<BoundaryLevelKey, number> = {
   country: 0,
@@ -64,10 +64,12 @@ export default function BoundaryVisibilityToggles({
   ) as Record<BoundaryLevelKey, string>
 
   const checkboxClass =
-    'shrink-0 rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 size-3.5'
+    'shrink-0 rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 size-3'
+
+  const rowGap = compact ? 'gap-0.5' : 'gap-1'
 
   return (
-    <div className={`flex flex-col gap-1.5 ${compact ? 'px-0.5' : 'px-1'} ${className}`}>
+    <div className={`flex flex-col ${rowGap} ${compact ? 'px-0' : 'px-0.5'} ${className}`}>
       {availableLevels.map((key) => {
         const locked = lockedLevels.includes(key)
         return (
@@ -83,11 +85,11 @@ export default function BoundaryVisibilityToggles({
             className={checkboxClass}
           />
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full border border-black/10"
+            className="h-2 w-2 shrink-0 rounded-full border border-black/10"
             style={{ backgroundColor: accentByKey[key] ?? boundaryAccentColor(LEVEL_BY_KEY[key]) }}
             aria-hidden
           />
-          <span className="leading-snug">{labels[key]}</span>
+          <span className="leading-tight">{labels[key]}</span>
         </label>
         )
       })}
@@ -100,8 +102,8 @@ export default function BoundaryVisibilityToggles({
         </p>
       )}
       {showNamesSection && (
-        <div className="mt-1 pt-1.5 border-t border-app-border/70 flex flex-col gap-1.5">
-          <span className="text-[10px] font-semibold uppercase tracking-wide map-text-muted px-0.5">
+        <div className="mt-0.5 flex flex-col gap-0.5 border-t border-app-border/70 pt-1">
+          <span className="px-0.5 text-[10px] font-semibold uppercase tracking-wide leading-none map-text-muted">
             {m.map.namesSectionTitle}
           </span>
           {onShowBasemapLabelsChange != null && (
@@ -112,7 +114,7 @@ export default function BoundaryVisibilityToggles({
                 onChange={(e) => onShowBasemapLabelsChange(e.target.checked)}
                 className={checkboxClass}
               />
-              <span className="leading-snug">{m.map.basemapLabels}</span>
+              <span className="leading-tight">{m.map.basemapLabels}</span>
             </label>
           )}
           {onShowBoundaryLabelsChange != null && (
@@ -123,7 +125,7 @@ export default function BoundaryVisibilityToggles({
                 onChange={(e) => onShowBoundaryLabelsChange(e.target.checked)}
                 className={checkboxClass}
               />
-              <span className="leading-snug">{m.map.boundaryLabels}</span>
+              <span className="leading-tight">{m.map.boundaryLabels}</span>
             </label>
           )}
         </div>

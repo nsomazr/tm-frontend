@@ -29,6 +29,8 @@ interface AuthContextType {
   isManager: boolean
   hasPaidAccess: boolean
   hasFullMapAccess: boolean
+  canSaveExplorations: boolean
+  mineralExploration: import('../types').MineralExplorationQuota | null
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -117,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isManager = isAdmin || user?.role === 'mineral_manager'
   const hasPaidAccess = user?.has_paid_access ?? isAdmin
   const hasFullMapAccess = hasPaidAccess || user?.role === 'mineral_manager'
+  const canSaveExplorations = user?.can_save_explorations ?? isAdmin
+  const mineralExploration = user?.mineral_exploration ?? null
 
   return (
     <AuthContext.Provider
@@ -135,6 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isManager,
         hasPaidAccess,
         hasFullMapAccess,
+        canSaveExplorations,
+        mineralExploration,
       }}
     >
       {children}

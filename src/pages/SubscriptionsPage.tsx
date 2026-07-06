@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { subscriptionsApi, paymentsApi } from '../api'
@@ -18,24 +18,20 @@ import type { SubscriptionPlan, UserSubscription } from '../types'
 import MarketingHero from '../components/marketing/MarketingHero'
 import MarketingCta, { MarketingCtaLink } from '../components/marketing/MarketingCta'
 import { useTranslation } from '../i18n/LocaleContext'
-import { interpolate } from '../i18n/utils'
 import {
   localizedBillingCycle,
-  localizedMineralNames,
   localizedPlanDescription,
   localizedPlanName,
 } from '../i18n/planLocalization'
 import { FALLBACK_PLANS } from '../constants/fallbackPlans'
-
-function formatPrice(plan: SubscriptionPlan) {
-  return `${Number(plan.price).toLocaleString()} ${plan.currency}`
-}
+import { monthlyEquivalent, planHighlight, sortPaidPlans } from '../lib/planTiers'
+import { en } from '../i18n/messages/en'
 
 function formatPlanPriceLabel(plan: SubscriptionPlan, currency: 'TZS' | 'USD', rate?: number) {
   if (currency === 'USD' && rate) {
     return `${formatUsd(tzsToUsd(Number(plan.price), rate))} USD`
   }
-  return formatPrice(plan)
+  return `${Number(plan.price).toLocaleString()} ${plan.currency}`
 }
 
 type PlanAction = 'subscribe' | 'current' | 'upgrade_annual' | 'switch'
@@ -54,20 +50,6 @@ function resolvePlanAction(
     return 'upgrade_annual'
   }
   return 'switch'
-}
-
-function paidPlanFeatures(
-  plan: SubscriptionPlan,
-  p: ReturnType<typeof useTranslation>['m']['pricing'],
-  t: ReturnType<typeof useTranslation>['t']
-) {
-  const credits = plan.included_assistant_credits || (plan.billing_cycle === 'annual' ? 5000 : 3000)
-  const downloads = plan.included_report_downloads || (plan.billing_cycle === 'annual' ? 10 : 3)
-  return [
-    t('pricing.paidFeatureCredits', { count: credits.toLocaleString() }),
-    t('pricing.paidFeatureDownloads', { count: downloads }),
-    ...p.paidFeatures,
-  ]
 }
 
 function CheckIcon({ ok }: { ok: boolean | string }) {
@@ -102,6 +84,81 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   )
 }
 
+function PlanFeatureList({ items }: { items: string[] }) {
+  return (
+    <ul className="mt-6 space-y-2.5 text-sm text-slate-600 flex-1">
+      {items.map((feature) => (
+        <li key={feature} className="flex items-start gap-2.5">
+          <svg
+            className="mt-0.5 h-4 w-4 shrink-0 text-terra-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="leading-snug">{feature}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function PricingCard({
+  badge,
+  title,
+  description,
+  price,
+  priceSuffix,
+  priceNote,
+  features,
+  cta,
+  highlighted,
+  muted,
+}: {
+  badge?: string | null
+  title: string
+  description: string
+  price: ReactNode
+  priceSuffix?: string
+  priceNote?: string | null
+  features: string[]
+  cta: ReactNode
+  highlighted?: boolean
+  muted?: boolean
+}) {
+  return (
+    <article
+      className={`relative flex min-w-[17rem] max-w-[20rem] flex-col rounded-2xl border bg-white p-6 shadow-sm snap-center shrink-0 sm:min-w-0 sm:max-w-none sm:shrink ${
+        highlighted
+          ? 'border-terra-500 ring-2 ring-terra-500/80 shadow-md'
+          : muted
+            ? 'border-slate-200'
+            : 'border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      {badge && (
+        <span className="absolute -top-3 right-4 rounded-full bg-terra-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+          {badge}
+        </span>
+      )}
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <p className="mt-1.5 min-h-[2.75rem] text-sm leading-snug text-slate-500">{description}</p>
+      <div className="mt-5 border-b border-slate-100 pb-5">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          {price}
+          {priceSuffix && <span className="text-sm text-slate-400">/ {priceSuffix}</span>}
+        </div>
+        {priceNote && <p className="mt-1.5 text-xs font-medium text-terra-700">{priceNote}</p>}
+      </div>
+      <PlanFeatureList items={features} />
+      <div className="mt-6 pt-2">{cta}</div>
+    </article>
+  )
+}
+
 export default function SubscriptionsPage() {
   const { m } = useTranslation()
   const p = m.pricing
@@ -118,6 +175,13 @@ export default function SubscriptionsPage() {
       <SubscriptionsPageContent />
     </PricingCurrencyProvider>
   )
+}
+
+function tierFeatureList(
+  slug: keyof typeof en.pricing.tierFeatures | 'free',
+  p: typeof en.pricing
+): string[] {
+  return p.tierFeatures[slug as keyof typeof p.tierFeatures] ?? []
 }
 
 function SubscriptionsPageContent() {
@@ -244,27 +308,24 @@ function SubscriptionsPageContent() {
     }
   }
 
-  const plans = useMemo(() => {
+  const paidPlans = useMemo(() => {
     const fromApi = data?.results ?? []
     const list = fromApi.length > 0 ? fromApi : FALLBACK_PLANS
-    return [...list].sort((a, b) => {
-      if (a.billing_cycle === b.billing_cycle) return 0
-      return a.billing_cycle === 'monthly' ? -1 : 1
-    })
+    return sortPaidPlans(list)
   }, [data])
 
   const checkoutPlan = checkoutPlanId
-    ? plans.find((plan) => plan.id === checkoutPlanId)
+    ? paidPlans.find((plan) => plan.id === checkoutPlanId)
     : undefined
 
   const usingFallbackPlans =
     !isLoading && (isError || (data?.results?.length ?? 0) === 0)
 
-  const monthlyPlan = plans.find((plan) => plan.billing_cycle === 'monthly')
-  const annualPlan = plans.find((plan) => plan.billing_cycle === 'annual')
+  const monthlyPlus = paidPlans.find((plan) => plan.slug === 'monthly-standard')
+  const annualPro = paidPlans.find((plan) => plan.slug === 'annual-standard')
   const annualSavings =
-    monthlyPlan && annualPlan
-      ? Math.round((1 - Number(annualPlan.price) / (Number(monthlyPlan.price) * 12)) * 100)
+    monthlyPlus && annualPro
+      ? Math.round((1 - Number(annualPro.price) / (Number(monthlyPlus.price) * 12)) * 100)
       : null
 
   const resolveCompareValue = (value: boolean | string) => {
@@ -285,10 +346,15 @@ function SubscriptionsPageContent() {
       case 'switch':
         return p.switchPlan
       default:
-        return user
-          ? t('pricing.subscribeFor', { price: formatPlanPriceLabel(plan, currency, rate) })
-          : p.subscribeNow
+        return user ? t('pricing.upgradeTo', { plan: localizedPlanName(plan, locale) }) : p.subscribeNow
     }
+  }
+
+  const planBadge = (slug: string) => {
+    const highlight = planHighlight(slug)
+    if (highlight === 'recommended') return p.recommended
+    if (highlight === 'best_value') return p.bestValue
+    return null
   }
 
   return (
@@ -297,8 +363,8 @@ function SubscriptionsPageContent() {
         <Link to="/" className="btn-primary text-sm">{p.exploreFree}</Link>
       </MarketingHero>
 
-      <section className="py-16 sm:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+      <section className="py-12 sm:py-16 bg-slate-50/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           {usingFallbackPlans && !isLoading && (
             <div className="mb-8 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 text-center">
               {isError ? p.plansApiUnavailable : p.noPlans}
@@ -311,128 +377,94 @@ function SubscriptionsPageContent() {
             </div>
           ) : (
             <>
-              {!usingFallbackPlans && plans.some((plan) => Number(plan.price) > 0) && (
-                <div className="flex justify-center mb-8 lg:mb-10">
+              <div className="flex flex-col items-center gap-4 mb-8 sm:mb-10">
+                {!usingFallbackPlans && paidPlans.some((plan) => Number(plan.price) > 0) && (
                   <PricingCurrencyToggle />
-                </div>
-              )}
-            <div className={`grid gap-6 lg:gap-8 ${plans.length >= 2 ? 'lg:grid-cols-3' : plans.length === 1 ? 'lg:grid-cols-2' : 'max-w-md mx-auto'}`}>
-              <div className={`card flex flex-col border-slate-200 relative ${!hasPaidAccess ? 'ring-2 ring-slate-300' : ''}`}>
-                {!hasPaidAccess && (
-                  <span className="absolute -top-3 left-6 badge bg-slate-700 text-white ring-0">
-                    {p.freeEyebrow}
-                  </span>
                 )}
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">{p.freeEyebrow}</p>
-                <h2 className="text-xl font-bold text-slate-900 mt-2">{p.freeTitle}</h2>
-                <p className="text-slate-500 text-sm mt-1">{p.freeDesc}</p>
-                <div className="mt-6 pb-6 border-b app-divider">
-                  <PlanPriceAmount amountTzs={0} />
-                  <span className="text-slate-400 text-sm ml-2">{p.freeForever}</span>
-                </div>
-                <ul className="mt-6 text-sm text-slate-600 space-y-3 flex-1">
-                  {p.freeFeatures.map((f) => (
-                    <li key={f} className="flex items-start gap-2">
-                      <span className="text-terra-600 mt-0.5">✓</span>
-                      <span>{f}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/" className="btn-secondary mt-8 w-full text-center">{p.openMap}</Link>
               </div>
 
-              {plans.map((plan) => {
-                const isAnnual = plan.billing_cycle === 'annual'
-                const isCurrent = hasPaidAccess && subscription?.is_active && subscription.plan === plan.id
-                const action = resolvePlanAction(plan, subscription, hasPaidAccess)
-                const highlighted = isAnnual && !isCurrent
-                const showBestValue = isAnnual && annualSavings != null && annualSavings > 0
+              <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory sm:grid sm:overflow-visible sm:pb-0 sm:snap-none sm:grid-cols-2 sm:gap-5 lg:gap-6 xl:grid-cols-4">
+                <PricingCard
+                  muted={hasPaidAccess}
+                  title={p.freeTitle}
+                  description={p.freeDesc}
+                  price={<PlanPriceAmount amountTzs={0} />}
+                  priceSuffix={p.freeForever.replace(/^\//, '').trim()}
+                  features={tierFeatureList('free', p)}
+                  cta={
+                    !hasPaidAccess ? (
+                      <button type="button" disabled className="btn-secondary w-full opacity-80 cursor-default">
+                        {p.freeCta}
+                      </button>
+                    ) : (
+                      <Link to="/" className="btn-secondary w-full text-center block">
+                        {p.freeCtaExplore}
+                      </Link>
+                    )
+                  }
+                />
 
-                return (
-                  <div
-                    key={plan.id}
-                    className={`card flex flex-col relative ${
-                      isCurrent
-                        ? 'ring-2 ring-emerald-500 border-emerald-200'
-                        : highlighted
-                          ? 'ring-2 ring-terra-500 shadow-glow border-terra-200'
-                          : ''
-                    }`}
-                  >
-                    {isCurrent && (
-                      <span className="absolute -top-3 left-6 badge bg-emerald-600 text-white ring-0">
-                        {p.currentPlan}
-                      </span>
-                    )}
-                    {!isCurrent && showBestValue && (
-                      <span className="absolute -top-3 left-6 badge bg-terra-600 text-white ring-0">
-                        {p.bestValue}
-                      </span>
-                    )}
-                    {!isCurrent && !showBestValue && plans.length === 1 && (
-                      <span className="absolute -top-3 left-6 badge bg-terra-600 text-white ring-0">
-                        {p.popular}
-                      </span>
-                    )}
-                    <p className="text-xs font-semibold uppercase tracking-wider text-terra-600">{p.paidEyebrow}</p>
-                    <h2 className="text-xl font-bold text-slate-900 mt-2">{localizedPlanName(plan, locale)}</h2>
-                    <p className="text-slate-500 text-sm mt-1">{localizedPlanDescription(plan, locale)}</p>
-                    <div className="mt-6 pb-6 border-b app-divider">
-                      <PlanPriceAmount amountTzs={Number(plan.price)} />
-                      <span className="text-slate-400 text-sm ml-2">/ {localizedBillingCycle(plan, locale)}</span>
-                      {isAnnual && annualSavings != null && annualSavings > 0 && (
-                        <p className="text-xs text-terra-700 font-medium mt-2">
-                          {t('pricing.saveVsMonthly', { pct: annualSavings })}
-                        </p>
-                      )}
-                    </div>
-                    <ul className="mt-6 text-sm text-slate-600 space-y-3 flex-1">
-                      <li className="flex items-start gap-2">
-                        <span className="text-terra-600 mt-0.5">✓</span>
-                        <span>{p.paidFeaturesIntro}</span>
-                      </li>
-                      {paidPlanFeatures(plan, p, t).map((f) => (
-                        <li key={f} className="flex items-start gap-2">
-                          <span className="text-terra-600 mt-0.5">✓</span>
-                          <span>{f}</span>
-                        </li>
-                      ))}
-                      {plan.included_mineral_names.length > 0 && (
-                        <li className="flex items-start gap-2">
-                          <span className="text-terra-600 mt-0.5">✓</span>
-                          <span>
-                            {interpolate(p.mineralLayersIncluded, {
-                              count: plan.included_mineral_names.length,
-                              sample: localizedMineralNames(
-                                plan.included_mineral_names.slice(0, 3),
-                                locale
-                              ).join(', '),
-                            })}
-                            {plan.included_mineral_names.length > 3 ? '…' : ''}
-                          </span>
-                        </li>
-                      )}
-                    </ul>
-                    <button
-                      onClick={() => plan.id > 0 && startCheckout(plan.id)}
-                      disabled={
-                        checkout.isPending ||
-                        action === 'current' ||
-                        usingFallbackPlans ||
-                        plan.id <= 0
+                {paidPlans.map((plan) => {
+                  const isCurrent =
+                    hasPaidAccess && subscription?.is_active && subscription.plan === plan.id
+                  const action = resolvePlanAction(plan, subscription, hasPaidAccess)
+                  const highlighted = planHighlight(plan.slug) === 'recommended' && !isCurrent
+                  const badge = !isCurrent ? planBadge(plan.slug) : p.currentPlan
+                  const monthlyEq = monthlyEquivalent(plan)
+                  const features =
+                    tierFeatureList(
+                      plan.slug as keyof typeof en.pricing.tierFeatures,
+                      p
+                    ).length > 0
+                      ? tierFeatureList(plan.slug as keyof typeof en.pricing.tierFeatures, p)
+                      : tierFeatureList('monthly-standard', p)
+
+                  return (
+                    <PricingCard
+                      key={plan.slug}
+                      badge={badge}
+                      highlighted={highlighted || isCurrent}
+                      title={localizedPlanName(plan, locale)}
+                      description={localizedPlanDescription(plan, locale)}
+                      price={<PlanPriceAmount amountTzs={Number(plan.price)} />}
+                      priceSuffix={localizedBillingCycle(plan, locale)}
+                      priceNote={
+                        plan.billing_cycle === 'annual' && monthlyEq != null
+                          ? t('pricing.equivalentMonthly', {
+                              price: formatPlanPriceLabel(
+                                { ...plan, price: String(monthlyEq), billing_cycle: 'monthly' },
+                                currency,
+                                rate
+                              ),
+                            })
+                          : plan.billing_cycle === 'annual' && annualSavings != null && annualSavings > 0
+                            ? t('pricing.saveVsMonthly', { pct: annualSavings })
+                            : null
                       }
-                      className={`mt-8 w-full disabled:opacity-60 ${
-                        action === 'current' ? 'btn-secondary' : 'btn-primary'
-                      }`}
-                    >
-                      {checkout.isPending && action !== 'current'
-                        ? p.processing
-                        : planButtonLabel(action, plan)}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
+                      features={features}
+                      cta={
+                        <button
+                          type="button"
+                          onClick={() => plan.id > 0 && startCheckout(plan.id)}
+                          disabled={
+                            checkout.isPending ||
+                            action === 'current' ||
+                            usingFallbackPlans ||
+                            plan.id <= 0
+                          }
+                          className={`w-full disabled:opacity-60 ${
+                            highlighted ? 'btn-primary' : action === 'current' ? 'btn-secondary' : 'btn-primary'
+                          }`}
+                        >
+                          {checkout.isPending && action !== 'current'
+                            ? p.processing
+                            : planButtonLabel(action, plan)}
+                        </button>
+                      }
+                    />
+                  )
+                })}
+              </div>
             </>
           )}
         </div>

@@ -36,20 +36,20 @@ export default function BasemapSwitcher({ value, onChange, embedded, current: cu
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="w-full px-3 py-2.5 flex items-center gap-2 text-left hover:bg-app-subtle/80"
+          className="w-full px-2.5 py-2 flex items-center gap-2 text-left hover:bg-app-subtle/80"
         >
           <span
-            className="w-8 h-8 rounded-lg border border-app-border shrink-0"
+            className="w-6 h-6 rounded-md border border-app-border shrink-0"
             style={{ background: current.preview }}
           />
           <span className="flex-1 min-w-0">
-            <span className="block text-[10px] font-semibold uppercase tracking-wider map-text-muted">{m.map.basemapLabel}</span>
-            <span className="block text-sm font-medium map-text">{current.label}</span>
+            <span className="block text-[10px] font-semibold uppercase tracking-wide leading-none map-text-muted">{m.map.basemapLabel}</span>
+            <span className="block text-xs font-medium map-text truncate">{current.label}</span>
           </span>
-          <span className="map-text-muted text-sm shrink-0">{open ? '−' : '+'}</span>
+          <span className="map-text-muted text-xs shrink-0">{open ? '−' : '+'}</span>
         </button>
         {open && (
-          <ul className="p-1.5 max-h-44 overflow-y-auto border-t app-divider">
+          <ul className="max-h-40 overflow-y-auto border-t app-divider p-1">
             {BASEMAPS.map((bm) => (
               <li key={bm.id}>
                 <button
@@ -58,11 +58,11 @@ export default function BasemapSwitcher({ value, onChange, embedded, current: cu
                     onChange(bm.id)
                     saveBasemapPreference(bm.id)
                   }}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-sm ${
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded-md text-left text-xs ${
                     bm.id === value ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300 font-medium' : 'hover:bg-app-subtle map-text-secondary'
                   }`}
                 >
-                  <span className="w-6 h-6 rounded border border-slate-200 shrink-0" style={{ background: bm.preview }} />
+                  <span className="w-5 h-5 rounded border border-slate-200 shrink-0" style={{ background: bm.preview }} />
                   {bm.label}
                 </button>
               </li>

@@ -25,6 +25,7 @@ export const adminNavGroups: AdminNavGroup[] = [
     roles: ['admin'],
     items: [
       { to: '/admin/analytics', label: 'Analytics', roles: ['admin'] },
+      { to: '/admin/map-settings', label: 'Map settings', roles: ['admin'] },
       { to: '/admin/users', label: 'Users', roles: ['admin'] },
       { to: '/admin/revenue', label: 'Payments', roles: ['admin'] },
       { to: '/admin/compliance', label: 'Compliance', roles: ['admin'] },
@@ -45,7 +46,10 @@ export const adminNavGroups: AdminNavGroup[] = [
   {
     title: 'Team',
     roles: ['admin'],
-    items: [{ to: '/admin/managers', label: 'Mineral managers', roles: ['admin'] }],
+    items: [
+      { to: '/admin/managers', label: 'Mineral managers', roles: ['admin'] },
+      { to: '/admin/manager-performance', label: 'Manager performance', roles: ['admin'] },
+    ],
   },
 ]
 

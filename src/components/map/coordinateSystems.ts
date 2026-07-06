@@ -33,6 +33,7 @@ export const COORDINATE_SYSTEMS: CoordinateSystemOption[] = [
 
 export const DEFAULT_COORDINATE_SYSTEM: CoordinateSystemId = 'arc1960'
 export const COORDINATE_SYSTEM_STORAGE_KEY = 'terra-map-crs'
+export const COORDINATE_SYSTEM_CHANGE_EVENT = 'terra-map-crs-change'
 
 const PROJ4_DEFS: Record<string, string> = {
   'EPSG:4210': '+proj=longlat +ellps=clrk80 +towgs84=-160,-6,-302,0,0,0,0 +no_defs +type=crs',
@@ -68,6 +69,7 @@ export function readStoredCoordinateSystem(): CoordinateSystemId {
 export function storeCoordinateSystem(id: CoordinateSystemId) {
   if (typeof window === 'undefined') return
   localStorage.setItem(COORDINATE_SYSTEM_STORAGE_KEY, id)
+  window.dispatchEvent(new CustomEvent(COORDINATE_SYSTEM_CHANGE_EVENT, { detail: id }))
 }
 
 export interface TransformedCoordinate {
@@ -98,6 +100,50 @@ export function transformMapCoordinate(
   }
 
   const [x, y] = transform(wgs84, 'EPSG:4326', system.epsg)
+  return { x, y, kind: system.kind }
+}
+
+/**
+ * Convert a coordinate expressed in a chosen CRS back to WGS84 lon/lat.
+ *
+ * For geographic systems pass ``(x, y) = (lon, lat)`` in that datum; for
+ * projected systems pass ``(x, y) = (easting, northing)`` in metres.
+ * Returns ``[lng, lat]`` in WGS84 (EPSG:4326), the order OpenLayers/GeoJSON use.
+ */
+export function lonLatFromCrs(
+  x: number,
+  y: number,
+  systemId: CoordinateSystemId
+): [number, number] {
+  registerCoordinateProjections()
+  const system = coordinateSystemById(systemId)
+  if (system.epsg === 'EPSG:4326') {
+    return [x, y]
+  }
+  if (system.epsg === 'EPSG:3857') {
+    const [lng, lat] = transform([x, y], 'EPSG:3857', 'EPSG:4326')
+    return [lng, lat]
+  }
+  const [lng, lat] = transform([x, y], system.epsg, 'EPSG:4326')
+  return [lng, lat]
+}
+
+/** Convert WGS84 lon/lat into the chosen CRS for display in a coordinate list. */
+export function lonLatToCrs(
+  lng: number,
+  lat: number,
+  systemId: CoordinateSystemId
+): TransformedCoordinate {
+  registerCoordinateProjections()
+  const system = coordinateSystemById(systemId)
+  if (system.epsg === 'EPSG:4326') {
+    return { x: lng, y: lat, kind: 'geographic' }
+  }
+  if (system.epsg === 'EPSG:3857') {
+    const [x, y] = transform([lng, lat], 'EPSG:4326', 'EPSG:3857')
+    return { x, y, kind: 'projected' }
+  }
+  const [x, y] = transform([lng, lat], 'EPSG:4326', system.epsg)
   return { x, y, kind: system.kind }
 }
 

@@ -7,6 +7,9 @@ import VectorSource from 'ol/source/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
 import Feature from 'ol/Feature'
 import Circle from 'ol/geom/Circle'
+import Point from 'ol/geom/Point'
+import LineString from 'ol/geom/LineString'
+import Polygon from 'ol/geom/Polygon'
 import { fromLonLat, toLonLat, transformExtent } from 'ol/proj'
 import ScaleLine from 'ol/control/ScaleLine'
 import { defaults as defaultControls } from 'ol/control'
@@ -23,7 +26,8 @@ import MapZoomControls from './MapZoomControls'
 import MapCoordinateReadout from './MapCoordinateReadout'
 import { registerCoordinateProjections } from './coordinateSystems'
 import { useCoordinateSystemState } from './useCoordinateSystemState'
-import { Fill, Stroke, Style } from 'ol/style'
+import { Fill, RegularShape, Stroke, Style, Circle as CircleStyle } from 'ol/style'
+import { explorationBounds, type ExplorationDraw } from './explorationGeometry'
 import { analysisZoneRadiusKm, recommendedZoomForAnalysisZone, type AnalysisZoneSpec } from './analysisZoneGeometry'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useBasemapState } from './useBasemapState'
@@ -37,7 +41,9 @@ import {
 import { buildHighlightStyle, buildLayerStyleFunction } from './mapStyles'
 import { useTheme } from '../../theme/ThemeContext'
 import { pickFeatureAtPixel } from './mapHitUtils'
+import Heatmap from 'ol/layer/Heatmap'
 import { loadLayerGeojson } from './mapGeojsonCache'
+import { syncMineralHeatmapLayer, type MineralHeatmapSpec } from './mineralHeatmapLayer'
 import { useTranslation } from '../../i18n/LocaleContext'
 import {
   boundaryLabelZoom,
@@ -136,6 +142,15 @@ interface MapViewerProps {
   /** Unpaid preview: mineral layers always on; boundary toggles are user-controlled. */
   staticMap?: boolean
   mineralHighlight?: MineralHighlightSpec | null
+  mineralHeatmap?: MineralHeatmapSpec | null
+  /** Show the coordinate-system (CRS) picker. Reserved for admin/editor contexts. */
+  showCoordinateSystem?: boolean
+  showCoordinateReadout?: boolean
+  /** User-entered exploration geometry to draw/mark (WGS84 [lng,lat] points). */
+  explorationDraw?: ExplorationDraw | null
+  /** When true, a map click appends a vertex to the exploration draw (paid tool). */
+  drawActive?: boolean
+  onDrawPoint?: (lng: number, lat: number) => void
 }
 
 function mineralTintForFeature(
@@ -165,39 +180,76 @@ function fitAdminBounds(map: OlMap, bounds: AdminFitBounds, mobile: boolean) {
   map.updateSize()
   const extent = boundsToExtent(bounds)
   map.getView().fit(extent, {
-    padding: mobile ? [112, 16, 100, 16] : [104, 48, 120, 48],
+    // Extra bottom padding on mobile clears the stacked bottom controls
+    // (Country panel + Ask Terra + dock) so the target isn't hidden behind them.
+    padding: mobile ? [88, 16, 184, 16] : [104, 48, 120, 48],
     maxZoom: 12,
     duration: mobile ? 500 : 700,
   })
+}
+
+/** Pan/zoom so staged draw vertices are visible while editing (coordinates admin). */
+function fitDrawPoints(map: OlMap, points: [number, number][], mobile: boolean) {
+  const bounds = explorationBounds(points)
+  if (!bounds) return
+
+  const minSpan = 0.04
+  let { west, east, south, north } = bounds
+  if (east - west < minSpan) {
+    const center = (west + east) / 2
+    west = center - minSpan / 2
+    east = center + minSpan / 2
+  }
+  if (north - south < minSpan) {
+    const center = (south + north) / 2
+    south = center - minSpan / 2
+    north = center + minSpan / 2
+  }
+
+  fitAdminBounds(map, { west, south, east, north }, mobile)
+}
+
+interface CountryFitChrome {
+  leftPanel?: boolean
+  rightDock?: boolean
+}
+
+/** Padding [top, right, bottom, left] that keeps the country centered in the visible map area. */
+function countryFitPadding(mobile: boolean, chrome: CountryFitChrome = {}): [number, number, number, number] {
+  if (mobile) {
+    return [64, 12, 176, 12]
+  }
+
+  const top = 64
+  const bottom = 64
+  const right = chrome.rightDock === false ? 48 : 268
+  const left = chrome.leftPanel ? 288 : 48
+  return [top, right, bottom, left]
 }
 
 function fitCountryView(
   map: OlMap,
   focus: CountryFocus,
   mobile: boolean,
-  animated = false
+  animated = false,
+  chrome: CountryFitChrome = {},
 ) {
   const size = map.getSize()
   if (!size || size[0] === 0 || size[1] === 0) {
-    requestAnimationFrame(() => fitCountryView(map, focus, mobile, animated))
+    requestAnimationFrame(() => fitCountryView(map, focus, mobile, animated, chrome))
     return
   }
 
   map.updateSize()
   const view = map.getView()
   const extent = boundsToExtent(focus.bounds)
-  const focusCenter = fromLonLat([focus.center.lng, focus.center.lat])
   const duration = animated ? (mobile ? 500 : 800) : 0
-  const padding = mobile ? [112, 10, 72, 10] : [104, 24, 80, 24]
+  const padding = countryFitPadding(mobile, chrome)
   view.set('extent', extent)
-  view.setCenter(focusCenter)
   view.fit(extent, {
     padding,
-    maxZoom: Math.min(focus.default_zoom + 1, 6.5),
+    maxZoom: mobile ? 6 : Math.min(focus.default_zoom + 1.5, 7),
     duration,
-    callback: () => {
-      view.setCenter(focusCenter)
-    },
   })
 }
 
@@ -223,6 +275,66 @@ function readGeojsonFeatures(data: unknown) {
     dataProjection: 'EPSG:4326',
     featureProjection: 'EPSG:3857',
   })
+}
+
+const USER_DRAW_COLOR = '#0d9488'
+const USER_DRAW_POINT_COLOR = '#dc2626'
+
+function userDrawStyles(role: string): Style {
+  if (role === 'polygon') {
+    return new Style({
+      stroke: new Stroke({ color: USER_DRAW_COLOR, width: 2.5 }),
+      fill: new Fill({ color: 'rgba(13, 148, 136, 0.15)' }),
+    })
+  }
+  if (role === 'line' || role === 'edge') {
+    return new Style({
+      stroke: new Stroke({
+        color: USER_DRAW_COLOR,
+        width: role === 'edge' ? 2.5 : 3,
+        lineDash: role === 'edge' ? [8, 6] : undefined,
+      }),
+    })
+  }
+  if (role === 'point') {
+    return new Style({
+      image: new CircleStyle({
+        radius: 10,
+        fill: new Fill({ color: USER_DRAW_POINT_COLOR }),
+        stroke: new Stroke({ color: '#ffffff', width: 2.5 }),
+      }),
+    })
+  }
+  return new Style({
+    image: new RegularShape({
+      points: 3,
+      radius: 7,
+      angle: 0,
+      fill: new Fill({ color: USER_DRAW_COLOR }),
+      stroke: new Stroke({ color: '#ffffff', width: 2 }),
+    }),
+  })
+}
+
+/** Build OL features (WGS84 -> map projection) for a user exploration draw. */
+function buildUserDrawFeatures(draw: ExplorationDraw): Feature[] {
+  const coords = draw.points.map(([lng, lat]) => fromLonLat([lng, lat]))
+  const features: Feature[] = []
+
+  if (draw.mode === 'polygon' && coords.length >= 3) {
+    const ring = [...coords, coords[0]]
+    features.push(new Feature({ geometry: new Polygon([ring]), role: 'polygon' }))
+  } else if (draw.mode === 'polygon' && coords.length >= 2) {
+    features.push(new Feature({ geometry: new LineString(coords), role: 'edge' }))
+  } else if (draw.mode === 'line' && coords.length >= 2) {
+    features.push(new Feature({ geometry: new LineString(coords), role: 'line' }))
+  }
+
+  const vertexRole = draw.mode === 'point' ? 'point' : 'vertex'
+  for (const c of coords) {
+    features.push(new Feature({ geometry: new Point(c), role: vertexRole }))
+  }
+  return features
 }
 
 function addFeaturesInBatches(
@@ -308,6 +420,12 @@ export default function MapViewer({
   boundaryControlLevels,
   staticMap = false,
   mineralHighlight = null,
+  mineralHeatmap = null,
+  showCoordinateSystem = false,
+  showCoordinateReadout = false,
+  explorationDraw = null,
+  drawActive = false,
+  onDrawPoint,
 }: MapViewerProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<OlMap | null>(null)
@@ -321,12 +439,18 @@ export default function MapViewer({
   continuousInspectRef.current = continuousInspect
   const hoverLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const analysisZoneLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const userDrawLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const drawActiveRef = useRef(drawActive)
+  drawActiveRef.current = drawActive
+  const onDrawPointRef = useRef(onDrawPoint)
+  onDrawPointRef.current = onDrawPoint
   const countryLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const regionLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const districtLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const wardLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const villageLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const villageLabelLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const heatmapLayerRef = useRef<Heatmap | null>(null)
   const villageBatchCancelRef = useRef<(() => void) | null>(null)
   const boundaryVisibilityRef = useRef(boundaryVisibility)
   const boundaryFocusRef = useRef(boundaryFocus)
@@ -339,6 +463,7 @@ export default function MapViewer({
   mineralHighlightRef.current = mineralHighlight
   const countryFocusRef = useRef<CountryFocus>(DEFAULT_COUNTRY_FOCUS)
   countryFocusRef.current = countryFocus ?? DEFAULT_COUNTRY_FOCUS
+  const countryFitChromeRef = useRef<CountryFitChrome>({})
   const hadMapFocusRef = useRef(false)
   const basemapRef = useRef<BasemapId>('light')
   const [mapEpoch, setMapEpoch] = useState(0)
@@ -354,6 +479,10 @@ export default function MapViewer({
   const { theme } = useTheme()
   const themeRef = useRef(theme)
   const [layers, setLayers] = useState(initialLayers)
+  countryFitChromeRef.current = {
+    leftPanel: Boolean(showLayerPanel && hasPaidAccess && layers.length > 0 && !minimalChrome),
+    rightDock: !minimalChrome,
+  }
   const [internalVisible, setInternalVisible] = useState<Set<number>>(
     () => new Set(initialLayers.map((l) => l.id))
   )
@@ -506,6 +635,16 @@ export default function MapViewer({
     })
     analysisZoneLayerRef.current = analysisZoneLayer
 
+    const userDrawSource = new VectorSource()
+    const userDrawLayer = new VectorLayer({
+      source: userDrawSource,
+      zIndex: 4700,
+      updateWhileAnimating: true,
+      updateWhileInteracting: true,
+      style: (feature) => userDrawStyles(feature.get('role')),
+    })
+    userDrawLayerRef.current = userDrawLayer
+
     const countrySource = new VectorSource()
     const countryLayer = new VectorLayer({
       source: countrySource,
@@ -616,12 +755,13 @@ export default function MapViewer({
         regionLayer,
         countryLayer,
         analysisZoneLayer,
+        userDrawLayer,
         villageLabelLayer,
         hoverLayer,
       ],
       view: new View({
         center: TANZANIA_CENTER,
-        zoom: mobile ? 5.5 : 6.5,
+        zoom: mobile ? 5 : 6.5,
         minZoom: mobile ? 4 : 5,
         maxZoom: 18,
         extent: TANZANIA_EXTENT,
@@ -633,9 +773,14 @@ export default function MapViewer({
       interactions: defaultInteractions({ doubleClickZoom: !mobile }),
     })
 
-    fitCountryView(map, countryFocusRef.current, mobile)
+    fitCountryView(map, countryFocusRef.current, mobile, false, countryFitChromeRef.current)
 
     const handleMapInspect = (evt: { coordinate: number[]; pixel: number[] }) => {
+      if (drawActiveRef.current && onDrawPointRef.current) {
+        const [lng, lat] = toLonLat(evt.coordinate)
+        onDrawPointRef.current(lng, lat)
+        return
+      }
       const picked = pickFeatureAtPixel(
         map,
         evt.pixel,
@@ -682,6 +827,11 @@ export default function MapViewer({
       if (!hoverSource) return
       hoverSource.clear()
 
+      if (drawActiveRef.current) {
+        target.style.cursor = 'crosshair'
+        return
+      }
+
       const picked = pickFeatureAtPixel(
         map,
         evt.pixel,
@@ -727,6 +877,7 @@ export default function MapViewer({
       labelsLayerRef.current = null
       hoverLayerRef.current = null
       analysisZoneLayerRef.current = null
+      userDrawLayerRef.current = null
       countryLayerRef.current = null
       regionLayerRef.current = null
       districtLayerRef.current = null
@@ -774,7 +925,7 @@ export default function MapViewer({
       hadMapFocusRef.current = false
       programmaticMoveRef.current = true
       const mobile = isMobileRef.current
-      fitCountryView(map, countryFocusRef.current, mobile, true)
+      fitCountryView(map, countryFocusRef.current, mobile, true, countryFitChromeRef.current)
       window.setTimeout(() => {
         programmaticMoveRef.current = false
       }, isMobileRef.current ? 600 : 900)
@@ -904,6 +1055,12 @@ export default function MapViewer({
 
   useEffect(() => {
     const map = mapInstance.current
+    if (!map || mapEpoch === 0) return
+    syncMineralHeatmapLayer(map, heatmapLayerRef, mineralHeatmap, isMobileRef.current)
+  }, [mineralHeatmap, mapEpoch, isMobile])
+
+  useEffect(() => {
+    const map = mapInstance.current
     if (!map || !countryFocus) return
 
     const extent = boundsToExtent(countryFocus.bounds)
@@ -911,12 +1068,23 @@ export default function MapViewer({
 
     if (!analysisZone) {
       programmaticMoveRef.current = true
-      fitCountryView(map, countryFocus, isMobileRef.current, true)
+      fitCountryView(map, countryFocus, isMobileRef.current, true, countryFitChromeRef.current)
       window.setTimeout(() => {
         programmaticMoveRef.current = false
       }, isMobileRef.current ? 650 : 900)
     }
   }, [countryFocus, analysisZone])
+
+  useEffect(() => {
+    const map = mapInstance.current
+    if (!map || hadMapFocusRef.current || analysisZone || adminFitBounds) return
+    programmaticMoveRef.current = true
+    fitCountryView(map, countryFocusRef.current, isMobileRef.current, true, countryFitChromeRef.current)
+    const timer = window.setTimeout(() => {
+      programmaticMoveRef.current = false
+    }, isMobileRef.current ? 650 : 900)
+    return () => window.clearTimeout(timer)
+  }, [showLayerPanel, hasPaidAccess, layers.length, minimalChrome, isMobile, analysisZone, adminFitBounds])
 
   useEffect(() => {
     const map = mapInstance.current
@@ -979,6 +1147,26 @@ export default function MapViewer({
       },
     })
   }, [analysisZone, boundaryFocus])
+
+  // Render the user's exploration draw (point / line / polygon + vertices).
+  useEffect(() => {
+    const map = mapInstance.current
+    const layer = userDrawLayerRef.current
+    const source = layer?.getSource()
+    if (!source) return
+    source.clear()
+    if (explorationDraw && explorationDraw.points.length) {
+      source.addFeatures(buildUserDrawFeatures(explorationDraw))
+      layer?.changed()
+      if (drawActive && minimalChrome && map) {
+        programmaticMoveRef.current = true
+        fitDrawPoints(map, explorationDraw.points, isMobileRef.current)
+        window.setTimeout(() => {
+          programmaticMoveRef.current = false
+        }, 400)
+      }
+    }
+  }, [explorationDraw, mapEpoch, drawActive, minimalChrome])
 
   // Switch basemap / place-name tiles
   useEffect(() => {
@@ -1136,7 +1324,7 @@ export default function MapViewer({
     const map = mapInstance.current
     if (!map) return
     programmaticMoveRef.current = true
-    fitCountryView(map, countryFocusRef.current, isMobileRef.current, true)
+    fitCountryView(map, countryFocusRef.current, isMobileRef.current, true, countryFitChromeRef.current)
     window.setTimeout(() => {
       programmaticMoveRef.current = false
     }, isMobileRef.current ? 650 : 900)
@@ -1207,7 +1395,7 @@ export default function MapViewer({
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
-      {!minimalChrome && (
+      {!minimalChrome && showCoordinateReadout && (
         <MapCoordinateReadout
           mapCoordinate={pointerCoordinate}
           coordinateSystem={coordinateSystem}
@@ -1240,11 +1428,13 @@ export default function MapViewer({
             onShowBasemapLabelsChange={setShowBasemapLabels}
             showBoundaryLabels={showBoundaryLabels}
             onShowBoundaryLabelsChange={setShowBoundaryLabels}
+            villagesLoading={villagesLoading}
+            villagesError={villagesError}
             compact
           />
         </div>
       )}
-      {showLayerPanel && layers.length > 0 && !minimalChrome && !isMobile && (
+      {showLayerPanel && layers.length > 0 && !minimalChrome && !isMobile && hasPaidAccess && (
         <LayerPanel
           layers={layers}
           visibleLayers={visibleLayers}
@@ -1277,6 +1467,8 @@ export default function MapViewer({
           lockedBoundaryLevels={lockedBoundaryLevels}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
+          hasPaidAccess={hasPaidAccess}
+          showCoordinateSystem={showCoordinateSystem}
         />
       )}
       {isMobile && showLayerPanel && !minimalChrome && (
@@ -1309,6 +1501,7 @@ export default function MapViewer({
           staticMap={staticMap}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
+          showCoordinateSystem={showCoordinateSystem}
           assistantOpen={assistantOpen ?? false}
           onAssistantToggle={onAssistantToggle ?? (() => {})}
           onAssistantClose={onAssistantClose ?? (() => {})}

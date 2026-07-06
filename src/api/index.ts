@@ -20,6 +20,7 @@ import type {
   CountryFocus,
   Region,
   Report,
+  SavedExploration,
   SubscriptionPlan,
   User,
   UserSubscription,
@@ -77,6 +78,17 @@ export const mapsApi = {
     api.get<PaginatedResponse<LayerVersion>>('/maps/versions/', { params }),
   uploads: (params?: Record<string, string | number>) =>
     api.get<PaginatedResponse<LayerUpload>>('/maps/uploads/', { params }),
+  savedExplorations: () =>
+    api.get<PaginatedResponse<SavedExploration>>('/maps/saved-explorations/'),
+  createSavedExploration: (data: {
+    name: string
+    mode: 'point' | 'line' | 'polygon'
+    points: [number, number][]
+  }) => api.post<SavedExploration>('/maps/saved-explorations/', data),
+  deleteSavedExploration: (id: number) => api.delete(`/maps/saved-explorations/${id}/`),
+  platformSettings: () => api.get<{ coordinate_system: string }>('/maps/settings/'),
+  updatePlatformSettings: (data: { coordinate_system: string }) =>
+    api.patch<{ coordinate_system: string }>('/maps/settings/', data),
 }
 
 export const subscriptionsApi = {
@@ -243,6 +255,8 @@ export const adminApi = {
   mineralManagers: () => api.get<PaginatedResponse<MineralManagerAssignment>>('/minerals/managers/'),
   assignManager: (data: { user: number; mineral: number; can_publish?: boolean }) =>
     api.post('/minerals/managers/', data),
+  syncManagerMinerals: (data: { user: number; minerals: number[]; can_publish?: boolean }) =>
+    api.post<MineralManagerAssignment[]>('/minerals/managers/sync/', data),
   removeManager: (id: number) => api.delete(`/minerals/managers/${id}/`),
   subscriptions: () => api.get('/subscriptions/admin/list/'),
   auditLogs: (params?: Record<string, string>) =>
@@ -257,6 +271,10 @@ export const analyticsApi = {
     api.get('/analytics/hotspots/', { params: mineral ? { mineral } : {} }),
   investor: () => api.get('/analytics/investor/'),
   adminPlatform: () => api.get<import('../types').AdminPlatformAnalytics>('/analytics/admin/'),
+  adminManagerPerformance: () =>
+    api.get<import('../types').ManagerPerformanceReview>('/analytics/admin/managers/'),
+  mineralExploration: () =>
+    api.get<import('../types').MineralExplorationQuota>('/analytics/mineral-exploration/'),
   searchInsights: (q: string) =>
     api.get<{ results: MineralSearchInsight[] }>('/analytics/search-insights/', { params: { q } }),
   mineralCatalog: (country = 'TZ') =>
@@ -270,6 +288,10 @@ export const analyticsApi = {
         country: options?.country,
         ...(options?.includeVillages ? { include_villages: 'true' } : {}),
       },
+    }),
+  mineralHeatmap: (slug: string, options?: { country?: string }) =>
+    api.get<import('../types').MineralHeatmapData>(`/analytics/minerals/${slug}/heatmap/`, {
+      params: { country: options?.country },
     }),
   searchContextInsights: (params: {
     mineral_slug?: string

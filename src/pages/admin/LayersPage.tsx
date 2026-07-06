@@ -10,12 +10,14 @@ import { usePagination } from '../../hooks/usePagination'
 import { useAlternateName } from '../../i18n/useAlternateName'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import LayerArrangeSection from '../../components/admin/LayerArrangeSection'
+import MineralColorReference from '../../components/admin/MineralColorReference'
 import {
   layerDisplayColor,
   layerFillColor,
   layerStyleWithColor,
   suggestLayerStyle,
 } from '../../components/admin/layerColors'
+import { colorRecordForLayer, formatColorCodes } from '../../lib/mineralColorUtils'
 import {
   applyDefaultTypeStack,
   moveLayerInStack,
@@ -199,14 +201,14 @@ export default function LayersPage() {
 
   useEffect(() => {
     if (colorTouched) return
-    const suggested = suggestLayerStyle(newName, usedLayerColors)
+    const suggested = suggestLayerStyle(newName, usedLayerColors, newLayerType)
     setNewColor(suggested.fill)
-  }, [newName, usedLayerColors, colorTouched])
+  }, [newName, usedLayerColors, newLayerType, colorTouched])
 
   const createLayer = useMutation({
     mutationFn: () => {
       if (!newName.trim()) throw new Error('Layer name is required')
-      const style = suggestLayerStyle(newName, usedLayerColors)
+      const style = suggestLayerStyle(newName, usedLayerColors, newLayerType)
       const fill = colorTouched ? newColor : style.fill
       const payload: Partial<MapLayer> = {
         name: newName.trim(),
@@ -215,11 +217,11 @@ export default function LayersPage() {
         z_index: stackableLayers.length,
         is_preview: newPreview,
         is_active: true,
-        style: {
-          fill,
-          stroke: fill,
-          strokeWidth: style.strokeWidth,
-        },
+        style: layerStyleWithColor(
+          { fill, stroke: fill, strokeWidth: style.strokeWidth },
+          newLayerType,
+          fill
+        ),
       }
       if (newRegionId) payload.region = Number(newRegionId)
       return mapsApi.createLayer(payload)
@@ -476,6 +478,9 @@ export default function LayersPage() {
                         {colorTouched ? 'Custom color' : 'Suggested from your layer list'}
                       </p>
                       <p className="text-xs text-app-text-muted font-mono truncate">{newColor}</p>
+                      <p className="text-[10px] text-app-text-muted font-mono truncate">
+                        {formatColorCodes(colorRecordForLayer(newColor, newLayerType))}
+                      </p>
                     </div>
                     {colorTouched && (
                       <button
@@ -488,6 +493,18 @@ export default function LayersPage() {
                     )}
                   </div>
                 </label>
+                <div className="block sm:col-span-2">
+                  <MineralColorReference
+                    layerName={newName}
+                    layerType={newLayerType}
+                    usedColors={usedLayerColors}
+                    selectedColor={newColor}
+                    onSelect={(hex) => {
+                      setColorTouched(true)
+                      setNewColor(hex)
+                    }}
+                  />
+                </div>
                 <label className="block">
                   <span className="text-sm font-medium text-app-text-secondary">Geometry type</span>
                   <select
