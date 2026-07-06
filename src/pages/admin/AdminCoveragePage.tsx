@@ -129,7 +129,7 @@ export default function AdminCoveragePage() {
                 </div>
                 {mineralHotspots.length > 0 && (
                   <label className="shrink-0 min-w-[12rem]">
-                    <span className="sr-only">Mineral</span>
+                    <span className="sr-only">Layer</span>
                     <select
                       value={selectedLayerSlug}
                       onChange={(e) => setSelectedLayerSlug(e.target.value)}

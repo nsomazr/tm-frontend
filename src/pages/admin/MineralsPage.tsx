@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { mapsApi } from '../../api'
+import { useAdminLayers, ADMIN_LAYERS_KEY } from '../../hooks/useAdminLayers'
 import { useAuth } from '../../auth/AuthContext'
 import {
   layerDisplayColor,
@@ -48,7 +49,7 @@ function CommodityEditor({
         style: layerStyleWithColor(layer.style, layer.layer_type, color),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-layers'] })
+      qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
       qc.invalidateQueries({ queryKey: ['layers'] })
       toast.success('Commodity updated')
       onClose()
@@ -132,12 +133,9 @@ export default function MineralsPage() {
   const displayName = useDisplayName()
   const alternateName = useAlternateName()
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-layers'],
-    queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
-  })
+  const { data: allLayers = [], isLoading } = useAdminLayers()
 
-  const commodities = (data?.results ?? []).filter((layer) => (layer.feature_count ?? 0) > 0)
+  const commodities = allLayers.filter((layer) => (layer.feature_count ?? 0) > 0)
   const pagination = usePagination(commodities, 25)
 
   return (

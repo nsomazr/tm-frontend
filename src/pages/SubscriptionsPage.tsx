@@ -41,7 +41,7 @@ function resolvePlanAction(
   subscription: UserSubscription | null | undefined,
   hasPaidAccess: boolean
 ): PlanAction {
-  if (!hasPaidAccess || !subscription?.is_active) return 'subscribe'
+  if (!hasPaidAccess || !subscription?.is_active || !subscription.plan_detail) return 'subscribe'
   if (subscription.plan === plan.id) return 'current'
   if (
     subscription.plan_detail.billing_cycle === 'monthly' &&

@@ -9,17 +9,19 @@ export default function DashboardSubscription() {
     queryFn: () => subscriptionsApi.me().then((r) => r.data).catch(() => null),
   })
 
+  const plan = subscription?.is_active ? subscription.plan_detail : null
+
   return (
     <>
       <PageHeader title="Subscription" description="Your current plan and access level." />
 
       {isLoading ? (
         <p className="text-sm text-slate-500">Loading…</p>
-      ) : subscription?.is_active ? (
+      ) : plan && subscription?.is_active ? (
         <div className="card space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-lg font-semibold text-terra-700 dark:text-terra-400">{subscription.plan_detail.name}</p>
+              <p className="text-lg font-semibold text-terra-700 dark:text-terra-400">{plan.name}</p>
               <p className="text-sm text-app-muted capitalize mt-1">Status: {subscription.status}</p>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20">
@@ -40,9 +42,7 @@ export default function DashboardSubscription() {
               )}
               <div>
                 <dt className="text-app-text-muted text-xs uppercase tracking-wide">Billing</dt>
-                <dd className="font-medium text-app-text mt-0.5 capitalize">
-                  {subscription.plan_detail.billing_cycle}
-                </dd>
+                <dd className="font-medium text-app-text mt-0.5 capitalize">{plan.billing_cycle}</dd>
               </div>
               <div>
                 <dt className="text-app-text-muted text-xs uppercase tracking-wide">Ask Terra credits</dt>
@@ -51,7 +51,7 @@ export default function DashboardSubscription() {
                     ? 'Unlimited'
                     : subscription.assistant_credits
                       ? `${subscription.assistant_credits.remaining ?? 0} of ${subscription.assistant_credits.limit ?? 0} remaining this month`
-                      : `${subscription.plan_detail.included_assistant_credits ?? (subscription.plan_detail.billing_cycle === 'annual' ? 5000 : 3000)} included per month`}
+                      : `${plan.included_assistant_credits ?? (plan.billing_cycle === 'annual' ? 5000 : 3000)} included per month`}
                 </dd>
               </div>
               <div>
@@ -60,8 +60,8 @@ export default function DashboardSubscription() {
                   {subscription.download_quota?.unlimited
                     ? 'Unlimited'
                     : subscription.download_quota
-                      ? `${subscription.download_quota.remaining ?? 0} of ${subscription.download_quota.limit ?? 0} remaining this ${subscription.plan_detail.billing_cycle === 'annual' ? 'year' : 'month'}`
-                      : `${subscription.plan_detail.included_report_downloads ?? (subscription.plan_detail.billing_cycle === 'annual' ? 10 : 3)} included per ${subscription.plan_detail.billing_cycle === 'annual' ? 'year' : 'month'}`}
+                      ? `${subscription.download_quota.remaining ?? 0} of ${subscription.download_quota.limit ?? 0} remaining this ${plan.billing_cycle === 'annual' ? 'year' : 'month'}`
+                      : `${plan.included_report_downloads ?? (plan.billing_cycle === 'annual' ? 10 : 3)} included per ${plan.billing_cycle === 'annual' ? 'year' : 'month'}`}
                 </dd>
               </div>
               <div>

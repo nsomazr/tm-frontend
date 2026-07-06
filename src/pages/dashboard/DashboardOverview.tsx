@@ -36,7 +36,9 @@ export default function DashboardOverview() {
     enabled: hasPaidAccess,
   })
 
-  const planName = subscription?.is_active ? subscription.plan_detail.name : 'Free preview'
+  const planName = subscription?.is_active && subscription.plan_detail
+    ? subscription.plan_detail.name
+    : 'Free preview'
   const topRegion = hotspots?.hotspots?.[0] as { region: string; feature_count: number } | undefined
 
   return (

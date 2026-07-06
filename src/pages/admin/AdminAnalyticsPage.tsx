@@ -444,7 +444,13 @@ export default function AdminAnalyticsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-platform-analytics'],
     queryFn: () => analyticsApi.adminPlatform().then((r) => r.data),
+    retry: 1,
   })
+
+  const errorDetail =
+    error && typeof error === 'object' && error !== null && 'response' in error
+      ? (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+      : null
 
   return (
     <div>
@@ -456,7 +462,12 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {isLoading && <p className="text-sm text-app-muted">Loading analytics…</p>}
-      {error && <p className="text-sm text-red-500">Could not load analytics.</p>}
+      {error && (
+        <p className="text-sm text-red-500">
+          Could not load analytics.
+          {typeof errorDetail === 'string' ? ` ${errorDetail}` : ''}
+        </p>
+      )}
       {data && <PlatformAnalytics data={data} />}
     </div>
   )

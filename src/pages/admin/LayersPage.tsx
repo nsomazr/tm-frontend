@@ -6,6 +6,7 @@ import { useAuth } from '../../auth/AuthContext'
 import FileUploadField from '../../components/ui/FileUploadField'
 import ListPagination from '../../components/ui/ListPagination'
 import { toast } from '../../components/ui/toast'
+import { ADMIN_LAYERS_KEY, useAdminLayers } from '../../hooks/useAdminLayers'
 import { usePagination } from '../../hooks/usePagination'
 import { useAlternateName } from '../../i18n/useAlternateName'
 import { useDisplayName } from '../../i18n/useDisplayName'
@@ -42,7 +43,7 @@ const LAYER_TYPES = [
 ] as const
 
 function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
-  qc.invalidateQueries({ queryKey: ['admin-layers'] })
+  qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
   qc.invalidateQueries({ queryKey: ['layers'] })
   qc.invalidateQueries({ queryKey: ['map-layers'] })
   qc.invalidateQueries({ queryKey: ['layer-uploads'] })
@@ -165,10 +166,7 @@ export default function LayersPage() {
   const [structureRankTouched, setStructureRankTouched] = useState(false)
   const [layerMode, setLayerMode] = useState<'create' | 'import'>('import')
 
-  const { data: allLayers = [] } = useQuery({
-    queryKey: ['admin-layers'],
-    queryFn: () => fetchAllMapLayers({ include_inactive: '1' }),
-  })
+  const { data: allLayers = [] } = useAdminLayers()
 
   const { data: managerUploads } = useQuery({
     queryKey: ['layer-uploads', 'managers'],

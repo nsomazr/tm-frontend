@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { paymentsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
@@ -20,6 +20,7 @@ const TYPE_OPTIONS = [
   { value: 'subscription', label: 'Subscription' },
   { value: 'download', label: 'Download' },
   { value: 'license', label: 'License' },
+  { value: 'aerial', label: 'Aerial extension' },
 ]
 
 const PROVIDER_OPTIONS = [
@@ -46,6 +47,294 @@ function formatWhen(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function formatDateOnly(iso: string | null | undefined) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function displayValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === '') return 'Not provided'
+  return String(value)
+}
+
+function capitalizeLabel(value: string) {
+  return value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function paymentMethodLabel(method?: string | null) {
+  if (!method) return 'Not provided'
+  if (method === 'mobile_money') return 'Mobile money'
+  if (method === 'simulated') return 'Simulated (dev)'
+  return capitalizeLabel(method)
+}
+
+function activationLabel(source?: PaymentOrder['activation_source']) {
+  if (!source) return null
+  if (source === 'manual_admin') return 'Marked complete by admin'
+  if (source === 'webhook') return 'Snippe webhook'
+  return 'Payment gateway'
+}
+
+function hasGatewayPayload(response?: Record<string, unknown>) {
+  return !!response && Object.keys(response).length > 0
+}
+
+function gatewayEventRows(response: Record<string, unknown>) {
+  const rows: { label: string; value: string }[] = []
+  if (response.error) rows.push({ label: 'Gateway error', value: String(response.error) })
+  if (response.order_status_error) {
+    rows.push({ label: 'Status poll error', value: String(response.order_status_error) })
+  }
+  if (response.failure) {
+    rows.push({ label: 'Failure payload', value: JSON.stringify(response.failure) })
+  }
+  if (response.activation) {
+    rows.push({ label: 'Activation', value: JSON.stringify(response.activation) })
+  }
+  if (response.webhook) {
+    rows.push({ label: 'Webhook event', value: JSON.stringify(response.webhook) })
+  }
+  if (response.create_payment) {
+    rows.push({ label: 'Create payment', value: 'Recorded (see raw payload below)' })
+  }
+  if (response.order_status) {
+    rows.push({ label: 'Latest status poll', value: 'Recorded (see raw payload below)' })
+  }
+  return rows
+}
+
+function DetailField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">{label}</dt>
+      <dd className="map-text mt-0.5">{children}</dd>
+    </div>
+  )
+}
+
+function OrderDetailModal({
+  order,
+  onClose,
+  isSuperAdmin,
+  refreshPending,
+  completePending,
+  onRefresh,
+  onComplete,
+}: {
+  order: PaymentOrder
+  onClose: () => void
+  isSuperAdmin: boolean
+  refreshPending: boolean
+  completePending: boolean
+  onRefresh: () => void
+  onComplete: () => void
+}) {
+  const [showRawGateway, setShowRawGateway] = useState(false)
+  const gatewayRows = order.gateway_response ? gatewayEventRows(order.gateway_response) : []
+  const showRaw = hasGatewayPayload(order.gateway_response)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+      <div className="card w-full max-w-2xl max-h-[85vh] overflow-y-auto !p-0">
+        <div className="flex items-start justify-between gap-4 p-5 border-b app-divider">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold map-text">Order detail</h2>
+            <p className="font-mono text-xs map-text-muted break-all mt-0.5">{order.merchant_reference}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="map-text-muted hover:text-app-secondary text-xl leading-none p-1 rounded-lg hover:bg-app-subtle"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          <section className="rounded-xl bg-app-subtle border border-app-border px-4 py-3">
+            <p className="text-sm font-medium map-text">{order.description || capitalizeLabel(order.order_type)}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <span className="font-semibold tabular-nums map-text">
+                {Number(order.amount).toLocaleString()} {order.currency}
+              </span>
+              <StatusBadge status={order.status} />
+              <span className="map-text-muted capitalize">{order.order_type}</span>
+            </div>
+          </section>
+
+          {order.subscription_detail && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">Subscription</h3>
+              <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+                <DetailField label="Plan">{order.subscription_detail.plan_name}</DetailField>
+                <DetailField label="Billing">{capitalizeLabel(order.subscription_detail.billing_cycle)}</DetailField>
+                <DetailField label="Subscription status">
+                  <span className="capitalize">{order.subscription_detail.status.replace(/_/g, ' ')}</span>
+                </DetailField>
+                <DetailField label="Access period">
+                  {order.subscription_detail.start_date && order.subscription_detail.end_date
+                    ? `${formatDateOnly(order.subscription_detail.start_date)} – ${formatDateOnly(order.subscription_detail.end_date)}`
+                    : order.status === 'completed'
+                      ? 'Active after payment'
+                      : 'Starts when payment completes'}
+                </DetailField>
+              </dl>
+            </section>
+          )}
+
+          {order.report_detail && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">Report</h3>
+              <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+                <DetailField label="Title">{order.report_detail.title}</DetailField>
+                <DetailField label="Slug">
+                  <span className="font-mono text-xs">{order.report_detail.slug}</span>
+                </DetailField>
+              </dl>
+            </section>
+          )}
+
+          {order.license_detail && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">License</h3>
+              <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+                <DetailField label="Company">{order.license_detail.company_name}</DetailField>
+                <DetailField label="Contact">{order.license_detail.contact_name}</DetailField>
+                <DetailField label="License status">
+                  <span className="capitalize">{order.license_detail.status}</span>
+                </DetailField>
+              </dl>
+            </section>
+          )}
+
+          {order.aerial_detail && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">Aerial extension</h3>
+              <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+                <DetailField label="Location">
+                  {order.aerial_detail.lat.toFixed(5)}, {order.aerial_detail.lng.toFixed(5)}
+                </DetailField>
+                <DetailField label="Extra coverage">
+                  {order.aerial_detail.purchased_extra_km2 != null
+                    ? `+${order.aerial_detail.purchased_extra_km2} km²`
+                    : 'Not provided'}
+                </DetailField>
+                {order.aerial_detail.max_area_km2 != null && (
+                  <DetailField label="Max analysis area">{order.aerial_detail.max_area_km2} km²</DetailField>
+                )}
+              </dl>
+            </section>
+          )}
+
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">Customer & payment</h3>
+            <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+              <DetailField label="User">{order.user_email || order.user_username || 'Not provided'}</DetailField>
+              <DetailField label="Phone">{displayValue(order.msisdn)}</DetailField>
+              <DetailField label="Provider">
+                <span className="capitalize">{order.payment_provider}</span>
+              </DetailField>
+              <DetailField label="Payment method">{paymentMethodLabel(order.payment_method)}</DetailField>
+              <DetailField label="Account reference">
+                <span className="font-mono text-xs break-all">{displayValue(order.account_number || order.merchant_reference)}</span>
+              </DetailField>
+              <DetailField label="Gateway tracking ID">
+                <span className="font-mono text-xs break-all">{displayValue(order.order_tracking_id)}</span>
+              </DetailField>
+            </dl>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">Timeline</h3>
+            <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+              <DetailField label="Created">{formatWhen(order.created_at)}</DetailField>
+              <DetailField label="Last updated">
+                {order.updated_at ? formatWhen(order.updated_at) : 'Not provided'}
+              </DetailField>
+              {activationLabel(order.activation_source) && (
+                <DetailField label="Completed via">{activationLabel(order.activation_source)}</DetailField>
+              )}
+              {order.invoice_number ? (
+                <DetailField label="Invoice">
+                  <span className="font-mono text-xs">{order.invoice_number}</span>
+                  {order.invoice_issued_at && (
+                    <span className="block text-xs map-text-muted mt-0.5">
+                      Issued {formatWhen(order.invoice_issued_at)}
+                    </span>
+                  )}
+                </DetailField>
+              ) : order.status === 'completed' ? (
+                <DetailField label="Invoice">
+                  <span className="text-xs map-text-muted">Generating…</span>
+                </DetailField>
+              ) : null}
+            </dl>
+          </section>
+
+          {gatewayRows.length > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">Gateway events</h3>
+              <ul className="space-y-2 text-sm">
+                {gatewayRows.map((row) => (
+                  <li key={row.label} className="rounded-lg border border-app-border bg-app-subtle px-3 py-2">
+                    <p className="text-xs font-medium uppercase tracking-wide map-text-muted">{row.label}</p>
+                    <p className="map-text mt-0.5 text-xs break-all">{row.value}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {showRaw && (
+            <section>
+              <button
+                type="button"
+                onClick={() => setShowRawGateway((open) => !open)}
+                className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline"
+              >
+                {showRawGateway ? 'Hide raw gateway payload' : 'Show raw gateway payload'}
+              </button>
+              {showRawGateway && (
+                <pre className="mt-2 text-xs map-text-secondary bg-app-subtle border border-app-border rounded-xl p-3 overflow-x-auto">
+                  {JSON.stringify(order.gateway_response, null, 2)}
+                </pre>
+              )}
+            </section>
+          )}
+
+          <div className="flex flex-wrap gap-2 pt-1">
+            {order.status === 'pending' && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshPending}
+                className="btn-secondary text-sm disabled:opacity-50"
+              >
+                {refreshPending ? 'Refreshing…' : 'Refresh from gateway'}
+              </button>
+            )}
+            {isSuperAdmin && order.status !== 'completed' && (
+              <button
+                type="button"
+                onClick={onComplete}
+                disabled={completePending}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                {completePending ? 'Completing…' : 'Mark completed'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function RevenuePage() {
@@ -295,88 +584,15 @@ export default function RevenuePage() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-          <div className="card w-full max-w-2xl max-h-[85vh] overflow-y-auto !p-0">
-            <div className="flex items-start justify-between gap-4 p-5 border-b app-divider">
-              <div className="min-w-0">
-                <h2 className="text-lg font-bold map-text">Order detail</h2>
-                <p className="font-mono text-xs map-text-muted break-all mt-0.5">{selected.merchant_reference}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelected(null)}
-                className="map-text-muted hover:text-app-secondary text-xl leading-none p-1 rounded-lg hover:bg-app-subtle"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="p-5">
-              <dl className="grid sm:grid-cols-2 gap-4 text-sm mb-5">
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">User</dt>
-                  <dd className="map-text mt-0.5">{selected.user_email || selected.user_username || '-'}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">Status</dt>
-                  <dd className="mt-1"><StatusBadge status={selected.status} /></dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">Amount</dt>
-                  <dd className="map-text mt-0.5 font-medium tabular-nums">
-                    {Number(selected.amount).toLocaleString()} {selected.currency}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">Provider</dt>
-                  <dd className="map-text mt-0.5 capitalize">{selected.payment_provider}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">Type</dt>
-                  <dd className="map-text mt-0.5 capitalize">{selected.order_type}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">Phone</dt>
-                  <dd className="map-text mt-0.5">{selected.msisdn || '-'}</dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-xs font-medium uppercase tracking-wide map-text-muted">Tracking ID</dt>
-                  <dd className="map-text mt-0.5 font-mono text-xs break-all">{selected.order_tracking_id || '-'}</dd>
-                </div>
-              </dl>
-
-              {selected.gateway_response && (
-                <pre className="text-xs map-text-secondary bg-app-subtle border border-app-border rounded-xl p-3 overflow-x-auto mb-5">
-                  {JSON.stringify(selected.gateway_response, null, 2)}
-                </pre>
-              )}
-
-              <div className="flex flex-wrap gap-2 pt-1">
-                {selected.status === 'pending' && (
-                  <button
-                    type="button"
-                    onClick={() => refreshOrder.mutate(selected.merchant_reference)}
-                    disabled={refreshOrder.isPending}
-                    className="btn-secondary text-sm disabled:opacity-50"
-                  >
-                    {refreshOrder.isPending ? 'Refreshing…' : 'Refresh from gateway'}
-                  </button>
-                )}
-                {isSuperAdmin && selected.status !== 'completed' && (
-                  <button
-                    type="button"
-                    onClick={() => completeOrder.mutate(selected.merchant_reference)}
-                    disabled={completeOrder.isPending}
-                    className="btn-primary text-sm disabled:opacity-50"
-                  >
-                    {completeOrder.isPending ? 'Completing…' : 'Mark completed'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <OrderDetailModal
+          order={selected}
+          onClose={() => setSelected(null)}
+          isSuperAdmin={isSuperAdmin}
+          refreshPending={refreshOrder.isPending}
+          completePending={completeOrder.isPending}
+          onRefresh={() => refreshOrder.mutate(selected.merchant_reference)}
+          onComplete={() => completeOrder.mutate(selected.merchant_reference)}
+        />
       )}
     </div>
   )

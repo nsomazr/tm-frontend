@@ -4,6 +4,7 @@ import { geographyApi, mapsApi } from '../../api'
 import MapViewer from '../../components/map/MapViewer'
 import type { AdminFitBounds } from '../../components/map/MapViewer'
 import { clearLayerGeojsonCache } from '../../components/map/mapGeojsonCache'
+import { useAdminLayers, ADMIN_LAYERS_KEY } from '../../hooks/useAdminLayers'
 import {
   DEFAULT_BOUNDARY_VISIBILITY,
   boundaryLevelsFromGeoJson,
@@ -116,10 +117,7 @@ export default function CoordinatesEditor() {
     [availableBoundaryLevels]
   )
 
-  const { data: layers } = useQuery({
-    queryKey: ['admin-layers'],
-    queryFn: () => mapsApi.layers({ include_inactive: '1' }).then((r) => r.data),
-  })
+  const { data: layerList = [], isLoading: layersLoading } = useAdminLayers()
 
   const { data: features, refetch } = useQuery({
     queryKey: ['features', selectedLayerId],
@@ -128,7 +126,6 @@ export default function CoordinatesEditor() {
     enabled: !!selectedLayerId,
   })
 
-  const layerList = layers?.results || []
   const selectedLayer = layerList.find((l) => l.id === selectedLayerId)
   const drawMode = selectedLayer ? layerDrawMode(selectedLayer) : 'point'
 
@@ -183,7 +180,7 @@ export default function CoordinatesEditor() {
       clearLayerGeojsonCache()
       setMapRefreshKey((key) => key + 1)
       refetch()
-      qc.invalidateQueries({ queryKey: ['admin-layers'] })
+      qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
       setDrawPoints([])
       setManualLat('')
       setManualLng('')
@@ -196,7 +193,7 @@ export default function CoordinatesEditor() {
       clearLayerGeojsonCache()
       setMapRefreshKey((key) => key + 1)
       refetch()
-      qc.invalidateQueries({ queryKey: ['admin-layers'] })
+      qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
     },
   })
 
@@ -225,8 +222,11 @@ export default function CoordinatesEditor() {
             value={selectedLayerId || ''}
             onChange={(e) => setSelectedLayerId(Number(e.target.value) || null)}
             className="input mt-1.5"
+            disabled={layersLoading}
           >
-            <option value="">Choose a layer…</option>
+            <option value="">
+              {layersLoading ? 'Loading layers…' : 'Choose a layer…'}
+            </option>
             {layerList.map((l) => (
               <option key={l.id} value={l.id}>
                 {displayName(l)} ({l.layer_type})

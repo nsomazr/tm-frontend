@@ -158,10 +158,10 @@ export interface DownloadQuota {
 }
 
 export interface UserSubscription {
-  id: number
-  plan: number
-  plan_detail: SubscriptionPlan
-  status: string
+  id: number | null
+  plan: number | null
+  plan_detail: SubscriptionPlan | null
+  status: string | null
   start_date: string | null
   end_date: string | null
   auto_renew: boolean
@@ -169,6 +169,7 @@ export interface UserSubscription {
   days_until_expiry: number | null
   download_quota?: DownloadQuota | null
   assistant_credits?: AssistantCredits | null
+  created_at?: string | null
 }
 
 export interface Report {
@@ -221,19 +222,60 @@ export interface Invoice {
   issued_at: string
 }
 
+export interface PaymentOrderSubscriptionDetail {
+  id: number
+  status: string
+  plan_name: string
+  plan_slug: string
+  billing_cycle: string
+  start_date: string | null
+  end_date: string | null
+}
+
+export interface PaymentOrderReportDetail {
+  id: number
+  title: string
+  slug: string
+}
+
+export interface PaymentOrderLicenseDetail {
+  id: number
+  company_name: string
+  contact_name: string
+  status: string
+}
+
+export interface PaymentOrderAerialDetail {
+  lat: number
+  lng: number
+  zoom?: number
+  purchased_extra_km2?: number
+  max_area_km2?: number
+}
+
 export interface PaymentOrder {
   id: number
   user?: number
   user_email?: string
   user_username?: string
-  order_type: 'subscription' | 'download' | 'license'
+  order_type: 'subscription' | 'download' | 'license' | 'aerial'
+  description?: string
   amount: string
   currency: string
   status: 'pending' | 'completed' | 'failed' | 'cancelled'
   merchant_reference: string
+  account_number?: string
   order_tracking_id: string
   payment_provider: 'snippe' | 'simulated'
+  payment_method?: string | null
   msisdn: string
+  subscription_detail?: PaymentOrderSubscriptionDetail | null
+  report_detail?: PaymentOrderReportDetail | null
+  license_detail?: PaymentOrderLicenseDetail | null
+  aerial_detail?: PaymentOrderAerialDetail | null
+  invoice_number?: string | null
+  invoice_issued_at?: string | null
+  activation_source?: 'manual_admin' | 'webhook' | 'gateway' | null
   gateway_response?: Record<string, unknown>
   created_at: string
   updated_at?: string
