@@ -80,7 +80,7 @@ type Panel = 'layers' | 'basemap' | 'legend' | null
 const TYPE_ORDER = ['polygon', 'point', 'line']
 
 const SHEET_CLASS_EXTRA = 'max-h-[min(36vh,260px)]'
-const LAYERS_SHEET_CLASS_EXTRA = 'max-h-[min(58vh,420px)]'
+const LAYERS_SHEET_CLASS_EXTRA = 'max-h-[min(42vh,320px)]'
 
 const DOCK_CARD =
   'map-chrome min-w-0 overflow-hidden rounded-xl border border-app-border-strong bg-app-surface shadow-sm'

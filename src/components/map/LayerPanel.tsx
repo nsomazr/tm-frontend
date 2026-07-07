@@ -75,7 +75,7 @@ export default function LayerPanel({
   const layerCount = layers.length
 
   const shellClass = embedded
-    ? 'relative map-chrome rounded-xl text-sm flex flex-col overflow-hidden w-full min-h-0 flex-1'
+    ? 'relative map-chrome rounded-xl text-sm flex flex-col overflow-hidden w-full min-h-0 max-h-full'
     : 'absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] w-[min(18rem,calc(100vw-1.5rem))] max-h-[min(40vh,calc(100%-6rem))] hidden md:flex'
 
   return (

@@ -1808,7 +1808,7 @@ export default function MapViewer({
               onReorder={reorderLayers}
               allowReorder={allowReorder || editable}
               layersLocked={staticMap}
-              className="pointer-events-auto min-h-0 max-h-[min(36vh,calc(100%-10rem))]"
+              className="pointer-events-auto min-h-0 max-h-[min(22vh,13.5rem)] shrink-0"
             />
           )}
           <MineralHeatmapColorbar
@@ -1826,12 +1826,12 @@ export default function MapViewer({
           )}
         </div>
       )}
-      {!minimalChrome && !isMobile && showMapAds && hasPaidAccess && !(showLayerPanel && layers.length > 0) && !mineralHeatmap?.points?.length && (
+      {!minimalChrome && !isMobile && showMapAds && !(showLayerPanel && layers.length > 0) && !mineralHeatmap?.points?.length && (
         <div className="map-left-dock map-left-dock--ads-only absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex flex-col pointer-events-none">
           <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
         </div>
       )}
-      {isMobile && showMapAds && !minimalChrome && hasPaidAccess && (
+      {isMobile && showMapAds && !minimalChrome && (
         <div className="map-left-dock absolute z-20 bottom-[calc(9rem+env(safe-area-inset-bottom,0px))] pointer-events-none md:hidden">
           <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
         </div>

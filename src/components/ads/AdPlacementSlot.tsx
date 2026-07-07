@@ -13,12 +13,16 @@ interface AdPlacementSlotProps {
 }
 
 function AdSlideContent({ ad, compact }: { ad: PublicAd; compact: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false)
+  const showImage = Boolean(ad.image_url) && !imageFailed
+
   return (
     <>
-      {ad.image_url ? (
+      {showImage ? (
         <img
           src={ad.image_url}
           alt=""
+          onError={() => setImageFailed(true)}
           className={`rounded-lg object-cover shrink-0 ${compact ? 'h-12 w-12' : 'h-16 w-16'}`}
         />
       ) : (
