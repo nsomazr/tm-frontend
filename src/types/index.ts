@@ -56,6 +56,8 @@ export interface MapLayer {
   is_active: boolean
   style: Record<string, unknown>
   description: string
+  /** Reference buffer radius (km) for insight influence zone; 1 to 50 when set. */
+  buffer_km: number | null
   feature_count: number
   current_version?: number
   created_by?: number | null
@@ -88,6 +90,7 @@ export interface LayerUpload {
   mineral_name: string
   filename: string
   file_type: string
+  import_mode?: 'replace' | 'append'
   status: 'pending' | 'processing' | 'completed' | 'failed'
   error_message: string
   uploaded_by: number | null
@@ -135,6 +138,31 @@ export interface AssistantCredits {
   tier: 'free' | 'paid' | 'anonymous' | 'unlimited'
   unlimited?: boolean
   chat_history?: boolean
+}
+
+export type AiProviderId = 'groq' | 'gemini' | 'ollama'
+
+export interface AiProviderStatus {
+  configured: boolean
+  available: boolean
+  model: string
+  base_url?: string
+  configured_model?: string
+  installed_chat_models?: string[]
+  using_fallback_model?: boolean
+}
+
+export interface AssistantPlatformSettings {
+  ai_provider: AiProviderId
+  ai_provider_fallback: AiProviderId[]
+  effective_chain: AiProviderId[]
+  providers: Record<AiProviderId, AiProviderStatus>
+  uses_env_defaults: boolean
+  env_defaults: {
+    ai_provider: AiProviderId
+    ai_provider_fallback: AiProviderId[]
+  }
+  updated_at: string | null
 }
 
 export interface MineralExplorationQuota {
@@ -261,10 +289,12 @@ export interface MyReport {
   report: number
   report_slug: string
   report_title: string
-  source: 'purchase' | 'subscription'
+  source: 'purchase' | 'subscription' | 'insight_export' | 'exploration'
   purchased_at: string
   amount_paid?: string | null
   currency?: string | null
+  status?: string
+  can_download?: boolean
 }
 
 export interface Invoice {
@@ -364,6 +394,7 @@ export interface Country {
   center_lng?: number | null
   default_zoom?: number
   bounds?: { west: number; south: number; east: number; north: number }
+  coordinate_system?: string
   is_active: boolean
 }
 
@@ -454,6 +485,7 @@ export interface MineralSearchInsight {
 export interface AerialAccess {
   default_analysis_km2?: number
   analysis_area_km2: number
+  max_analysis_km2?: number
   included_km2: number
   purchased_extra_km2?: number
   using_extended_area?: boolean
@@ -491,6 +523,55 @@ export interface AdminBoundaryStats {
   last_updated: string | null
 }
 
+export interface AdminBoundaryListItem {
+  id: number
+  level: number
+  name: string
+  name_sw?: string
+  code: string
+  has_geology: boolean
+  document_count: number
+}
+
+export interface BoundaryGeologyMetadata {
+  scope?: 'local' | 'regional' | 'global'
+  formations?: string | string[]
+  lithology?: string
+  stratigraphy?: string
+  tectonic_setting?: string
+  age?: string
+  data_sources?: string
+}
+
+export interface BoundaryGeologyDocument {
+  id: number
+  title: string
+  scope: 'local' | 'regional' | 'global'
+  file: string
+  extracted_text: string
+  created_at: string
+}
+
+export interface AdminBoundaryGeology {
+  id: number
+  level: number
+  level_label: string
+  name: string
+  name_sw?: string
+  code: string
+  geological_summary: string
+  geological_summary_sw: string
+  geological_metadata: BoundaryGeologyMetadata
+  documents: BoundaryGeologyDocument[]
+  updated_at: string
+}
+
+export interface GeologicalContext {
+  entries: unknown[]
+  summary_lines: string[]
+  ai_block: string
+}
+
 export interface MineralCatalogEntry {
   id: number
   slug: string
@@ -513,6 +594,17 @@ export interface MineralCatalogResponse {
     layer_count: number
     mapped_layer_count: number
   }
+}
+
+export interface LayerBoundaryCoverage {
+  layer_ids: number[]
+  feature_count: number
+  region_ids: number[]
+  district_ids: number[]
+  ward_ids: number[]
+  village_ids: number[]
+  bounds: { west: number; south: number; east: number; north: number } | null
+  center: { lat: number; lng: number } | null
 }
 
 export interface MineralBoundaryCoverage {
@@ -549,6 +641,64 @@ export interface MineralHeatmapData {
   feature_count: number
   point_count: number
   points: MineralHeatmapPoint[]
+  concentration_stats?: { mean: number; median: number }
+  contours?: {
+    level: string
+    threshold: number
+    coordinates?: number[][][]
+    center?: { lat: number; lng: number }
+    radius_km?: number
+  }[]
+  weight_legend?: {
+    strong: number
+    medium_poly_point: number
+    medium_poly_line: number
+    medium_point_line: number
+    light_polygon: number
+    light_point: number
+    light_line: number
+  }
+}
+
+export interface DirectionMineralInsight {
+  slug: string
+  name: string
+  count: number
+  sectors: Record<string, number>
+  dominant_sector: string
+  dominant_direction: string
+  dominant_count: number
+}
+
+export interface DirectionInsights {
+  center: { lat: number; lng: number }
+  sectors: Record<string, number>
+  by_mineral: DirectionMineralInsight[]
+  summary_lines: string[]
+}
+
+export interface TerrainContext {
+  elevation_m: number
+  relief_m: number
+  relief_class: string
+  slope_class: string
+  landform_hint: string
+  min_elevation_m: number
+  max_elevation_m: number
+  summary_lines: string[]
+}
+
+export interface SimilarAreaRecommendation {
+  boundary_id: number
+  label: string
+  region?: string | null
+  lat: number
+  lng: number
+  score: number
+  minerals: string[]
+  feature_count: number
+  match_reasons: string[]
+  terrain_hint?: string | null
 }
 
 export interface AreaInsight {
@@ -586,10 +736,31 @@ export interface AreaInsight {
   follow_ups_remaining?: number | null
   assistant_credits?: AssistantCredits | null
   top_regions?: { region: string; count: number; area_km2?: number }[]
+  direction_insights?: DirectionInsights | null
+  geological_context?: GeologicalContext | null
+  terrain_context?: TerrainContext | null
+  basemap?: string | null
+  basemap_label?: string | null
+  visual_observations?: string | null
+  similar_areas?: SimilarAreaRecommendation[]
   total_area_km2?: number
   search_name?: string
   description?: string
   search_type?: string
+  connected_layers?: {
+    id: number
+    slug: string
+    name: string
+    layer_type: string
+    feature_count: number
+  }[]
+  related_reports?: {
+    slug: string
+    title: string
+    access_type: string
+    has_article: boolean
+    region: string | null
+  }[]
 }
 
 export interface AssistantMessage {
@@ -746,6 +917,70 @@ export interface ManagerPerformanceRow {
 export interface ManagerPerformanceReview {
   managers: ManagerPerformanceRow[]
   generated_at: string
+}
+
+export type AdPlacement =
+  | 'map_sidebar'
+  | 'map_overlay'
+  | 'downloads_banner'
+  | 'subscriptions_banner'
+  | 'dashboard_card'
+  | 'about_banner'
+
+export type AdAudience = 'all' | 'free' | 'subscriber'
+
+export type AdStatus = 'live' | 'scheduled' | 'expired' | 'hidden' | 'inactive'
+
+export interface PublicAd {
+  id: number
+  title: string
+  company_name: string
+  headline: string
+  body_text: string
+  image_url: string
+  cta_label: string
+  link_url: string
+  open_in_new_tab: boolean
+}
+
+export interface AdCampaign extends PublicAd {
+  slug: string
+  placements: AdPlacement[]
+  placement_labels: string[]
+  priority: number
+  is_active: boolean
+  is_hidden: boolean
+  audience: AdAudience
+  country_codes: string[]
+  starts_at: string | null
+  ends_at: string | null
+  impression_count: number
+  click_count: number
+  click_through_rate: number
+  is_live: boolean
+  status_label: AdStatus
+  created_by: number | null
+  created_by_name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface AdPlacementStats {
+  placement: AdPlacement
+  label: string
+  impressions: number
+  clicks: number
+  ctr: number
+}
+
+export interface AdAdminStats {
+  campaigns: number
+  live_campaigns: number
+  impressions: number
+  clicks: number
+  ctr: number
+  reach: number
+  by_placement: AdPlacementStats[]
 }
 
 export namespace GeoJSON {

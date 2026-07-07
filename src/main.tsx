@@ -8,6 +8,7 @@ import { LocaleProvider } from './i18n/LocaleContext'
 import LocaleEffects from './i18n/LocaleEffects'
 import { ThemeProvider } from './theme/ThemeContext'
 import AppToaster from './components/ui/AppToaster'
+import ConfirmDialog from './components/ui/ConfirmDialog'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -24,6 +25,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <LocaleEffects />
               <App />
               <AppToaster />
+              <ConfirmDialog />
             </AuthProvider>
           </LocaleProvider>
         </ThemeProvider>

@@ -21,7 +21,7 @@ export const DEFAULT_BOUNDARY_VISIBILITY: BoundaryVisibility = {
   villages: false,
 }
 
-/** Free-tier map: no admin boundary overlays or label toggles. */
+/** Free-tier / logged-out map: no admin boundary overlays. */
 export const UNPAID_BOUNDARY_VISIBILITY: BoundaryVisibility = {
   country: false,
   regions: false,
@@ -160,10 +160,11 @@ export function regionBoundaryStyle(
   const name = String(feature.get('name') || '')
   const colors = boundaryPalette(1)
   const highlighted = !!mineralTint
+  const regionStroke = mineralTint ?? (focused ? 'rgba(51, 65, 85, 0.9)' : 'rgba(71, 85, 105, 0.68)')
   const shape = new Style({
     stroke: new Stroke({
-      color: mineralTint ?? (focused ? colors.strokeFocus : colors.stroke),
-      width: highlighted ? 3 : focused ? 3 : 2,
+      color: regionStroke,
+      width: highlighted ? 2.25 : focused ? 2 : 1.5,
       lineCap: 'round',
       lineJoin: 'round',
     }),
@@ -176,9 +177,9 @@ export function regionBoundaryStyle(
   const text = name
     ? new Text({
         text: name,
-        font: '600 11px system-ui, sans-serif',
-        fill: new Fill({ color: colors.label }),
-        stroke: new Stroke({ color: 'rgba(255,255,255,0.92)', width: 3 }),
+        font: '500 10px system-ui, sans-serif',
+        fill: new Fill({ color: 'rgba(71, 85, 105, 0.82)' }),
+        stroke: new Stroke({ color: 'rgba(255,255,255,0.9)', width: 2 }),
         overflow: false,
       })
     : null

@@ -1,3 +1,5 @@
+import { parseCoordinateComponent } from './coordinateFormat'
+
 export interface ParsedCoordinate {
   lat: number
   lng: number
@@ -7,20 +9,22 @@ export interface ParsedCoordinate {
  * Parse a free-text coordinate query into WGS84 lat/lng.
  *
  * Accepts common forms:
- *   "-6.17, 35.74"      (lat, lng)
- *   "-6.17 35.74"
- *   "6.17S, 35.74E"     (hemisphere suffixes/prefixes)
- *   "lat: -6.17 lng: 35.74"
+ *   "-6.17, 35.74"      (lat, lng decimal)
+ *   "6.17S, 35.74E"     (hemisphere suffixes)
+ *   "3° 57' 57.9\" S, 26° 31' 0.9\" E"  (DMS)
+ *   "3 57 57.9 S 26 31 0.9 E"
  * Order is assumed lat,lng but is auto-corrected when clearly swapped.
- * Returns null when the text isn't a coordinate pair.
  */
 export function parseCoordinateQuery(raw: string): ParsedCoordinate | null {
   if (!raw) return null
   const text = raw.trim()
-  // Require at least one digit and a separator/hemisphere to avoid matching names.
   if (!/\d/.test(text)) return null
 
-  // Pull signed decimal numbers, each with an optional hemisphere letter.
+  if (/[°'′"″]/.test(text) || /\b(deg|degrees|min|minutes|sec|seconds)\b/i.test(text)) {
+    const dms = parseDmsCoordinatePair(text)
+    if (dms) return dms
+  }
+
   const matches = [...text.matchAll(/([+-]?\d+(?:\.\d+)?)\s*([NSEWnsew])?/g)].filter(
     (mm) => mm[1] !== undefined && mm[0].trim() !== ''
   )
@@ -37,7 +41,6 @@ export function parseCoordinateQuery(raw: string): ParsedCoordinate | null {
   const [a, b] = nums
   if (!Number.isFinite(a.value) || !Number.isFinite(b.value)) return null
 
-  // Use hemisphere hints when present to decide which is lat vs lng.
   const aIsLat = a.hemi === 'N' || a.hemi === 'S'
   const bIsLng = b.hemi === 'E' || b.hemi === 'W'
   const aIsLng = a.hemi === 'E' || a.hemi === 'W'
@@ -55,7 +58,6 @@ export function parseCoordinateQuery(raw: string): ParsedCoordinate | null {
     lat = a.value
     lng = b.value
   } else if (Math.abs(b.value) <= 90 && Math.abs(a.value) <= 180) {
-    // Looks swapped (lng, lat)
     lat = b.value
     lng = a.value
   } else {
@@ -64,4 +66,54 @@ export function parseCoordinateQuery(raw: string): ParsedCoordinate | null {
 
   if (!(lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180)) return null
   return { lat, lng }
+}
+
+function parseDmsCoordinatePair(text: string): ParsedCoordinate | null {
+  const chunks = splitCoordinatePair(text)
+  if (chunks.length < 2) return null
+
+  const first = parseCoordinateComponent(chunks[0], 'lat') ?? parseCoordinateComponent(chunks[0], 'lng')
+  const second =
+    parseCoordinateComponent(chunks[1], 'lng') ?? parseCoordinateComponent(chunks[1], 'lat')
+  if (first == null || second == null) return null
+
+  const firstIsLat = Math.abs(first) <= 90 && /[NS]/i.test(chunks[0])
+  const secondIsLng = Math.abs(second) <= 180 && /[EW]/i.test(chunks[1])
+  const firstIsLng = Math.abs(first) <= 180 && /[EW]/i.test(chunks[0])
+  const secondIsLat = Math.abs(second) <= 90 && /[NS]/i.test(chunks[1])
+
+  let lat: number
+  let lng: number
+  if (firstIsLng && secondIsLat) {
+    lng = first
+    lat = second
+  } else if (firstIsLat && secondIsLng) {
+    lat = first
+    lng = second
+  } else if (Math.abs(first) <= 90 && Math.abs(second) <= 180) {
+    lat = first
+    lng = second
+  } else if (Math.abs(second) <= 90 && Math.abs(first) <= 180) {
+    lat = second
+    lng = first
+  } else {
+    return null
+  }
+
+  if (!(lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180)) return null
+  return { lat, lng }
+}
+
+function splitCoordinatePair(text: string): string[] {
+  if (text.includes(',')) {
+    const parts = text.split(',').map((p) => p.trim()).filter(Boolean)
+    if (parts.length >= 2) return parts.slice(0, 2)
+  }
+
+  const ewSplit = text.match(
+    /^(.+?[NSEWnsew])\s+(.+?[NSEWnsew])$/i
+  )
+  if (ewSplit) return [ewSplit[1].trim(), ewSplit[2].trim()]
+
+  return [text]
 }

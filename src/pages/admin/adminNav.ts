@@ -54,8 +54,18 @@ export const adminNavGroups: AdminNavGroup[] = [
     roles: ['admin'],
     items: [
       { to: '/admin/users', label: 'Users', roles: ['admin'] },
+      { to: '/admin/assistant-settings', label: 'Assistant settings', roles: ['admin'] },
       { to: '/admin/revenue', label: 'Payments', roles: ['admin'] },
       { to: '/admin/compliance', label: 'Compliance', roles: ['admin'] },
+    ],
+  },
+  {
+    title: 'Advertising',
+    roles: ['admin'],
+    items: [
+      { to: '/admin/ads/campaigns', label: 'Campaigns', roles: ['admin'] },
+      { to: '/admin/ads/performance', label: 'Performance', roles: ['admin'] },
+      { to: '/admin/ads/placements', label: 'Placements', roles: ['admin'] },
     ],
   },
   {

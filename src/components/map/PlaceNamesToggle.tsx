@@ -23,7 +23,7 @@ export default function PlaceNamesToggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 size-3.5"
+        className="checkbox checkbox--sm"
       />
       {m.map.placeNames}
     </label>

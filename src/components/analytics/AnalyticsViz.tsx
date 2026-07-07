@@ -22,7 +22,7 @@ function toChartData(items: RankedItem[]): ChartDatum[] {
 
 export function AnalyticsRankedBars({
   items,
-  valueSuffix = 'zones',
+  valueSuffix = 'areas',
   barClass: _barClass = 'bg-terra-500',
 }: {
   items: RankedItem[]
@@ -43,9 +43,9 @@ export function LayerTypeGrid({
   items: { layer_type: string; count: number }[]
 }) {
   const labels: Record<string, string> = {
-    polygon: 'Polygons',
-    point: 'Points',
-    line: 'Lines',
+    polygon: 'Mineral',
+    point: 'Mineral',
+    line: 'Structures',
   }
 
   const data = items.map((item) => ({
@@ -72,9 +72,9 @@ export function buildAnalyticsInsight(
   const topLayer = [...layers].sort((a, b) => b.feature_count - a.feature_count)[0]
   if (topLayer && topLayer.feature_count > 0) {
     const layerShare = pct(topLayer.feature_count, totalZones)
-    return `${top.region} leads with ${top.feature_count} mapped zones (${topShare}% of coverage). ${topLayer.name} is the largest uploaded layer at ${layerShare}%.`
+    return `${top.region} leads with ${top.feature_count} mapped areas (${topShare}% of coverage). ${topLayer.name} is the largest uploaded layer at ${layerShare}%.`
   }
-  return `${top.region} leads with ${top.feature_count} mapped zones (${topShare}% of national coverage).`
+  return `${top.region} leads with ${top.feature_count} mapped areas (${topShare}% of national coverage).`
 }
 
 export {

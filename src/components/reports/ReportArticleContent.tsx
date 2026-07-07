@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom'
 import type { ArticleBlock, Report } from '../../types'
-import ReportDocumentChrome from './ReportDocumentChrome'
 import ReportHtmlContent from './ReportHtmlContent'
 import { looksLikeHtml } from './reportEditorText'
 
@@ -38,22 +37,27 @@ interface ReportArticleBodyProps {
 
 export function ReportArticleBody({ report, blocks }: ReportArticleBodyProps) {
   return (
-    <article className="report-html-content max-w-none">
-      {blocks.map((block, index) => (
-        <ArticleBlockView key={`${block.type}-${index}`} block={block} />
-      ))}
+    <>
+      <article className="report-html-content max-w-none">
+        {blocks.map((block, index) => (
+          <ArticleBlockView key={`${block.type}-${index}`} block={block} />
+        ))}
+      </article>
+
       {report.has_pdf && (
-        <div className="mt-10 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <p className="font-medium text-slate-900">Download the full PDF</p>
-            <p className="text-sm text-slate-600">Includes charts, tables, and the complete technical appendix.</p>
+        <div className="report-article-cta">
+          <div className="report-article-cta__copy">
+            <p className="report-article-cta__title">Download the full PDF</p>
+            <p className="report-article-cta__hint">
+              Includes charts, tables, and the complete technical appendix.
+            </p>
           </div>
-          <Link to={`/downloads/${report.slug}`} className="btn-primary text-sm shrink-0 text-center">
+          <Link to={`/downloads/${report.slug}`} className="btn-primary text-sm shrink-0">
             Open report page
           </Link>
         </div>
       )}
-    </article>
+    </>
   )
 }
 

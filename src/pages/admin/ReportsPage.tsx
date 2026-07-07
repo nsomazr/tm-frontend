@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { reportsApi } from '../../api'
 import { reportPreviewText } from '../../components/reports/reportEditorText'
 import { useAuth } from '../../auth/AuthContext'
+import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 import ListPagination from '../../components/ui/ListPagination'
 import { toast } from '../../components/ui/toast'
 import { usePagination } from '../../hooks/usePagination'
@@ -28,87 +29,6 @@ function uploadErrorMessage(err: unknown, fallback: string) {
   if (Array.isArray(data?.pdf_file) && data.pdf_file[0]) return data.pdf_file[0]
   if (typeof data?.detail === 'string') return data.detail
   return fallback
-}
-
-function ReportRowMenu({
-  children,
-  label = 'Report actions',
-}: {
-  children: ReactNode
-  label?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  return (
-    <div ref={ref} className="relative inline-flex">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex size-8 items-center justify-center rounded-lg text-app-text-muted hover:bg-app-subtle hover:text-app-text"
-        aria-label={label}
-        aria-expanded={open}
-        aria-haspopup="menu"
-      >
-        <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden>
-          <circle cx="12" cy="5" r="1.75" />
-          <circle cx="12" cy="12" r="1.75" />
-          <circle cx="12" cy="19" r="1.75" />
-        </svg>
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[10.5rem] rounded-lg border border-app-border bg-app-surface py-1 shadow-lg"
-        >
-          <div onClick={() => setOpen(false)}>{children}</div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ReportRowMenuItem({
-  children,
-  onClick,
-  to,
-  disabled,
-  destructive,
-}: {
-  children: ReactNode
-  onClick?: () => void
-  to?: string
-  disabled?: boolean
-  destructive?: boolean
-}) {
-  const className = `block w-full px-3 py-2 text-left text-xs ${
-    destructive
-      ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30'
-      : 'text-app-text hover:bg-app-subtle'
-  } disabled:opacity-50 disabled:pointer-events-none`
-
-  if (to) {
-    return (
-      <Link to={to} role="menuitem" className={className}>
-        {children}
-      </Link>
-    )
-  }
-
-  return (
-    <button type="button" role="menuitem" onClick={onClick} disabled={disabled} className={className}>
-      {children}
-    </button>
-  )
 }
 
 function ReportTableRow({
@@ -168,9 +88,8 @@ function ReportTableRow({
   const lifecyclePending = toggleVisible.isPending || deleteReport.isPending
 
   function handleDelete() {
-    toast.confirm(`Delete "${report.title}"?`, {
-      description:
-        'Purchases and download history for this report will also be removed. This cannot be undone.',
+    toast.confirm('Delete this report?', {
+      description: `"${report.title}" and its purchase history will be permanently removed.`,
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => deleteReport.mutate(),
@@ -256,34 +175,34 @@ function ReportTableRow({
               e.target.value = ''
             }}
           />
-          <ReportRowMenu label={`Actions for ${report.title}`}>
-            <ReportRowMenuItem to={`/admin/reports/${report.slug}/edit`}>Editor</ReportRowMenuItem>
-            <ReportRowMenuItem
+          <ActionMenu label={`Actions for ${report.title}`}>
+            <ActionMenuItem to={`/admin/reports/${report.slug}/edit`}>Editor</ActionMenuItem>
+            <ActionMenuItem
               onClick={() => generatePdf.mutate(!!report.has_pdf)}
               disabled={generatePdf.isPending}
             >
               {generatePdf.isPending ? 'Generating…' : report.has_pdf ? 'Regen PDF' : 'Gen PDF'}
-            </ReportRowMenuItem>
-            <ReportRowMenuItem
+            </ActionMenuItem>
+            <ActionMenuItem
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadDocument.isPending}
             >
               {uploadDocument.isPending ? 'Uploading…' : 'Upload file'}
-            </ReportRowMenuItem>
-            <ReportRowMenuItem to={`/downloads/${report.slug}`}>Preview</ReportRowMenuItem>
-            <ReportRowMenuItem onClick={() => void downloadReport()}>Download</ReportRowMenuItem>
-            <ReportRowMenuItem
+            </ActionMenuItem>
+            <ActionMenuItem to={`/downloads/${report.slug}`}>Preview</ActionMenuItem>
+            <ActionMenuItem onClick={() => void downloadReport()}>Download</ActionMenuItem>
+            <ActionMenuItem
               onClick={() => toggleVisible.mutate(!isVisible)}
               disabled={lifecyclePending}
             >
               {isVisible ? 'Hide' : 'Show'}
-            </ReportRowMenuItem>
+            </ActionMenuItem>
             {isAdmin && (
-              <ReportRowMenuItem onClick={handleDelete} disabled={lifecyclePending} destructive>
+              <ActionMenuItem onClick={handleDelete} disabled={lifecyclePending} destructive>
                 Delete
-              </ReportRowMenuItem>
+              </ActionMenuItem>
             )}
-          </ReportRowMenu>
+          </ActionMenu>
         </div>
       </td>
     </tr>
@@ -338,17 +257,17 @@ export default function ReportsPage() {
       ) : visibleReports.length === 0 ? (
         <p className="text-sm text-app-muted">No reports match your filters.</p>
       ) : (
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b app-divider">
             <h2 className="font-bold text-app-text text-sm">All reports ({visibleReports.length})</h2>
-            <label className="flex items-center gap-2 text-sm text-app-text-secondary">
+            <label className="checkbox-label checkbox-label--muted">
               <input
                 type="checkbox"
                 checked={showHidden}
                 onChange={(e) => setShowHidden(e.target.checked)}
-                className="rounded border-app-border"
+                className="checkbox"
               />
-              Include hidden reports
+              <span>Include hidden reports</span>
             </label>
           </div>
           <div className="overflow-x-auto">

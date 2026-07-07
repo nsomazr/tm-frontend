@@ -6,6 +6,11 @@ import PasswordInput from '../ui/PasswordInput'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
 import { useTranslation } from '../../i18n/LocaleContext'
+import {
+  detectOtpChannel,
+  formatTzPhoneDisplay,
+  type OtpChannel,
+} from '../../lib/phone'
 
 type AuthMode = 'register' | 'login'
 type Step = 'start' | 'otp' | 'password'
@@ -14,8 +19,8 @@ interface SimpleAuthFormProps {
   mode: AuthMode
   loading: boolean
   error: string
-  onSendOtp: (email: string) => Promise<void>
-  onVerifyOtp: (email: string, code: string) => Promise<void>
+  onSendOtp: (identifier: string) => Promise<{ channel: 'email' | 'sms'; expiresIn: number }>
+  onVerifyOtp: (identifier: string, code: string) => Promise<void>
   onPassword: (identifier: string, password: string) => Promise<void>
   footerLink: { text: string; to: string; label: string }
 }
@@ -44,31 +49,30 @@ export default function SimpleAuthForm({
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [localError, setLocalError] = useState('')
+  const [otpChannel, setOtpChannel] = useState<OtpChannel | null>(null)
   const autoVerifyRef = useRef(false)
   const { resendIn, expiresIn, startTimers } = useOtpTimers(step === 'otp')
 
   const isLogin = mode === 'login'
   const isEmail = isValidEmail(identifier)
+  const detectedChannel = detectOtpChannel(identifier)
   const title = mode === 'register' ? 'Create account' : 'Sign in'
   const displayError = error || localError
   const emailForOtp = normalizeIdentifier(identifier, true)
+  const canSendOtp = detectedChannel != null
+
+  const otpDestination =
+    otpChannel === 'sms'
+      ? formatTzPhoneDisplay(identifier)
+      : emailForOtp
 
   const requireIdentifier = () => {
     if (!identifier.trim()) {
-      setLocalError(isLogin ? 'Enter your email or username' : 'Enter your email address')
-      return false
-    }
-    if (!isLogin && !isValidEmail(identifier)) {
-      setLocalError('Enter a valid email address')
-      return false
-    }
-    setLocalError('')
-    return true
-  }
-
-  const requireEmail = () => {
-    if (!isValidEmail(identifier)) {
-      setLocalError('Enter a valid email address to receive a code')
+      setLocalError(
+        isLogin
+          ? 'Enter your email, phone, or username'
+          : 'Enter your email address or mobile number'
+      )
       return false
     }
     setLocalError('')
@@ -76,13 +80,18 @@ export default function SimpleAuthForm({
   }
 
   const handleSendOtp = async () => {
-    if (!requireEmail()) return
+    if (!canSendOtp) {
+      setLocalError('Enter a valid email or Tanzania mobile number (07XXXXXXXX)')
+      return
+    }
+    setLocalError('')
     try {
-      await onSendOtp(emailForOtp)
+      const result = await onSendOtp(identifier.trim())
+      setOtpChannel(result.channel)
       setCode('')
       setStep('otp')
       autoVerifyRef.current = false
-      startTimers()
+      startTimers(result.expiresIn)
     } catch {
       /* parent sets error */
     }
@@ -92,9 +101,10 @@ export default function SimpleAuthForm({
     if (resendIn > 0 || loading) return
     setLocalError('')
     try {
-      await onSendOtp(emailForOtp)
+      const result = await onSendOtp(identifier.trim())
+      setOtpChannel(result.channel)
       setCode('')
-      startTimers()
+      startTimers(result.expiresIn)
     } catch {
       /* parent sets error */
     }
@@ -104,10 +114,14 @@ export default function SimpleAuthForm({
     e?.preventDefault()
     setLocalError('')
     if (code.length !== 6) {
-      setLocalError('Enter the 6-digit code from your email')
+      setLocalError(
+        otpChannel === 'sms'
+          ? 'Enter the 6-digit code from your SMS'
+          : 'Enter the 6-digit code from your email'
+      )
       return
     }
-    await onVerifyOtp(emailForOtp, code)
+    await onVerifyOtp(identifier.trim(), code)
   }
 
   useEffect(() => {
@@ -125,6 +139,10 @@ export default function SimpleAuthForm({
 
   const handlePasswordStep = () => {
     if (!requireIdentifier()) return
+    if (!isLogin && !isEmail) {
+      setLocalError('Password sign-up requires an email address')
+      return
+    }
     setStep('password')
   }
 
@@ -146,13 +164,24 @@ export default function SimpleAuthForm({
   const subtitle =
     step === 'start'
       ? isLogin
-        ? 'Email, username, or code. Your choice.'
-        : 'Enter your email and choose how to continue'
+        ? 'Email, phone, username, or code'
+        : 'Use your email or Tanzania mobile number'
       : step === 'otp'
-        ? `We sent a code to ${emailForOtp}`
+        ? otpChannel === 'sms'
+          ? `We sent a code to ${otpDestination}`
+          : `We sent a code to ${emailForOtp}`
         : mode === 'register'
           ? 'Choose a password for your account'
           : 'Enter your password'
+
+  const otpButtonLabel =
+    detectedChannel === 'sms'
+      ? loading
+        ? 'Sending code…'
+        : 'Text me a code'
+      : loading
+        ? 'Sending code…'
+        : 'Email me a code'
 
   return (
     <div className="w-full max-w-sm">
@@ -173,8 +202,9 @@ export default function SimpleAuthForm({
         {step === 'start' && (
           <div className="space-y-3">
             <input
-              type={isLogin ? 'text' : 'email'}
-              placeholder={isLogin ? 'Email or username' : 'Email address'}
+              type="text"
+              inputMode={detectedChannel === 'sms' ? 'tel' : 'email'}
+              placeholder={isLogin ? 'Email, phone, or username' : 'Email or mobile (07XXXXXXXX)'}
               value={identifier}
               onChange={(e) => {
                 setIdentifier(e.target.value)
@@ -185,24 +215,29 @@ export default function SimpleAuthForm({
               autoFocus
               autoComplete={isLogin ? 'username' : 'email'}
             />
-            {isLogin && identifier.trim() && !isEmail && (
+            {isLogin && identifier.trim() && !isEmail && detectedChannel !== 'sms' && (
               <p className="text-xs text-slate-500 -mt-1">
                 Username account. Use password sign-in below.
+              </p>
+            )}
+            {detectedChannel === 'sms' && (
+              <p className="text-xs text-slate-500 -mt-1">
+                We&apos;ll send a one-time code by SMS to this number.
               </p>
             )}
             <button
               type="button"
               onClick={handleSendOtp}
-              disabled={loading || !isEmail}
+              disabled={loading || !canSendOtp}
               className="btn-primary w-full disabled:opacity-50"
-              title={!isEmail ? 'Enter an email address to receive a code' : undefined}
+              title={!canSendOtp ? 'Enter a valid email or mobile number' : undefined}
             >
-              {loading ? 'Sending code…' : 'Email me a code'}
+              {otpButtonLabel}
             </button>
             <button
               type="button"
               onClick={handlePasswordStep}
-              disabled={loading || !identifier.trim()}
+              disabled={loading || !identifier.trim() || (!isLogin && !isEmail)}
               className="btn-secondary w-full"
             >
               {mode === 'register' ? 'Continue with password' : 'Use my password'}
@@ -245,6 +280,7 @@ export default function SimpleAuthForm({
               onClick={() => {
                 setStep('start')
                 setCode('')
+                setOtpChannel(null)
               }}
               className="text-sm text-slate-500 hover:text-slate-700 w-full"
             >

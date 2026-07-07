@@ -11,11 +11,24 @@ export interface MineralHeatmapPoint {
   weight: number
 }
 
+export interface MineralHeatmapWeightLegend {
+  strong: number
+  medium_poly_point: number
+  medium_poly_line: number
+  medium_point_line: number
+  light_polygon: number
+  light_point: number
+  light_line: number
+}
+
 export interface MineralHeatmapSpec {
   slug: string
   name?: string
   color: string
   points: MineralHeatmapPoint[]
+  contours?: import('./mineralHeatmapContours').HeatmapContourLevel[]
+  concentrationStats?: { mean: number; median: number }
+  weightLegend?: MineralHeatmapWeightLegend
   /** Draw below mineral vector layers (3600 + z_index). */
   zIndex?: number
 }
@@ -45,17 +58,24 @@ export function mineralHeatmapZIndex(_minLayerZIndex: number): number {
 }
 
 const TARGET_HEATMAP_OPACITY = 0.82
-const HEATMAP_FADE_MS = 320
+const HEATMAP_FADE_IN_MS = 80
+const FEATURE_CHUNK_SIZE = 3000
+
+const DATA_LAYER_Z_INDEX = 3600
 
 function easeOutCubic(t: number) {
   return 1 - Math.pow(1 - t, 3)
 }
 
-function animateLayerOpacity(layer: Heatmap, from: number, to: number): Promise<void> {
+function animateLayerOpacity(layer: Heatmap, from: number, to: number, durationMs: number): Promise<void> {
+  if (durationMs <= 0 || from === to) {
+    layer.setOpacity(to)
+    return Promise.resolve()
+  }
   return new Promise((resolve) => {
     const start = performance.now()
     const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / HEATMAP_FADE_MS)
+      const t = Math.min(1, (now - start) / durationMs)
       layer.setOpacity(from + (to - from) * easeOutCubic(t))
       if (t < 1) requestAnimationFrame(tick)
       else resolve()
@@ -64,7 +84,42 @@ function animateLayerOpacity(layer: Heatmap, from: number, to: number): Promise<
   })
 }
 
-const DATA_LAYER_Z_INDEX = 3600
+function featuresFromPoints(points: MineralHeatmapPoint[]): Feature[] {
+  const features = new Array<Feature>(points.length)
+  for (let i = 0; i < points.length; i += 1) {
+    const point = points[i]
+    features[i] = new Feature({
+      geometry: new Point(fromLonLat([point.lng, point.lat])),
+      weight: point.weight,
+    })
+  }
+  return features
+}
+
+async function replaceHeatmapFeatures(
+  source: VectorSource,
+  points: MineralHeatmapPoint[],
+  isCancelled?: () => boolean,
+): Promise<void> {
+  source.clear(true)
+  if (!points.length) return
+
+  if (points.length <= FEATURE_CHUNK_SIZE) {
+    source.addFeatures(featuresFromPoints(points))
+    return
+  }
+
+  for (let offset = 0; offset < points.length; offset += FEATURE_CHUNK_SIZE) {
+    if (isCancelled?.()) return
+    const chunk = points.slice(offset, offset + FEATURE_CHUNK_SIZE)
+    source.addFeatures(featuresFromPoints(chunk))
+    if (offset + FEATURE_CHUNK_SIZE < points.length) {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve())
+      })
+    }
+  }
+}
 
 function insertLayerBelowDataLayers(map: import('ol/Map').default, layer: Heatmap, zIndex: number) {
   layer.setZIndex(zIndex)
@@ -81,28 +136,43 @@ function insertLayerBelowDataLayers(map: import('ol/Map').default, layer: Heatma
   collection.insertAt(insertAt, layer)
 }
 
+export function removeMineralHeatmapLayer(
+  map: import('ol/Map').default,
+  layerRef: { current: Heatmap | null },
+) {
+  const existing = layerRef.current
+  if (!existing) return
+  map.removeLayer(existing)
+  layerRef.current = null
+}
+
+function applyHeatmapStyle(layer: Heatmap, spec: MineralHeatmapSpec, mobile: boolean) {
+  const hex = normalizeHex(spec.color, '#E87722')
+  layer.setBlur(mobile ? 18 : 22)
+  layer.setRadius(mobile ? 12 : 16)
+  layer.setGradient(mineralHeatmapGradient(hex))
+  layer.setZIndex(spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX)
+  layer.set('mineralHeatmap', spec.slug)
+}
+
 export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: boolean): Heatmap {
   const source = new VectorSource()
-  for (const point of spec.points) {
-    source.addFeature(
-      new Feature({
-        geometry: new Point(fromLonLat([point.lng, point.lat])),
-        weight: point.weight,
-      }),
-    )
+  if (spec.points.length <= FEATURE_CHUNK_SIZE) {
+    source.addFeatures(featuresFromPoints(spec.points))
   }
 
-  const hex = normalizeHex(spec.color, '#E87722')
-  return new Heatmap({
+  const layer = new Heatmap({
     source,
-    blur: mobile ? 20 : 26,
-    radius: mobile ? 14 : 20,
+    blur: mobile ? 18 : 22,
+    radius: mobile ? 12 : 16,
     weight: (feature) => Number(feature.get('weight') ?? 1),
-    gradient: mineralHeatmapGradient(hex),
+    gradient: mineralHeatmapGradient(normalizeHex(spec.color, '#E87722')),
     zIndex: spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX,
     opacity: 0,
     properties: { mineralHeatmap: spec.slug },
   })
+
+  return layer
 }
 
 export async function syncMineralHeatmapLayer(
@@ -115,27 +185,33 @@ export async function syncMineralHeatmapLayer(
   const cancelled = () => isCancelled?.() === true
 
   if (!spec?.points?.length) {
-    const existing = layerRef.current
-    if (!existing) return
-    const from = existing.getOpacity()
-    await animateLayerOpacity(existing, from, 0)
-    if (cancelled()) return
-    map.removeLayer(existing)
-    if (layerRef.current === existing) layerRef.current = null
+    removeMineralHeatmapLayer(map, layerRef)
     return
   }
 
   const existing = layerRef.current
   if (existing) {
-    await animateLayerOpacity(existing, existing.getOpacity(), 0)
+    applyHeatmapStyle(existing, spec, mobile)
+    existing.setOpacity(TARGET_HEATMAP_OPACITY)
+    const source = existing.getSource()
+    if (source) {
+      await replaceHeatmapFeatures(source, spec.points, cancelled)
+    }
     if (cancelled()) return
-    map.removeLayer(existing)
-    layerRef.current = null
+    return
   }
 
   if (cancelled()) return
+
   const layer = createMineralHeatmapLayer(spec, mobile)
   insertLayerBelowDataLayers(map, layer, spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX)
   layerRef.current = layer
-  await animateLayerOpacity(layer, 0, TARGET_HEATMAP_OPACITY)
+
+  const source = layer.getSource()
+  if (source && spec.points.length > FEATURE_CHUNK_SIZE) {
+    await replaceHeatmapFeatures(source, spec.points, cancelled)
+    if (cancelled()) return
+  }
+
+  await animateLayerOpacity(layer, 0, TARGET_HEATMAP_OPACITY, HEATMAP_FADE_IN_MS)
 }

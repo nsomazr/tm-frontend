@@ -102,7 +102,7 @@ export default function ReportAssistantPanel({
               : err.response?.status === 502
                 ? 'AI service unavailable. Check that an LLM provider (Ollama, Groq, or Gemini) is configured and running.'
                 : err.response?.status === 503
-                  ? 'Server is under pressure — free disk space and retry.'
+                  ? 'Server is under pressure. Free disk space and retry.'
                   : 'Assistant request failed.'
         setError(detail)
       } else {
@@ -160,11 +160,11 @@ export default function ReportAssistantPanel({
         <div className="rounded-lg border border-app-border bg-app-subtle/30 px-3 py-2.5 text-xs text-app-text-secondary space-y-1">
           <p>
             <span className="font-medium text-app-text">Layer:</span>{' '}
-            {metadata.mineralName || '—'}
+            {metadata.mineralName || '-'}
           </p>
           <p>
             <span className="font-medium text-app-text">Location:</span>{' '}
-            {metadata.regionName || '—'}
+            {metadata.regionName || '-'}
           </p>
         </div>
 
@@ -196,7 +196,7 @@ export default function ReportAssistantPanel({
               onChange={setContextFile}
               disabled={disabled || loading}
               placeholder="PDF, Word, or text"
-              hint="Background context only — not published as the report."
+              hint="Background context only, not published as the report."
             />
           </div>
         )}

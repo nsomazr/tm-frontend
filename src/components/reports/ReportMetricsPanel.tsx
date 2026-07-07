@@ -7,6 +7,7 @@ interface ReportMetricsPanelProps {
   findingsCount: number
   approved: boolean
   compact?: boolean
+  preview?: boolean
 }
 
 function estimatedPages(words: number) {
@@ -19,6 +20,7 @@ export default function ReportMetricsPanel({
   findingsCount,
   approved,
   compact = false,
+  preview = false,
 }: ReportMetricsPanelProps) {
   const pages = estimatedPages(words)
   const progress = words ? Math.min(100, Math.round((words / MIN_WORDS) * 100)) : 0
@@ -34,23 +36,29 @@ export default function ReportMetricsPanel({
           </span>
           <span className="report-metrics-bar__sep" aria-hidden />
           <span className="report-metrics-bar__stat">
-            ~<strong>{pages || '—'}</strong> pages
+            ~<strong>{pages || '-'}</strong> pages
           </span>
-          <span className="report-metrics-bar__sep" aria-hidden />
-          <span className="report-metrics-bar__stat">
-            <strong>{findingsCount}</strong> findings
-          </span>
+          {!preview && (
+            <>
+              <span className="report-metrics-bar__sep" aria-hidden />
+              <span className="report-metrics-bar__stat">
+                <strong>{findingsCount}</strong> findings
+              </span>
+            </>
+          )}
         </div>
 
-        <div className="report-metrics-bar__progress" aria-hidden>
-          <div
-            className={`report-metrics-bar__fill report-metrics-bar__fill--${status}`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        {!preview && (
+          <div className="report-metrics-bar__progress" aria-hidden>
+            <div
+              className={`report-metrics-bar__fill report-metrics-bar__fill--${status}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        )}
 
         <div className="report-metrics-bar__meta">
-          {status === 'short' && words > 0 && (
+          {!preview && status === 'short' && words > 0 && (
             <span className="report-metrics-bar__warn">Below 3-page target</span>
           )}
           <span
@@ -68,7 +76,7 @@ export default function ReportMetricsPanel({
       <div className="report-metrics__card">
         <p className="report-metrics__label">Document length</p>
         <p className="report-metrics__value">
-          {words > 0 ? words.toLocaleString() : '—'}
+          {words > 0 ? words.toLocaleString() : '-'}
           <span className="report-metrics__unit">words</span>
         </p>
         <div className="report-metrics__track" aria-hidden>
@@ -80,15 +88,15 @@ export default function ReportMetricsPanel({
         <p className="report-metrics__hint">
           {words > 0 ? (
             <>
-              ~{pages} page{pages === 1 ? '' : 's'} · target {MIN_WORDS.toLocaleString()}–
+              ~{pages} page{pages === 1 ? '' : 's'} · target {MIN_WORDS.toLocaleString()}-
               {MAX_WORDS.toLocaleString()}
             </>
           ) : (
-            <>Target 3–5 pages ({MIN_WORDS.toLocaleString()}–{MAX_WORDS.toLocaleString()} words)</>
+            <>Target 3-5 pages ({MIN_WORDS.toLocaleString()}-{MAX_WORDS.toLocaleString()} words)</>
           )}
         </p>
         {status === 'short' && (
-          <p className="report-metrics__alert">Below 3-page minimum — refine or add content.</p>
+          <p className="report-metrics__alert">Below 3-page minimum. Refine or add content.</p>
         )}
         {status === 'long' && (
           <p className="report-metrics__alert report-metrics__alert--muted">Above 5-page guideline.</p>

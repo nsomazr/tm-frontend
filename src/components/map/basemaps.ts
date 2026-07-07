@@ -72,52 +72,70 @@ export function basemapLabelOverlayVisible(basemap: BasemapId, showPlaceNames: b
   return basemap === 'topo' || basemap === 'satellite'
 }
 
+const TILE_CROSS_ORIGIN = 'anonymous' as const
+
 export function createBasemapSource(id: BasemapId, showPlaceNames = true): OSM | XYZ {
   switch (id) {
     case 'light':
       return new XYZ({
         url: `https://{a-d}.basemaps.cartocdn.com/${showPlaceNames ? 'light_all' : 'light_nolabels'}/{z}/{x}/{y}.png`,
         maxZoom: 20,
+        crossOrigin: TILE_CROSS_ORIGIN,
         attributions: '© CARTO © OpenStreetMap',
       })
     case 'dark':
       return new XYZ({
         url: `https://{a-d}.basemaps.cartocdn.com/${showPlaceNames ? 'dark_all' : 'dark_nolabels'}/{z}/{x}/{y}.png`,
         maxZoom: 20,
+        crossOrigin: TILE_CROSS_ORIGIN,
         attributions: '© CARTO © OpenStreetMap',
       })
     case 'streets':
-      if (showPlaceNames) return new OSM()
+      if (showPlaceNames) {
+        return new OSM({ crossOrigin: TILE_CROSS_ORIGIN })
+      }
       return new XYZ({
         url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}.png',
         maxZoom: 20,
+        crossOrigin: TILE_CROSS_ORIGIN,
         attributions: '© CARTO © OpenStreetMap',
       })
     case 'satellite':
       return new XYZ({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         maxZoom: 19,
+        crossOrigin: TILE_CROSS_ORIGIN,
         attributions: 'Tiles © Esri. Source: Esri, Maxar, Earthstar Geographics',
       })
     case 'terrain':
       return new XYZ({
         url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
         maxZoom: 17,
+        crossOrigin: TILE_CROSS_ORIGIN,
         attributions: '© OpenTopoMap © OpenStreetMap',
       })
     case 'topo':
       return new XYZ({
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         maxZoom: 19,
+        crossOrigin: TILE_CROSS_ORIGIN,
         attributions: '© Esri',
       })
     default:
-      return new OSM()
+      return new OSM({ crossOrigin: TILE_CROSS_ORIGIN })
   }
 }
 
 export function isImageryBasemap(id: BasemapId): boolean {
   return id === 'satellite' || id === 'topo'
+}
+
+export function isTerrainVisualBasemap(id: BasemapId): boolean {
+  return id === 'satellite' || id === 'terrain' || id === 'topo'
+}
+
+export function basemapInsightLabel(id: BasemapId): string {
+  return BASEMAPS.find((b) => b.id === id)?.label ?? id
 }
 
 const STORAGE_KEY = 'tm-basemap'
@@ -143,6 +161,7 @@ export function createLabelsSource() {
   return new XYZ({
     url: 'https://{a-d}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}.png',
     maxZoom: 20,
+    crossOrigin: TILE_CROSS_ORIGIN,
     attributions: '© CARTO',
   })
 }

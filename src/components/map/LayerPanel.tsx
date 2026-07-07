@@ -138,7 +138,7 @@ export default function LayerPanel({
                           checked={isVisible}
                           disabled={layersLocked}
                           onChange={() => onToggle(layer.id)}
-                          className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5 disabled:opacity-70"
+                          className="checkbox checkbox--sm disabled:opacity-70"
                         />
                         <LayerTypeSymbol layer={layer} />
                         <span className="flex-1 min-w-0 map-text text-sm font-medium leading-snug break-words">

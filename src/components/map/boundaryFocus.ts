@@ -6,6 +6,10 @@ export interface BoundaryFocus {
   name: string
 }
 
+export function hasAdminBoundaryAt(at: AdminBoundaryAtResponse): boolean {
+  return !!(at.region || at.district || at.ward || at.village)
+}
+
 export function boundaryFocusFromAt(at: AdminBoundaryAtResponse): BoundaryFocus | null {
   if (at.village) {
     return { id: at.village.id, level: 4, name: at.village.name }

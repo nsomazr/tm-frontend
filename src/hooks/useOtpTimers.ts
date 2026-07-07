@@ -5,9 +5,9 @@ export function useOtpTimers(active: boolean) {
   const [resendIn, setResendIn] = useState(0)
   const [expiresIn, setExpiresIn] = useState(0)
 
-  const startTimers = useCallback(() => {
+  const startTimers = useCallback((expiresSeconds: number = OTP_VALID_SECONDS) => {
     setResendIn(OTP_RESEND_SECONDS)
-    setExpiresIn(OTP_VALID_SECONDS)
+    setExpiresIn(expiresSeconds)
   }, [])
 
   useEffect(() => {

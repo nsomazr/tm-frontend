@@ -35,7 +35,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
   return (
     <div className="space-y-6">
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard label="Mapped zones" value={fmt(coverage.total_prospects)} />
+        <KpiCard label="Mapped areas" value={fmt(coverage.total_prospects)} />
         <KpiCard label="Active layers" value={fmt(coverage.total_layers)} hint={`${coverage.preview_layers} preview`} />
         <KpiCard label="Regions covered" value={fmt(coverage.regions_covered)} />
         <KpiCard
@@ -72,7 +72,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
       <div className="grid lg:grid-cols-2 gap-6">
         <section className="rounded-xl border border-app-border bg-app-surface p-5">
           <h2 className="font-semibold text-app-text mb-1">Top regions</h2>
-          <p className="text-sm text-app-text-muted mb-4">Where mapped geological zones concentrate.</p>
+          <p className="text-sm text-app-text-muted mb-4">Where mapped geological areas concentrate.</p>
           {regionChart.length > 0 ? (
             <VerticalBarChart data={regionChart} color="#f59e0b" layout="horizontal" />
           ) : (
@@ -83,7 +83,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
         {coverage.layer_by_type.length > 0 && (
           <section className="rounded-xl border border-app-border bg-app-surface p-5">
             <h2 className="font-semibold text-app-text mb-1">Layer geometry</h2>
-            <p className="text-sm text-app-text-muted mb-4">Polygon, point, and line layers on the map.</p>
+            <p className="text-sm text-app-text-muted mb-4">Mineral and structure layers on the map.</p>
             <LayerTypeGrid items={coverage.layer_by_type} />
           </section>
         )}
@@ -94,7 +94,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
           <div>
             <h2 className="font-semibold text-app-text">Mineral inventory</h2>
             <p className="text-sm text-app-text-muted mt-0.5">
-              Layers, mapped zones, and reports per commodity.
+              Layers, mapped areas, and reports per commodity.
             </p>
           </div>
           <Link to="/admin/coverage" className="text-sm text-terra-600 dark:text-terra-400 hover:underline">
@@ -110,7 +110,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
                 <tr>
                   <th>Mineral</th>
                   <th className="text-right">Layers</th>
-                  <th className="text-right">Zones</th>
+                  <th className="text-right">Areas</th>
                   <th className="text-right">Reports</th>
                   <th className="text-right">Explorations</th>
                 </tr>

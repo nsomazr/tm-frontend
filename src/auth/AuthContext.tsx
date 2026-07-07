@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { authApi } from '../api'
+import { OTP_SMS_VALID_SECONDS, OTP_VALID_SECONDS } from '../constants/otp'
+import { detectOtpChannel, normalizeTzPhone } from '../lib/phone'
 import type { User } from '../types'
 
 interface AuthTokensResponse {
@@ -8,18 +10,50 @@ interface AuthTokensResponse {
   user: User
 }
 
+function buildOtpPayload(identifier: string, purpose: 'register' | 'login') {
+  const channel = detectOtpChannel(identifier)
+  if (channel === 'sms') {
+    const phone = normalizeTzPhone(identifier)
+    if (!phone) throw new Error('Enter a valid Tanzania mobile number.')
+    return { purpose, phone }
+  }
+  if (channel === 'email') {
+    return { purpose, email: identifier.trim().toLowerCase() }
+  }
+  throw new Error('Enter a valid email address or Tanzania mobile number.')
+}
+
+async function sendOtpIdentifier(identifier: string, purpose: 'register' | 'login') {
+  const payload = buildOtpPayload(identifier, purpose)
+  const { data } = await authApi.sendOtp(payload)
+  const channel = (data.channel as 'email' | 'sms' | undefined) ?? (payload.phone ? 'sms' : 'email')
+  const expiresIn =
+    typeof data.expires_in === 'number'
+      ? data.expires_in
+      : channel === 'sms'
+        ? OTP_SMS_VALID_SECONDS
+        : OTP_VALID_SECONDS
+  return { channel, expiresIn }
+}
+
+async function verifyOtpIdentifier(identifier: string, code: string, purpose: 'register' | 'login') {
+  const payload = { ...buildOtpPayload(identifier, purpose), code }
+  const { data } = await authApi.verifyOtp(payload)
+  return data as AuthTokensResponse
+}
+
 interface AuthContextType {
   user: User | null
   loading: boolean
   login: (emailOrUsername: string, password: string) => Promise<boolean>
   registerWithPassword: (email: string, password: string) => Promise<boolean>
   registerWithOtp: {
-    send: (email: string) => Promise<void>
-    verify: (email: string, code: string) => Promise<boolean>
+    send: (identifier: string) => Promise<{ channel: 'email' | 'sms'; expiresIn: number }>
+    verify: (identifier: string, code: string) => Promise<boolean>
   }
   loginWithOtp: {
-    send: (email: string) => Promise<void>
-    verify: (email: string, code: string) => Promise<boolean>
+    send: (identifier: string) => Promise<{ channel: 'email' | 'sms'; expiresIn: number }>
+    verify: (identifier: string, code: string) => Promise<boolean>
   }
   register: (data: Record<string, string>) => Promise<void>
   logout: () => void
@@ -80,11 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const registerWithOtp = {
-    send: async (email: string) => {
-      await authApi.sendOtp(email, 'register')
-    },
-    verify: async (email: string, code: string) => {
-      const { data } = await authApi.verifyOtp(email, code, 'register')
+    send: (identifier: string) => sendOtpIdentifier(identifier, 'register'),
+    verify: async (identifier: string, code: string) => {
+      const data = await verifyOtpIdentifier(identifier, code, 'register')
       const nextUser = storeSession(data)
       setUser(nextUser)
       return nextUser.profile_complete
@@ -92,11 +124,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const loginWithOtp = {
-    send: async (email: string) => {
-      await authApi.sendOtp(email, 'login')
-    },
-    verify: async (email: string, code: string) => {
-      const { data } = await authApi.verifyOtp(email, code, 'login')
+    send: (identifier: string) => sendOtpIdentifier(identifier, 'login'),
+    verify: async (identifier: string, code: string) => {
+      const data = await verifyOtpIdentifier(identifier, code, 'login')
       const nextUser = storeSession(data)
       setUser(nextUser)
       return nextUser.profile_complete
@@ -117,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin'
   const isSuperAdmin = user?.role === 'super_admin'
   const isManager = isAdmin || user?.role === 'mineral_manager'
-  const hasPaidAccess = user?.has_paid_access ?? isAdmin
+  const hasPaidAccess = Boolean(user?.has_paid_access) || isAdmin
   const hasFullMapAccess = hasPaidAccess || user?.role === 'mineral_manager'
   const canSaveExplorations = user?.can_save_explorations ?? isAdmin
   const mineralExploration = user?.mineral_exploration ?? null

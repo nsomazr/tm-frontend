@@ -32,8 +32,12 @@ export const COORDINATE_SYSTEMS: CoordinateSystemOption[] = [
 ]
 
 export const DEFAULT_COORDINATE_SYSTEM: CoordinateSystemId = 'arc1960'
-export const COORDINATE_SYSTEM_STORAGE_KEY = 'terra-map-crs'
+export const COORDINATE_SYSTEM_STORAGE_PREFIX = 'terra-map-crs'
 export const COORDINATE_SYSTEM_CHANGE_EVENT = 'terra-map-crs-change'
+
+export function coordinateSystemStorageKey(countryCode: string) {
+  return `${COORDINATE_SYSTEM_STORAGE_PREFIX}-${countryCode.toUpperCase()}`
+}
 
 const PROJ4_DEFS: Record<string, string> = {
   'EPSG:4210': '+proj=longlat +ellps=clrk80 +towgs84=-160,-6,-302,0,0,0,0 +no_defs +type=crs',
@@ -57,19 +61,25 @@ export function coordinateSystemById(id: CoordinateSystemId): CoordinateSystemOp
   return COORDINATE_SYSTEMS.find((c) => c.id === id) ?? COORDINATE_SYSTEMS[3]
 }
 
-export function readStoredCoordinateSystem(): CoordinateSystemId {
+export function readStoredCoordinateSystem(countryCode = 'TZ'): CoordinateSystemId {
   if (typeof window === 'undefined') return DEFAULT_COORDINATE_SYSTEM
-  const stored = localStorage.getItem(COORDINATE_SYSTEM_STORAGE_KEY)
+  const stored = localStorage.getItem(coordinateSystemStorageKey(countryCode))
   if (stored && COORDINATE_SYSTEMS.some((c) => c.id === stored)) {
     return stored as CoordinateSystemId
+  }
+  const legacy = localStorage.getItem('terra-map-crs')
+  if (legacy && COORDINATE_SYSTEMS.some((c) => c.id === legacy)) {
+    return legacy as CoordinateSystemId
   }
   return DEFAULT_COORDINATE_SYSTEM
 }
 
-export function storeCoordinateSystem(id: CoordinateSystemId) {
+export function storeCoordinateSystem(id: CoordinateSystemId, countryCode = 'TZ') {
   if (typeof window === 'undefined') return
-  localStorage.setItem(COORDINATE_SYSTEM_STORAGE_KEY, id)
-  window.dispatchEvent(new CustomEvent(COORDINATE_SYSTEM_CHANGE_EVENT, { detail: id }))
+  localStorage.setItem(coordinateSystemStorageKey(countryCode), id)
+  window.dispatchEvent(
+    new CustomEvent(COORDINATE_SYSTEM_CHANGE_EVENT, { detail: { id, countryCode: countryCode.toUpperCase() } })
+  )
 }
 
 export interface TransformedCoordinate {
@@ -147,11 +157,18 @@ export function lonLatToCrs(
   return { x, y, kind: system.kind }
 }
 
+import type { CoordinateDisplayFormat } from './coordinateFormat'
+import { decimalToDms } from './coordinateFormat'
+
 export function formatCoordinate(
   coord: TransformedCoordinate,
-  kind: 'geographic' | 'projected'
+  kind: 'geographic' | 'projected',
+  format: CoordinateDisplayFormat = 'decimal'
 ): string {
   if (kind === 'geographic') {
+    if (format === 'dms') {
+      return `${decimalToDms(coord.y, 'lat')}, ${decimalToDms(coord.x, 'lng')}`
+    }
     const lon = coord.x.toFixed(6)
     const lat = coord.y.toFixed(6)
     return `${lat}°, ${lon}°`

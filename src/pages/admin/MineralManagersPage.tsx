@@ -50,24 +50,26 @@ function ManagerMineralsEditor({
           {minerals.map((mineral) => (
             <label
               key={mineral.id}
-              className="flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer hover:bg-app-subtle"
+              className="checkbox-label px-3 py-2.5 hover:bg-app-subtle"
             >
               <input
                 type="checkbox"
                 checked={selected.includes(mineral.id)}
                 onChange={() => toggle(mineral.id)}
+                className="checkbox"
               />
               <span className="text-app-text">{displayName(mineral)}</span>
             </label>
           ))}
         </div>
-        <label className="mt-4 flex items-center gap-2 text-sm text-app-text">
+        <label className="checkbox-label mt-4">
           <input
             type="checkbox"
             checked={canPublish}
             onChange={(e) => setCanPublish(e.target.checked)}
+            className="checkbox"
           />
-          Can publish layers
+          <span>Can publish layers</span>
         </label>
         <div className="flex justify-end gap-2 mt-6">
           <button type="button" onClick={onClose} className="btn-secondary text-sm">
@@ -302,12 +304,12 @@ export default function MineralManagersPage() {
             )}
           </div>
 
-          <label className="flex items-start gap-3 rounded-xl border border-app-border px-4 py-3 cursor-pointer hover:bg-app-subtle/40">
+          <label className="checkbox-label checkbox-label--start rounded-xl border border-app-border px-4 py-3 hover:bg-app-subtle/40">
             <input
               type="checkbox"
               checked={canPublish}
               onChange={(e) => setCanPublish(e.target.checked)}
-              className="mt-0.5"
+              className="checkbox mt-0.5"
             />
             <span>
               <span className="block text-sm font-medium text-app-text">Can publish layers</span>

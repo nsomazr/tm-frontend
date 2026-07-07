@@ -16,9 +16,12 @@ import type { BoundaryFocus } from './boundaryFocus'
 import CountryBoundaryPanel from './CountryBoundaryPanel'
 import CoordinateSystemPicker from './CoordinateSystemPicker'
 import type { CoordinateSystemId } from './coordinateSystems'
+import type { CoordinateDisplayFormat } from './coordinateFormat'
 import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
 import type { Country } from '../../types'
 import type { TerraAssistantMapContext } from '../assistant/TerraAssistantPanel'
+import type { InsightSnapshotContext } from './insightSnapshot'
+import AdPlacementSlot from '../ads/AdPlacementSlot'
 
 interface MapBottomControlsProps {
   layers: MapLayer[]
@@ -49,6 +52,8 @@ interface MapBottomControlsProps {
   staticMap?: boolean
   coordinateSystem: CoordinateSystemId
   onCoordinateSystemChange: (id: CoordinateSystemId) => void
+  coordinateFormat?: CoordinateDisplayFormat
+  onCoordinateFormatChange?: (format: CoordinateDisplayFormat) => void
   showCoordinateSystem?: boolean
   assistantOpen: boolean
   onAssistantToggle: () => void
@@ -57,8 +62,17 @@ interface MapBottomControlsProps {
   insightLoading: boolean
   hasPaidAccess: boolean
   assistantMapContext: TerraAssistantMapContext | null
-  getMapSnapshot?: () => Promise<string | null>
+  mapSnapshot?: string | null
+  getMapSnapshot?: (ctx: InsightSnapshotContext) => Promise<string | null>
+  onRefreshInsight?: () => void
+  refreshInsightPending?: boolean
+  insightLoadingTerrainView?: boolean
+  onExploreSimilarArea?: (lat: number, lng: number, boundaryId?: number) => void
   mineralHeatmap?: MineralHeatmapSpec | null
+  mineralHeatmapLoading?: boolean
+  showMapAds?: boolean
+  /** When false, hide the layers toggle/sheet (e.g. top-nav mineral focus mode). */
+  showLayersPanel?: boolean
 }
 
 type Panel = 'layers' | 'basemap' | 'legend' | null
@@ -207,6 +221,8 @@ export default function MapBottomControls({
   staticMap = false,
   coordinateSystem,
   onCoordinateSystemChange,
+  coordinateFormat = 'decimal',
+  onCoordinateFormatChange,
   showCoordinateSystem = false,
   assistantOpen,
   onAssistantToggle,
@@ -215,8 +231,16 @@ export default function MapBottomControls({
   insightLoading,
   hasPaidAccess,
   assistantMapContext,
+  mapSnapshot = null,
   getMapSnapshot,
+  onRefreshInsight,
+  refreshInsightPending = false,
+  insightLoadingTerrainView = false,
+  onExploreSimilarArea,
   mineralHeatmap = null,
+  mineralHeatmapLoading = false,
+  showMapAds = true,
+  showLayersPanel = true,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
@@ -283,7 +307,7 @@ export default function MapBottomControls({
   const currentBasemap = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
   // Paid users pick layers (the Layers panel doubles as the legend). Unpaid users
   // only get a read-only legend of what's shown on the map.
-  const showLayersBtn = hasPaidAccess && layers.length > 0
+  const showLayersBtn = hasPaidAccess && layers.length > 0 && showLayersPanel
   const showLegendBtn = !hasPaidAccess && legendLayers.length > 0
 
   const sheetClass =
@@ -346,7 +370,7 @@ export default function MapBottomControls({
                               checked={visibleLayers.has(layer.id)}
                               disabled={staticMap}
                               onChange={() => onToggleLayer(layer.id)}
-                              className="rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 shrink-0 size-3.5 disabled:opacity-70"
+                              className="checkbox checkbox--sm disabled:opacity-70"
                             />
                             <LayerTypeSymbol layer={layer} />
                             <span className="text-sm font-medium leading-snug map-text min-w-0 break-words">{displayName(layer)}</span>
@@ -360,11 +384,15 @@ export default function MapBottomControls({
                   <p className="py-2 text-xs map-text-muted">{m.map.noLayers}</p>
                 )}
               </div>
-              {mineralHeatmap && (
+              {mineralHeatmap || mineralHeatmapLoading ? (
                 <div className="shrink-0 border-t app-divider px-3 py-2.5">
-                  <MineralHeatmapColorbar embedded spec={mineralHeatmap} />
+                  <MineralHeatmapColorbar
+                    embedded
+                    spec={mineralHeatmap}
+                    loading={mineralHeatmapLoading}
+                  />
                 </div>
-              )}
+              ) : null}
             </>,
             true
           )}
@@ -413,6 +441,11 @@ export default function MapBottomControls({
                 )}
               </p>
               <LegendPanel layers={legendLayers} embedded sheetMode />
+              {showMapAds && (
+                <div className="shrink-0 px-3 pb-3 pt-2 border-t app-divider">
+                  <AdPlacementSlot placement="map_overlay" compact className="w-full" />
+                </div>
+              )}
             </>
           )}
 
@@ -440,7 +473,12 @@ export default function MapBottomControls({
                 insightLoading={insightLoading}
                 hasPaidAccess={hasPaidAccess}
                 mapContext={assistantMapContext}
+                mapSnapshot={mapSnapshot}
                 getMapSnapshot={getMapSnapshot}
+                onRefreshInsight={onRefreshInsight}
+                refreshInsightPending={refreshInsightPending}
+                onExploreSimilarArea={onExploreSimilarArea}
+                insightLoadingTerrainView={insightLoadingTerrainView}
                 className="min-w-0"
                 fullWidthButton
               />
@@ -479,7 +517,12 @@ export default function MapBottomControls({
               insightLoading={insightLoading}
               hasPaidAccess={hasPaidAccess}
               mapContext={assistantMapContext}
+              mapSnapshot={mapSnapshot}
               getMapSnapshot={getMapSnapshot}
+              onRefreshInsight={onRefreshInsight}
+              refreshInsightPending={refreshInsightPending}
+              onExploreSimilarArea={onExploreSimilarArea}
+              insightLoadingTerrainView={insightLoadingTerrainView}
               fullWidthButton
             />
           </div>
@@ -508,7 +551,12 @@ export default function MapBottomControls({
               insightLoading={insightLoading}
               hasPaidAccess={hasPaidAccess}
               mapContext={assistantMapContext}
+              mapSnapshot={mapSnapshot}
               getMapSnapshot={getMapSnapshot}
+              onRefreshInsight={onRefreshInsight}
+              refreshInsightPending={refreshInsightPending}
+              onExploreSimilarArea={onExploreSimilarArea}
+              insightLoadingTerrainView={insightLoadingTerrainView}
               className="min-w-0 self-start"
               fullWidthButton
             />
@@ -520,13 +568,21 @@ export default function MapBottomControls({
             <CoordinateSystemPicker
               value={coordinateSystem}
               onChange={onCoordinateSystemChange}
+              countryCode={countryCode}
+              coordinateFormat={coordinateFormat}
+              onCoordinateFormatChange={onCoordinateFormatChange}
             />
           </div>
         )}
 
-        {panel !== 'layers' && mineralHeatmap && (
+        {panel !== 'layers' && (mineralHeatmap || mineralHeatmapLoading) && (
           <div className="pointer-events-none mb-1.5">
-            <MineralHeatmapColorbar embedded spec={mineralHeatmap} className="w-full" />
+            <MineralHeatmapColorbar
+              embedded
+              spec={mineralHeatmap}
+              loading={mineralHeatmapLoading}
+              className="w-full"
+            />
           </div>
         )}
 

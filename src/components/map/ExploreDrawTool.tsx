@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   formatCoordinate,
   lonLatToCrs,
   type CoordinateSystemId,
 } from './coordinateSystems'
+import { parseCoordinateComponent, type CoordinateDisplayFormat } from './coordinateFormat'
 import type { ExplorationMode } from './explorationGeometry'
 import type { SavedExploration } from '../../types'
 
@@ -11,6 +12,7 @@ interface ExploreDrawToolProps {
   mode: ExplorationMode
   points: [number, number][]
   coordinateSystem: CoordinateSystemId
+  coordinateFormat?: CoordinateDisplayFormat
   canExplore: boolean
   canSave: boolean
   saving?: boolean
@@ -31,9 +33,8 @@ interface ExploreDrawToolProps {
 const COORD_INPUT_CLASS =
   'w-full rounded-md border border-app-border bg-app-surface px-2 py-1.5 text-sm map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25'
 
-const MODES: { id: ExplorationMode; label: string; hint: string }[] = [
+const MODES: { id: 'point' | 'polygon'; label: string; hint: string }[] = [
   { id: 'point', label: 'Point', hint: 'A single location.' },
-  { id: 'line', label: 'Line', hint: 'A path / structure (2+ points).' },
   { id: 'polygon', label: 'Polygon', hint: 'An area (3+ points).' },
 ]
 
@@ -41,6 +42,7 @@ export default function ExploreDrawTool({
   mode,
   points,
   coordinateSystem,
+  coordinateFormat = 'decimal',
   canExplore,
   canSave,
   saving = false,
@@ -59,16 +61,25 @@ export default function ExploreDrawTool({
   const [fieldA, setFieldA] = useState('')
   const [fieldB, setFieldB] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [savedOpen, setSavedOpen] = useState(true)
+  const [savedQuery, setSavedQuery] = useState('')
+
+  const filteredSavedExplorations = useMemo(() => {
+    const query = savedQuery.trim().toLowerCase()
+    if (!query) return savedExplorations
+    return savedExplorations.filter(
+      (item) =>
+        item.name.toLowerCase().includes(query) || item.mode.toLowerCase().includes(query),
+    )
+  }, [savedExplorations, savedQuery])
+
+  const showSavedSearch = savedExplorations.length > 5
 
   const handleAdd = () => {
-    const lat = parseFloat(fieldA)
-    const lng = parseFloat(fieldB)
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setError('Enter valid latitude and longitude.')
-      return
-    }
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      setError('Latitude must be between -90 and 90; longitude between -180 and 180.')
+    const lat = parseCoordinateComponent(fieldA, 'lat')
+    const lng = parseCoordinateComponent(fieldB, 'lng')
+    if (lat == null || lng == null) {
+      setError('Enter valid latitude and longitude (decimal or DMS).')
       return
     }
     onAddPoint(lng, lat)
@@ -81,7 +92,7 @@ export default function ExploreDrawTool({
     <>
       <div className={`flex items-center gap-2 ${embedded ? 'px-4 pt-3 pb-1' : 'px-4 py-3 border-b app-divider'}`}>
         {embedded ? (
-          <div className="grid min-w-0 flex-1 grid-cols-3 gap-1.5">
+          <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5">
             {MODES.map((mm) => (
               <button
                 key={mm.id}
@@ -112,7 +123,7 @@ export default function ExploreDrawTool({
 
       <div className="flex max-h-[min(52vh,440px)] flex-col gap-3 overflow-y-auto p-4 scrollbar-pane">
         {!embedded && (
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {MODES.map((mm) => (
               <button
                 key={mm.id}
@@ -130,7 +141,8 @@ export default function ExploreDrawTool({
           </div>
         )}
         <p className="text-[11px] leading-snug map-text-muted">
-          {MODES.find((mm) => mm.id === mode)?.hint} Click the map or enter WGS84 latitude/longitude below.
+          {MODES.find((mm) => mm.id === mode)?.hint ?? 'Draw on the map.'} Click the map or enter
+          latitude/longitude below (decimal or DMS).
         </p>
 
         <div className="flex items-end gap-1.5">
@@ -140,7 +152,7 @@ export default function ExploreDrawTool({
               value={fieldA}
               onChange={(e) => setFieldA(e.target.value)}
               inputMode="decimal"
-              placeholder="-6.17"
+              placeholder="-6.17 or 6° 10' 12&quot; S"
               className={COORD_INPUT_CLASS}
             />
           </label>
@@ -150,7 +162,7 @@ export default function ExploreDrawTool({
               value={fieldB}
               onChange={(e) => setFieldB(e.target.value)}
               inputMode="decimal"
-              placeholder="35.74"
+              placeholder="35.74 or 35° 44' 24&quot; E"
               className={COORD_INPUT_CLASS}
             />
           </label>
@@ -171,7 +183,7 @@ export default function ExploreDrawTool({
               return (
                 <li key={i} className="flex items-center justify-between gap-2 rounded px-1.5 py-1 text-xs map-text-secondary">
                   <span className="tabular-nums">
-                    {i + 1}. {formatCoordinate(c, c.kind)}
+                    {i + 1}. {formatCoordinate(c, c.kind, coordinateFormat)}
                   </span>
                   <button
                     type="button"
@@ -219,35 +231,68 @@ export default function ExploreDrawTool({
         )}
 
         {savedExplorations.length > 0 && (
-          <div className="border-t app-divider pt-2">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide map-text-muted">
-              Saved explorations
-            </p>
-            <ul className="max-h-32 space-y-0.5 overflow-y-auto scrollbar-pane">
-              {savedExplorations.map((s) => (
-                <li key={s.id} className="flex items-center justify-between gap-2 rounded px-1 py-1 text-xs hover:bg-app-subtle">
-                  <button
-                    type="button"
-                    onClick={() => onLoad?.(s.mode, s.points)}
-                    className="min-w-0 flex-1 truncate text-left map-text-secondary"
-                    title={`Load ${s.name}`}
-                  >
-                    <span className="font-medium map-text">{s.name}</span>
-                    <span className="ml-1 map-text-muted">· {s.mode}</span>
-                  </button>
-                  {onDelete && (
-                    <button
-                      type="button"
-                      onClick={() => onDelete(s.id)}
-                      className="map-text-muted hover:text-red-500"
-                      aria-label={`Delete ${s.name}`}
-                    >
-                      ×
-                    </button>
+          <div className="shrink-0 border-t app-divider pt-2">
+            <button
+              type="button"
+              onClick={() => setSavedOpen((open) => !open)}
+              className="mb-1 flex w-full items-center justify-between gap-2 text-left"
+              aria-expanded={savedOpen}
+            >
+              <span className="text-[10px] font-semibold uppercase tracking-wide map-text-muted">
+                Saved explorations
+                <span className="ml-1.5 font-normal normal-case tracking-normal tabular-nums">
+                  ({savedExplorations.length})
+                </span>
+              </span>
+              <span className="map-text-muted text-xs leading-none" aria-hidden>
+                {savedOpen ? '−' : '+'}
+              </span>
+            </button>
+            {savedOpen && (
+              <>
+                {showSavedSearch && (
+                  <input
+                    type="search"
+                    value={savedQuery}
+                    onChange={(e) => setSavedQuery(e.target.value)}
+                    placeholder="Search saved…"
+                    className="mb-1.5 w-full rounded-md border border-app-border bg-app-surface px-2 py-1 text-xs map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25"
+                  />
+                )}
+                <ul className="max-h-40 space-y-0.5 overflow-y-auto overscroll-y-contain rounded-lg border border-app-border/60 p-1 scrollbar-pane">
+                  {filteredSavedExplorations.length === 0 ? (
+                    <li className="px-2 py-2 text-xs map-text-muted">No matches.</li>
+                  ) : (
+                    filteredSavedExplorations.map((s) => (
+                      <li
+                        key={s.id}
+                        className="flex items-center justify-between gap-2 rounded px-1 py-1 text-xs hover:bg-app-subtle"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onLoad?.(s.mode, s.points)}
+                          className="min-w-0 flex-1 truncate text-left map-text-secondary"
+                          title={`Load ${s.name}`}
+                        >
+                          <span className="font-medium map-text">{s.name}</span>
+                          <span className="ml-1 map-text-muted">· {s.mode}</span>
+                        </button>
+                        {onDelete && (
+                          <button
+                            type="button"
+                            onClick={() => onDelete(s.id)}
+                            className="shrink-0 map-text-muted hover:text-red-500"
+                            aria-label={`Delete ${s.name}`}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </li>
+                    ))
                   )}
-                </li>
-              ))}
-            </ul>
+                </ul>
+              </>
+            )}
           </div>
         )}
       </div>

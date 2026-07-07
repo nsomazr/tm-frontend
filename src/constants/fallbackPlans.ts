@@ -29,6 +29,7 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     included_report_downloads: 3,
     included_assistant_credits: 3000,
     max_explorable_minerals: 10,
+    includes_saved_explorations: true,
   },
   {
     id: 0,
@@ -43,5 +44,6 @@ export const FALLBACK_PLANS: SubscriptionPlan[] = [
     included_report_downloads: 10,
     included_assistant_credits: 5000,
     max_explorable_minerals: null,
+    includes_saved_explorations: true,
   },
 ]

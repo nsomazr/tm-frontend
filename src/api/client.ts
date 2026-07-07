@@ -22,6 +22,9 @@ api.interceptors.request.use((config) => {
   if (locale === 'en' || locale === 'sw') {
     config.headers['Accept-Language'] = locale
   }
+  if (typeof window !== 'undefined' && /\.ngrok-free\.app$|\.ngrok\.io$/.test(window.location.hostname)) {
+    config.headers['ngrok-skip-browser-warning'] = 'true'
+  }
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type']
   }

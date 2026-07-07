@@ -5,6 +5,7 @@ import Logo from '../brand/Logo'
 import CompanyCredit from '../brand/CompanyCredit'
 import LanguageSwitch from './LanguageSwitch'
 import MobileMenu from './MobileMenu'
+import MineralsNavMenu from './MineralsNavMenu'
 import ThemeToggle from './ThemeToggle'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -40,7 +41,7 @@ function UserMenu() {
   )
 }
 
-function HeaderNav({ className }: { className?: string }) {
+function HeaderNav({ className, showMinerals }: { className?: string; showMinerals?: boolean }) {
   const { m } = useTranslation()
   const links = [
     { to: '/', label: m.nav.map },
@@ -50,12 +51,13 @@ function HeaderNav({ className }: { className?: string }) {
   ]
 
   return (
-    <nav className={className}>
+    <nav className={`${className ?? ''} flex items-center gap-1`}>
       {links.map((link) => (
         <NavLink key={link.to} to={link.to} end={link.to === '/'} className={navLinkClass}>
           {link.label}
         </NavLink>
       ))}
+      {showMinerals && <MineralsNavMenu />}
     </nav>
   )
 }
@@ -82,6 +84,7 @@ export default function Layout() {
         </Link>
         <HeaderNav
           className={`hidden items-center gap-1 flex-1 justify-center min-w-0 ${isMapPage ? 'lg:flex' : 'md:flex'}`}
+          showMinerals={isMapPage}
         />
         <div className={`ml-auto items-center gap-1 sm:gap-2 shrink-0 ${desktopControlsClass}`}>
           <ThemeToggle compact />

@@ -2,10 +2,13 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { subscriptionsApi, paymentsApi, analyticsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
+import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import { PageHeader, StatCard } from './DashboardUi'
+import AdPlacementSlot from '../../components/ads/AdPlacementSlot'
 
 export default function DashboardOverview() {
-  const { user, hasPaidAccess } = useAuth()
+  const { user } = useAuth()
+  const { hasFullMapAccess } = useMapEntitlements()
 
   const { data: subscription } = useQuery({
     queryKey: ['my-subscription'],
@@ -33,7 +36,7 @@ export default function DashboardOverview() {
   const { data: hotspots } = useQuery({
     queryKey: ['hotspots'],
     queryFn: () => analyticsApi.hotspots().then((r) => r.data),
-    enabled: hasPaidAccess,
+    enabled: hasFullMapAccess,
   })
 
   const planName = subscription?.is_active && subscription.plan_detail
@@ -57,16 +60,18 @@ export default function DashboardOverview() {
         <StatCard label="Reports owned" value={String(purchases?.length ?? 0)} />
         <StatCard
           label="Top region"
-          value={hasPaidAccess && topRegion ? topRegion.region : hasPaidAccess ? '-' : 'N/A'}
+          value={hasFullMapAccess && topRegion ? topRegion.region : hasFullMapAccess ? '-' : 'N/A'}
           hint={
-            hasPaidAccess && topRegion
-              ? `${topRegion.feature_count} zones`
-              : hasPaidAccess
+            hasFullMapAccess && topRegion
+              ? `${topRegion.feature_count} areas`
+              : hasFullMapAccess
                 ? 'No mapped data yet. Upload layers in Admin'
                 : 'Subscribe for analytics'
           }
         />
       </div>
+
+      <AdPlacementSlot placement="dashboard_card" className="mb-8" />
 
       <div className="grid sm:grid-cols-2 gap-3">
         <Link

@@ -93,7 +93,7 @@ export default function AdminDashboard() {
         <h1 className="text-2xl font-bold text-app-text">Overview</h1>
         <p className="mt-1 text-sm text-app-muted">
           {isAdmin
-            ? 'Platform health, revenue, and geological data at a glance.'
+            ? 'Platform health, revenue, and geological information at a glance.'
             : 'Your assigned minerals, layers, and map coverage.'}
         </p>
       </div>

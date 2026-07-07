@@ -2,15 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { analyticsApi, geographyApi } from '../../api'
 import MapViewer, { type AdminFitBounds } from '../map/MapViewer'
+import BoundaryVisibilityToggles from '../map/BoundaryVisibilityToggles'
+import { DEFAULT_BOUNDARY_VISIBILITY } from '../map/adminBoundaryStyles'
+import { useMapLabelState } from '../map/usePlaceNamesState'
 import type { ExplorationDraw } from '../map/explorationGeometry'
 import { parseCoordinateQuery } from '../map/parseCoordinate'
+import { formatLatLngPair, parseCoordinateComponent } from '../map/coordinateFormat'
+import { useCoordinateFormatState } from '../map/useCoordinateFormatState'
 import type { AdminBoundaryAtResponse, MineralSearchInsight } from '../../types'
 import SelectionChipList from './SelectionChipList'
 import SearchPickList from './SearchPickList'
 import {
   activeLayerRegions,
+  boundariesForLayerCoverage,
   boundaryMatchesLayerRegions,
   regionBoundaryIdsForLayers,
+  type LayerBoundaryCoverageRef,
   type LayerRegionRef,
 } from './reportEditorText'
 
@@ -28,6 +35,7 @@ interface ReportLocationPickerProps {
   value: ReportLocationValue
   onChange: (next: ReportLocationValue) => void
   layerRegions?: LayerRegionRef[]
+  selectedLayerIds?: number[]
   hasLayersSelected?: boolean
 }
 
@@ -218,15 +226,25 @@ export default function ReportLocationPicker({
   value,
   onChange,
   layerRegions = [],
+  selectedLayerIds = [],
   hasLayersSelected = false,
 }: ReportLocationPickerProps) {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [drawActive, setDrawActive] = useState(false)
   const [hydrated, setHydrated] = useState(false)
-  const [mapSectionOpen, setMapSectionOpen] = useState(!hasLayersSelected)
+  const [layerScopeKey, setLayerScopeKey] = useState('')
+  const [levelFilter, setLevelFilter] = useState<'all' | 1 | 2 | 3 | 4>('all')
   const [mapSearch, setMapSearch] = useState('')
   const [mapSearchDebounced, setMapSearchDebounced] = useState('')
   const [adminFitBounds, setAdminFitBounds] = useState<AdminFitBounds | null>(null)
+  const [boundaryVisibility, setBoundaryVisibility] = useState(DEFAULT_BOUNDARY_VISIBILITY)
+  const {
+    showBasemapLabels,
+    setShowBasemapLabels,
+    showBoundaryLabels,
+    setShowBoundaryLabels,
+  } = useMapLabelState()
+  const [coordinateFormat] = useCoordinateFormatState()
 
   useEffect(() => {
     const timer = window.setTimeout(() => setMapSearchDebounced(mapSearch.trim()), 280)
@@ -234,8 +252,12 @@ export default function ReportLocationPicker({
   }, [mapSearch])
 
   useEffect(() => {
-    if (!hasLayersSelected) setMapSectionOpen(true)
+    if (!hasLayersSelected) setMapSearch('')
   }, [hasLayersSelected])
+
+  useEffect(() => {
+    setLevelFilter('all')
+  }, [selectedLayerIds.join(',')])
 
   const { data: stats } = useQuery({
     queryKey: ['admin-boundary-stats', 'TZ'],
@@ -255,11 +277,17 @@ export default function ReportLocationPicker({
     queryKey: ['report-location-boundaries', availableLevels.map((l) => l.level).join(',')],
     queryFn: async () => {
       const levels = availableLevels.map((l) => l.level)
-      if (!levels.length) return [] as BoundaryOption[]
+      if (!levels.length) return null
       const { data } = await geographyApi.boundaries('TZ', levels.join(','), { display: true })
-      return parseFeatures(data.features ?? [])
+      return data
     },
-    enabled: availableLevels.length > 0 && (hasLayersSelected || mapSectionOpen),
+    enabled: availableLevels.length > 0 && hasLayersSelected,
+  })
+
+  const layerCoverageQuery = useQuery({
+    queryKey: ['report-layer-boundary-coverage', selectedLayerIds.join(',')],
+    queryFn: () => analyticsApi.layerCoverage(selectedLayerIds).then((r) => r.data),
+    enabled: hasLayersSelected && selectedLayerIds.length > 0,
   })
 
   const { data: remoteSearchResults = [] } = useQuery({
@@ -268,18 +296,74 @@ export default function ReportLocationPicker({
     enabled: mapSearchDebounced.length >= 2,
   })
 
-  const allBoundaries = levelQueries.data ?? []
+  const allBoundaries = useMemo(
+    () => parseFeatures(levelQueries.data?.features ?? []),
+    [levelQueries.data],
+  )
   const byId = useMemo(() => new Map(allBoundaries.map((row) => [row.id, row])), [allBoundaries])
 
   const activeRegions = useMemo(() => activeLayerRegions(layerRegions), [layerRegions])
 
+  const layerCoverage = layerCoverageQuery.data
+
   const scopedBoundaries = useMemo(() => {
     if (!hasLayersSelected) return []
+    const coverage: LayerBoundaryCoverageRef | null = layerCoverage
+      ? {
+          region_ids: layerCoverage.region_ids,
+          district_ids: layerCoverage.district_ids,
+          ward_ids: layerCoverage.ward_ids,
+          village_ids: layerCoverage.village_ids,
+          feature_count: layerCoverage.feature_count,
+          bounds: layerCoverage.bounds,
+          center: layerCoverage.center,
+        }
+      : null
+    const scoped = boundariesForLayerCoverage(allBoundaries, coverage, byId, activeRegions)
+    if (scoped.length) return scoped
     if (activeRegions.length) {
       return allBoundaries.filter((row) => boundaryMatchesLayerRegions(row, byId, activeRegions))
     }
-    return allBoundaries
-  }, [allBoundaries, byId, activeRegions, hasLayersSelected])
+    return []
+  }, [allBoundaries, byId, activeRegions, hasLayersSelected, layerCoverage])
+
+  const scopedBoundaryIdSet = useMemo(
+    () => new Set(scopedBoundaries.map((row) => row.id)),
+    [scopedBoundaries]
+  )
+
+  const scopedBoundariesGeoJson = useMemo(() => {
+    const source = levelQueries.data
+    if (!source?.features?.length || !scopedBoundaryIdSet.size) return null
+    const features = source.features.filter((feature) => {
+      const props = (feature as { properties?: { id?: number | string } }).properties
+      const id = Number(props?.id)
+      return Number.isFinite(id) && scopedBoundaryIdSet.has(id)
+    })
+    if (!features.length) return null
+    return {
+      type: 'FeatureCollection' as const,
+      features,
+    }
+  }, [levelQueries.data, scopedBoundaryIdSet])
+
+  const levelCounts = useMemo(() => {
+    const counts = { regions: 0, districts: 0, wards: 0, villages: 0 }
+    for (const row of scopedBoundaries) {
+      if (row.level === 1) counts.regions += 1
+      else if (row.level === 2) counts.districts += 1
+      else if (row.level === 3) counts.wards += 1
+      else if (row.level === 4) counts.villages += 1
+    }
+    return counts
+  }, [scopedBoundaries])
+
+  const filteredScopedBoundaries = useMemo(() => {
+    if (levelFilter === 'all') return scopedBoundaries
+    return scopedBoundaries.filter((row) => row.level === levelFilter)
+  }, [scopedBoundaries, levelFilter])
+
+  const isLoadingScope = levelQueries.isLoading || layerCoverageQuery.isLoading
 
   const layerRegionLabel = useMemo(
     () =>
@@ -290,7 +374,40 @@ export default function ReportLocationPicker({
     [activeRegions]
   )
 
-  const layersWithoutRegion = layerRegions.length > 0 && activeRegions.length === 0
+  const layersWithoutRegion =
+    layerRegions.length > 0 &&
+    activeRegions.length === 0 &&
+    !layerCoverageQuery.isLoading &&
+    !layerCoverage?.region_ids.length &&
+    !layerCoverage?.district_ids.length
+
+  const locationHintDetail = useMemo(() => {
+    if (!hasLayersSelected) return ''
+    if (layerCoverageQuery.isLoading) return 'Loading mapped locations for selected layers…'
+    if (layersWithoutRegion && !scopedBoundaries.length) {
+      return 'No mapped locations found for the selected layers'
+    }
+    const parts: string[] = []
+    if (layerCoverage?.feature_count) {
+      parts.push(`${layerCoverage.feature_count} mapped features`)
+    }
+    const counts = [
+      layerCoverage?.region_ids.length ? `${layerCoverage.region_ids.length} region(s)` : '',
+      layerCoverage?.district_ids.length ? `${layerCoverage.district_ids.length} district(s)` : '',
+      layerCoverage?.ward_ids.length ? `${layerCoverage.ward_ids.length} ward(s)` : '',
+    ].filter(Boolean)
+    if (counts.length) parts.push(counts.join(', '))
+    if (parts.length) return `Showing locations where selected layers have coverage · ${parts.join(' · ')}`
+    if (layerRegionLabel) return `Suggested for ${layerRegionLabel}`
+    return 'Suggested for your selected layers'
+  }, [
+    hasLayersSelected,
+    layerCoverageQuery.isLoading,
+    layersWithoutRegion,
+    scopedBoundaries.length,
+    layerCoverage,
+    layerRegionLabel,
+  ])
 
   const selectedBoundaries = useMemo(
     () =>
@@ -303,29 +420,85 @@ export default function ReportLocationPicker({
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds])
 
   useEffect(() => {
-    if (!hasLayersSelected || hydrated || !allBoundaries.length) return
-    if (value.boundaryIds.length > 0) {
-      setSelectedIds(value.boundaryIds)
+    if (hasLayersSelected) return
+    setHydrated(false)
+    setLayerScopeKey('')
+  }, [hasLayersSelected])
+
+  useEffect(() => {
+    if (!hasLayersSelected || !allBoundaries.length || !scopedBoundaries.length) return
+
+    const scopedIds = scopedBoundaries.map((row) => row.id)
+    const scopedSet = new Set(scopedIds)
+    const pruned = selectedIds.filter((id) => scopedSet.has(id))
+
+    if (value.boundaryIds.length > 0 && !hydrated) {
+      const fromValue = value.boundaryIds.filter((id) => scopedSet.has(id))
+      const nextIds = fromValue.length ? fromValue : pruned
+      setSelectedIds(nextIds)
+      if (nextIds.length) {
+        const selected = nextIds.map((id) => byId.get(id)).filter(Boolean) as BoundaryOption[]
+        publishSelected(value, onChange, selected, byId)
+      }
       setHydrated(true)
       return
     }
-    if (activeRegions.length) {
-      const autoIds = regionBoundaryIdsForLayers(allBoundaries, activeRegions)
+
+    if (hydrated) {
+      if (pruned.length !== selectedIds.length) {
+        setSelectedIds(pruned)
+        const selected = pruned.map((id) => byId.get(id)).filter(Boolean) as BoundaryOption[]
+        publishSelected(value, onChange, selected, byId)
+      }
+      return
+    }
+
+    if (selectedIds.length === 0) {
+      const coverageRegionIds =
+        layerCoverage?.region_ids.filter((id) => scopedSet.has(id)) ?? []
+      const autoIds = coverageRegionIds.length
+        ? coverageRegionIds
+        : regionBoundaryIdsForLayers(allBoundaries, activeRegions).filter((id) => scopedSet.has(id))
       if (autoIds.length) {
         setSelectedIds(autoIds)
-        const selected = autoIds
-          .map((id) => byId.get(id))
-          .filter(Boolean) as BoundaryOption[]
+        const selected = autoIds.map((id) => byId.get(id)).filter(Boolean) as BoundaryOption[]
         publishSelected(value, onChange, selected, byId)
+        if (layerCoverage?.bounds) {
+          setAdminFitBounds({ ...layerCoverage.bounds, key: Date.now() })
+        } else if (selected[0]) {
+          const fit = fitBoundsFromBoundary(selected[0])
+          if (fit) setAdminFitBounds(fit)
+        }
       }
     }
     setHydrated(true)
-  }, [hydrated, allBoundaries, byId, value.boundaryIds, activeRegions, hasLayersSelected])
+  }, [
+    hydrated,
+    allBoundaries,
+    byId,
+    value,
+    onChange,
+    activeRegions,
+    hasLayersSelected,
+    scopedBoundaries,
+    selectedIds,
+    layerCoverage,
+  ])
 
   useEffect(() => {
-    if (hasLayersSelected) return
+    if (!hasLayersSelected) return
+    const nextKey = selectedLayerIds.join(',')
+    if (nextKey === layerScopeKey) return
+    setLayerScopeKey(nextKey)
     setHydrated(false)
-  }, [hasLayersSelected])
+  }, [selectedLayerIds, layerScopeKey, hasLayersSelected])
+
+  useEffect(() => {
+    if (!hasLayersSelected || isLoadingScope) return
+    if (layerCoverage?.bounds) {
+      setAdminFitBounds({ ...layerCoverage.bounds, key: Date.now() })
+    }
+  }, [hasLayersSelected, isLoadingScope, layerCoverage?.bounds, layerScopeKey])
 
   function commitSelection(nextIds: number[], centerOverride?: { lat: number; lng: number }) {
     setSelectedIds(nextIds)
@@ -334,10 +507,16 @@ export default function ReportLocationPicker({
   }
 
   function handleToggle(option: BoundaryOption) {
-    const nextIds = selectedIdSet.has(option.id)
-      ? selectedIds.filter((id) => id !== option.id)
-      : [...selectedIds, option.id]
+    if (!scopedBoundaryIdSet.has(option.id)) return
+    const adding = !selectedIdSet.has(option.id)
+    const nextIds = adding
+      ? [...selectedIds, option.id]
+      : selectedIds.filter((id) => id !== option.id)
     commitSelection(nextIds)
+    if (adding) {
+      const fit = fitBoundsFromBoundary(option)
+      if (fit) setAdminFitBounds(fit)
+    }
   }
 
   function handleRemove(id: number) {
@@ -355,6 +534,7 @@ export default function ReportLocationPicker({
   }
 
   function selectFromMapSearch(option: BoundaryOption, bounds?: AdminFitBounds | null) {
+    if (!scopedBoundaryIdSet.has(option.id)) return
     const fit = fitBoundsFromBoundary(option, bounds)
     if (fit) setAdminFitBounds(fit)
 
@@ -388,7 +568,7 @@ export default function ReportLocationPicker({
     const seen = new Set<number>()
     const rows: { option: BoundaryOption; sublabel: string; bounds?: AdminFitBounds | null }[] = []
 
-    for (const row of allBoundaries) {
+    for (const row of scopedBoundaries) {
       if (!row.name.toLowerCase().includes(q) || seen.has(row.id)) continue
       seen.add(row.id)
       rows.push({
@@ -402,7 +582,7 @@ export default function ReportLocationPicker({
     for (const item of remoteSearchResults) {
       if (!isBoundarySearchResult(item)) continue
       const option = insightToBoundary(item)
-      if (seen.has(option.id)) continue
+      if (seen.has(option.id) || !scopedBoundaryIdSet.has(option.id)) continue
       seen.add(option.id)
       rows.push({
         option,
@@ -413,7 +593,7 @@ export default function ReportLocationPicker({
     }
 
     return rows
-  }, [allBoundaries, byId, mapSearchDebounced, remoteSearchResults])
+  }, [scopedBoundaries, byId, mapSearchDebounced, remoteSearchResults, scopedBoundaryIdSet])
 
   const showMapSearchResults =
     mapSearchDebounced.length >= 2 && (mapSearchResults.length > 0 || mapSearchCoord != null)
@@ -424,6 +604,10 @@ export default function ReportLocationPicker({
       const leaf = leafFromAt(data)
       if (leaf) {
         const resolved = byId.get(leaf.id) ?? leaf
+        if (!scopedBoundaryIdSet.has(resolved.id)) {
+          setDrawActive(false)
+          return
+        }
         const nextIds = selectedIdSet.has(resolved.id)
           ? selectedIds
           : [...selectedIds, resolved.id]
@@ -446,30 +630,37 @@ export default function ReportLocationPicker({
   }
 
   const explorationDraw: ExplorationDraw | null = useMemo(() => {
-    const lat = parseFloat(value.centerLat)
-    const lng = parseFloat(value.centerLng)
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+    const lat = parseCoordinateComponent(value.centerLat, 'lat')
+    const lng = parseCoordinateComponent(value.centerLng, 'lng')
+    if (lat == null || lng == null) return null
     return { mode: 'point', points: [[lng, lat]] }
   }, [value.centerLat, value.centerLng])
 
   const locationListItems = useMemo(
     () =>
-      scopedBoundaries.map((row) => ({
+      filteredScopedBoundaries.map((row) => ({
         id: row.id,
         label: row.name,
         sublabel:
           row.level > 1
             ? `${levelLabel(row.level)} · ${hierarchyPath(row, byId)}`
             : levelLabel(row.level),
+        badge: levelLabel(row.level),
       })),
-    [scopedBoundaries, byId]
+    [filteredScopedBoundaries, byId]
   )
 
-  const locationHint = !hasLayersSelected
-    ? ''
-    : layersWithoutRegion
-      ? 'Suggested from all boundaries (selected layers have no region)'
-      : layerRegionLabel || 'Suggested for your selected layers'
+  const levelTabs = useMemo(
+    () =>
+      [
+        { key: 'all' as const, label: 'All', count: scopedBoundaries.length },
+        { key: 1 as const, label: 'Regions', count: levelCounts.regions },
+        { key: 2 as const, label: 'Districts', count: levelCounts.districts },
+        { key: 3 as const, label: 'Wards', count: levelCounts.wards },
+        { key: 4 as const, label: 'Villages', count: levelCounts.villages },
+      ].filter((tab) => tab.key === 'all' || tab.count > 0),
+    [scopedBoundaries.length, levelCounts]
+  )
 
   if (!availableLevels.length) {
     return (
@@ -483,22 +674,63 @@ export default function ReportLocationPicker({
     )
   }
 
-  const mapPick = (
-    <details
-      className="text-sm group"
-      open={mapSectionOpen}
-      onToggle={(e) => setMapSectionOpen((e.target as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer text-app-text-secondary hover:text-app-text">
-        Pick on map
-      </summary>
-      <div className="mt-3 space-y-2">
-        <div className="relative">
+  const mapPanel = (
+    <div className="location-scope-map">
+      <div className="location-scope-map__frame">
+        <MapViewer
+          key={selectedLayerIds.join('-') || 'none'}
+          layers={[]}
+          minimalChrome
+          showBoundaryControls={false}
+          boundaryControlsOnMap={false}
+          boundaryControlLevels={['regions', 'districts']}
+          boundaryVisibility={boundaryVisibility}
+          onBoundaryVisibilityChange={setBoundaryVisibility}
+          showBasemapLabels={showBasemapLabels}
+          onShowBasemapLabelsChange={setShowBasemapLabels}
+          showBoundaryLabels={showBoundaryLabels}
+          onShowBoundaryLabelsChange={setShowBoundaryLabels}
+          boundariesGeoJson={scopedBoundariesGeoJson}
+          adminFitBounds={adminFitBounds}
+          explorationDraw={explorationDraw}
+          drawActive={drawActive}
+          onDrawPoint={handleMapPoint}
+          className="location-scope-map__viewer"
+        />
+        {isLoadingScope && (
+          <div className="location-scope-map__overlay">
+            <p>Loading map…</p>
+          </div>
+        )}
+        {!isLoadingScope && scopedBoundaries.length === 0 && hasLayersSelected && (
+          <div className="location-scope-map__overlay location-scope-map__overlay--muted">
+            <p>No mapped outlines</p>
+            <span>This layer has no locations with boundary shapes yet</span>
+          </div>
+        )}
+      </div>
+
+      <div className="location-scope-map__layer-controls map-chrome">
+        <span className="location-scope-map__layer-controls-title">Map display</span>
+        <BoundaryVisibilityToggles
+          availableLevels={['regions', 'districts']}
+          value={boundaryVisibility}
+          onChange={setBoundaryVisibility}
+          showBasemapLabels={showBasemapLabels}
+          onShowBasemapLabelsChange={setShowBasemapLabels}
+          showBoundaryLabels={showBoundaryLabels}
+          onShowBoundaryLabelsChange={setShowBoundaryLabels}
+          compact
+        />
+      </div>
+
+      <div className="location-scope-map__tools">
+        <div className="relative flex-1 min-w-0">
           <input
             type="search"
             value={mapSearch}
             onChange={(e) => setMapSearch(e.target.value)}
-            placeholder="Search place or coordinates…"
+            placeholder="Search on map…"
             className="input w-full text-sm"
             autoComplete="off"
           />
@@ -512,7 +744,8 @@ export default function ReportLocationPicker({
                     className="w-full text-left px-3 py-2 text-sm hover:bg-app-subtle"
                   >
                     <span className="text-app-text">
-                      Go to {mapSearchCoord.lat.toFixed(4)}, {mapSearchCoord.lng.toFixed(4)}
+                      Go to{' '}
+                      {formatLatLngPair(mapSearchCoord.lat, mapSearchCoord.lng, coordinateFormat)}
                     </span>
                     <span className="block text-xs text-app-text-muted">Coordinates</span>
                   </button>
@@ -533,78 +766,114 @@ export default function ReportLocationPicker({
             </ul>
           )}
         </div>
-
         <button
           type="button"
-          className={`text-xs px-2.5 py-1 rounded-lg font-medium ${
-            drawActive ? 'bg-terra-600 text-white' : 'bg-app-subtle text-app-text-secondary'
-          }`}
+          className={`location-scope-map__pick ${drawActive ? 'location-scope-map__pick--active' : ''}`}
           onClick={() => setDrawActive((v) => !v)}
         >
-          {drawActive ? 'Click map to add…' : 'Enable map pick'}
+          {drawActive ? 'Click map…' : 'Pick point'}
         </button>
-        <div className="h-48 rounded-lg border border-app-border overflow-hidden">
-          <MapViewer
-            layers={[]}
-            minimalChrome
-            showBoundaryControls
-            boundaryControlLevels={['regions', 'districts']}
-            adminFitBounds={adminFitBounds}
-            explorationDraw={explorationDraw}
-            drawActive={drawActive}
-            onDrawPoint={handleMapPoint}
-            className="h-full w-full"
-          />
-        </div>
       </div>
-    </details>
+    </div>
+  )
+
+  const coverageSummary = hasLayersSelected ? (
+    <p className="location-scope__coverage">
+      {isLoadingScope ? (
+        'Loading mapped locations…'
+      ) : (
+        <>
+          <strong>{scopedBoundaries.length.toLocaleString()}</strong> locations in layer coverage
+          {locationHintDetail ? ` · ${locationHintDetail}` : ''}
+        </>
+      )}
+    </p>
+  ) : null
+
+  const locationListPanel = (
+    <div className="location-scope__list">
+      {levelTabs.length > 1 && (
+        <div className="location-scope-tabs" role="tablist" aria-label="Location level">
+          {levelTabs.map((tab) => (
+            <button
+              key={String(tab.key)}
+              type="button"
+              role="tab"
+              aria-selected={levelFilter === tab.key}
+              className={`location-scope-tabs__btn ${levelFilter === tab.key ? 'location-scope-tabs__btn--active' : ''}`}
+              onClick={() => setLevelFilter(tab.key)}
+            >
+              {tab.label}
+              <span className="location-scope-tabs__count">{tab.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <SearchPickList
+        items={locationListItems}
+        selectedIds={selectedIdSet}
+        onToggle={(id) => {
+          const option = byId.get(id)
+          if (option) handleToggle(option)
+        }}
+        loading={isLoadingScope}
+        placeholder="Filter locations…"
+        emptyLabel={
+          isLoadingScope
+            ? 'Loading locations…'
+            : levelFilter === 'all'
+              ? 'No mapped locations for this layer'
+              : `No ${levelTabs.find((tab) => tab.key === levelFilter)?.label.toLowerCase() ?? 'locations'} in scope`
+        }
+        emptyHint={
+          !isLoadingScope && scopedBoundaries.length === 0
+            ? 'The layer may have no features yet, or boundaries may not be uploaded for this area.'
+            : !isLoadingScope && locationListItems.length === 0
+              ? 'Try another level tab or pick a point on the map.'
+              : undefined
+        }
+        compactWhenEmpty
+        maxHeight="max-h-56"
+      />
+    </div>
   )
 
   return (
-    <div className="space-y-3">
+    <div className="location-scope">
       {selectedBoundaries.length > 0 && (
-        <div className="flex flex-wrap items-start gap-2">
-          <div className="flex-1 min-w-0">
-            <SelectionChipList
-              items={selectedBoundaries.map((row) => ({
-                id: row.id,
-                label: row.name,
-                meta: locationChipMeta(row, byId),
-              }))}
-              onRemove={(id) => handleRemove(Number(id))}
-            />
-          </div>
+        <div className="location-scope__selection">
+          <SelectionChipList
+            items={selectedBoundaries.map((row) => ({
+              id: row.id,
+              label: row.name,
+              meta: locationChipMeta(row, byId),
+            }))}
+            onRemove={(id) => handleRemove(Number(id))}
+          />
           <button type="button" onClick={handleClearAll} className="btn-secondary text-xs px-2.5 py-1.5 shrink-0">
-            Clear
+            Clear all
           </button>
         </div>
       )}
 
       {!hasLayersSelected ? (
-        <>
-          <p className="text-sm text-app-text-muted py-4 text-center rounded-lg border border-dashed border-app-border">
-            Select a layer to see suggested locations
+        <div className="location-scope-empty">
+          <div className="location-scope-empty__icon" aria-hidden>
+            ◫
+          </div>
+          <p className="location-scope-empty__title">Choose a layer first</p>
+          <p className="location-scope-empty__hint">
+            Locations are scoped to where your selected layer has mapped data.
           </p>
-          {mapPick}
-        </>
+        </div>
       ) : (
         <>
-          {locationHint && <p className="text-xs text-app-text-muted">{locationHint}</p>}
-
-          <SearchPickList
-            items={locationListItems}
-            selectedIds={selectedIdSet}
-            onToggle={(id) => {
-              const option = byId.get(id)
-              if (option) handleToggle(option)
-            }}
-            loading={levelQueries.isLoading}
-            placeholder="Search locations…"
-            emptyLabel={levelQueries.isLoading ? 'Loading locations…' : 'No locations in this scope'}
-            maxHeight="max-h-56"
-          />
-
-          {mapPick}
+          {coverageSummary}
+          <div className="location-scope__workspace">
+            <div className="location-scope__map">{mapPanel}</div>
+            {locationListPanel}
+          </div>
         </>
       )}
     </div>

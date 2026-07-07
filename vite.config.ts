@@ -14,6 +14,8 @@ const apiProxy = {
   '/api': {
     target: 'http://localhost:8085',
     changeOrigin: true,
+    timeout: 120_000,
+    proxyTimeout: 120_000,
   },
 }
 

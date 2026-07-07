@@ -72,4 +72,7 @@ export function recommendedZoomForAnalysisZone(
 
 export const DEFAULT_ANALYSIS_KM2 = 10
 
+/** Platform cap: included default + paid extension cannot exceed this. */
+export const MAX_ANALYSIS_KM2 = 300
+
 export const EXTENSION_KM2_OPTIONS = [10, 25, 50, 100] as const

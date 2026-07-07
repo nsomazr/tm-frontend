@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { geographyApi } from '../../api'
 import BoundaryFileDropzone from '../../components/admin/BoundaryFileDropzone'
+import BoundaryGeologyEditor from '../../components/admin/BoundaryGeologyEditor'
 import BoundaryLevelPicker from '../../components/admin/BoundaryLevelPicker'
 import CountrySelect from '../../components/map/CountrySelect'
 import { BOUNDARY_LEVEL_OPTIONS, boundaryLevelByValue } from '../../components/map/boundaryLevelOptions'
@@ -135,7 +136,7 @@ export default function AdminBoundariesPage() {
       : null
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-4xl">
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-app-text">{m.adminBoundaries.title}</h1>
@@ -208,12 +209,12 @@ export default function AdminBoundariesPage() {
           />
         </label>
 
-        <label className="flex items-center gap-2 text-sm text-app-secondary cursor-pointer">
+        <label className="checkbox-label checkbox-label--muted">
           <input
             type="checkbox"
             checked={replace}
             onChange={(e) => setReplace(e.target.checked)}
-            className="rounded border-app-border text-terra-600"
+            className="checkbox"
             disabled={importMutation.isPending}
           />
           {t('adminBoundaries.replaceExisting', { layer: levelMeta.boundaryLabel.toLowerCase() })}
@@ -253,6 +254,11 @@ export default function AdminBoundariesPage() {
         >
           {importMutation.isPending ? m.adminBoundaries.uploading : m.adminBoundaries.upload}
         </button>
+      </section>
+
+      <section className="rounded-xl border border-app-border bg-app-surface p-5 space-y-4 mt-6">
+        <h2 className="font-semibold text-app-text">{m.adminBoundaries.geology.sectionTitle}</h2>
+        <BoundaryGeologyEditor country={country} />
       </section>
     </div>
   )

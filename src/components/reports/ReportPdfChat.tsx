@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { reportsApi } from '../../api'
+import AssistantMessageContent from '../assistant/AssistantMessageContent'
+import { SendArrowIcon, TerraAssistantAvatar } from '../assistant/AssistantIcons'
 import type { ReportChatMessage } from '../../types'
 
 interface ReportPdfChatProps {
@@ -8,9 +11,30 @@ interface ReportPdfChatProps {
   enabled: boolean
 }
 
+function chatErrorMessage(err: unknown): string {
+  if (isAxiosError(err)) {
+    const status = err.response?.status
+    const data = err.response?.data as { detail?: string } | undefined
+    if (status === 402) {
+      return 'You have used all assistant credits for this period.'
+    }
+    if (typeof data?.detail === 'string' && data.detail.trim()) {
+      return data.detail
+    }
+  }
+  return 'Could not send message. Try again in a moment.'
+}
+
+function displayMessageContent(message: ReportChatMessage): string {
+  if (message.role !== 'user') return message.content
+  const match = message.content.match(/User question:\s*\n([\s\S]+)$/i)
+  return match?.[1]?.trim() || message.content
+}
+
 export default function ReportPdfChat({ slug, enabled }: ReportPdfChatProps) {
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ReportChatMessage[]>([])
+  const [pendingUser, setPendingUser] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
 
@@ -24,72 +48,107 @@ export default function ReportPdfChat({ slug, enabled }: ReportPdfChatProps) {
     if (data?.messages) setMessages(data.messages)
   }, [data])
 
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
   const send = useMutation({
     mutationFn: (message: string) => reportsApi.sendChat(slug, message).then((r) => r.data),
     onSuccess: (payload) => {
       setMessages(payload.messages)
       setInput('')
+      setPendingUser(null)
       queryClient.invalidateQueries({ queryKey: ['subscription'] })
+    },
+    onError: () => {
+      setPendingUser(null)
     },
   })
 
+  const threadMessages: ReportChatMessage[] = pendingUser
+    ? [...messages, { role: 'user', content: pendingUser }]
+    : messages
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [threadMessages, send.isPending])
+
+  const sendError = send.isError ? chatErrorMessage(send.error) : null
+
   if (!enabled) return null
 
-  return (
-    <section className="card mt-8">
-      <h2 className="text-lg font-semibold text-slate-900">Ask about this PDF</h2>
-      <p className="text-sm text-slate-600 mt-1">
-        Chat with the uploaded report. Answers cite page numbers from the document.
-      </p>
+  const canSend = input.trim().length > 0 && !send.isPending
 
-      <div className="mt-4 max-h-72 overflow-y-auto space-y-3 rounded-lg bg-slate-50 border border-slate-200 p-3">
-        {messages.length === 0 ? (
-          <p className="text-sm text-slate-500">Ask a question about findings, methodology, or recommendations.</p>
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    const text = input.trim()
+    if (!text || send.isPending) return
+    setPendingUser(text)
+    setInput('')
+    send.mutate(text)
+  }
+
+  return (
+    <section className="report-pdf-chat card mt-8">
+      <header className="report-pdf-chat__header">
+        <h2 className="text-lg font-semibold text-app-text">Ask about this PDF</h2>
+      </header>
+
+      <div className="report-pdf-chat__thread" aria-live="polite">
+        {threadMessages.length === 0 && !send.isPending ? (
+          <p className="report-pdf-chat__empty">Ask a question about findings, methods, or recommendations.</p>
         ) : (
-          messages.map((msg, index) => (
+          threadMessages.map((msg, index) => (
             <div
               key={`${msg.role}-${index}`}
-              className={`text-sm rounded-lg px-3 py-2 ${
-                msg.role === 'user' ? 'bg-white border border-slate-200 ml-8' : 'bg-terra-50 border border-terra-100 mr-8'
-              }`}
+              className={`report-pdf-chat__row ${msg.role === 'user' ? 'report-pdf-chat__row--user' : 'report-pdf-chat__row--assistant'}`}
             >
-              <p className="text-[10px] uppercase font-semibold text-slate-500 mb-1">
-                {msg.role === 'user' ? 'You' : 'Terra Meta'}
-              </p>
-              <p className="text-slate-800 whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'assistant' && <TerraAssistantAvatar className="report-pdf-chat__avatar shrink-0" />}
+              <div
+                className={`report-pdf-chat__bubble ${
+                  msg.role === 'user' ? 'report-pdf-chat__bubble--user' : 'report-pdf-chat__bubble--assistant'
+                }`}
+              >
+                <AssistantMessageContent content={displayMessageContent(msg)} role={msg.role} />
+              </div>
             </div>
           ))
         )}
+
+        {send.isPending && (
+          <div className="report-pdf-chat__row report-pdf-chat__row--assistant">
+            <TerraAssistantAvatar className="report-pdf-chat__avatar shrink-0" />
+            <div className="report-pdf-chat__bubble report-pdf-chat__bubble--assistant report-pdf-chat__bubble--typing">
+              <span className="report-pdf-chat__spinner" aria-hidden />
+              <span>Reading the report…</span>
+            </div>
+          </div>
+        )}
+
         <div ref={endRef} />
       </div>
 
-      <form
-        className="mt-3 flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault()
-          const text = input.trim()
-          if (!text || send.isPending) return
-          send.mutate(text)
-        }}
-      >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="What does the report say about…"
-          className="input flex-1 text-sm"
-          disabled={send.isPending}
-        />
-        <button type="submit" className="btn-primary text-sm shrink-0" disabled={!input.trim() || send.isPending}>
-          {send.isPending ? '…' : 'Ask'}
-        </button>
+      <form className="report-pdf-chat__composer" onSubmit={handleSubmit}>
+        <div className="report-pdf-chat__input-wrap">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="What does the report say about…"
+            className="report-pdf-chat__input"
+            disabled={send.isPending}
+            aria-label="Ask about this PDF"
+          />
+          <button
+            type="submit"
+            disabled={!canSend}
+            aria-label="Send"
+            className={`report-pdf-chat__send ${canSend ? 'report-pdf-chat__send--active' : ''}`}
+          >
+            {send.isPending ? (
+              <span className="report-pdf-chat__spinner report-pdf-chat__spinner--inverse" aria-hidden />
+            ) : (
+              <SendArrowIcon className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+        {sendError && <p className="report-pdf-chat__error">{sendError}</p>}
       </form>
-      {send.isError && (
-        <p className="text-xs text-red-600 mt-2">Could not send message. You may need more assistant credits.</p>
-      )}
     </section>
   )
 }

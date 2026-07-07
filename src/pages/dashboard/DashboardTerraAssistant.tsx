@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import {
   AnalyticsQuickIcon,
   ChevronRightIcon,
@@ -27,7 +28,8 @@ const QUICK_ACTIONS = [
 ] as const
 
 export default function DashboardTerraAssistant() {
-  const { hasPaidAccess, user } = useAuth()
+  const { user } = useAuth()
+  const { hasFullMapAccess } = useMapEntitlements()
   const { m } = useTranslation()
   const ta = m.assistant
 
@@ -66,7 +68,7 @@ export default function DashboardTerraAssistant() {
 
       <section className="flex flex-1 min-h-[280px] flex-col overflow-hidden rounded-2xl border border-app-border bg-app-surface shadow-soft dark:shadow-soft-dark">
         <TerraAssistantPanel
-          hasPaidAccess={hasPaidAccess}
+          hasPaidAccess={hasFullMapAccess}
           initialCredits={user?.assistant_credits ?? null}
           insight={null}
           mode="account"

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { mapsApi } from '../../api'
+import { geographyApi, mapsApi } from '../../api'
 import {
   COORDINATE_SYSTEMS,
   coordinateSystemById,
@@ -8,29 +9,47 @@ import {
   type CoordinateSystemId,
 } from '../../components/map/coordinateSystems'
 import { toast } from '../../components/ui/toast'
+import { useDisplayName } from '../../i18n/useDisplayName'
+import type { Country } from '../../types'
+
+function normalizeCountries(data: Country[] | { results?: Country[] } | undefined): Country[] {
+  if (!data) return []
+  if (Array.isArray(data)) return data
+  return data.results ?? []
+}
 
 export default function AdminMapSettingsPage() {
   const qc = useQueryClient()
+  const displayName = useDisplayName()
+  const [countryCode, setCountryCode] = useState('TZ')
+
+  const { data: countriesData, isLoading: countriesLoading } = useQuery({
+    queryKey: ['countries'],
+    queryFn: () => geographyApi.countries().then((r) => r.data),
+  })
+
+  const countries = useMemo(() => normalizeCountries(countriesData), [countriesData])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['map-platform-settings'],
-    queryFn: () => mapsApi.platformSettings().then((r) => r.data),
+    queryKey: ['map-platform-settings', countryCode],
+    queryFn: () => mapsApi.platformSettings(countryCode).then((r) => r.data),
   })
 
   const save = useMutation({
     mutationFn: (coordinate_system: CoordinateSystemId) =>
-      mapsApi.updatePlatformSettings({ coordinate_system }),
+      mapsApi.updatePlatformSettings({ country: countryCode, coordinate_system }),
     onSuccess: (res) => {
       const id = res.data.coordinate_system as CoordinateSystemId
-      storeCoordinateSystem(id)
-      qc.setQueryData(['map-platform-settings'], res.data)
-      toast.success('Coordinate system updated for all map users')
+      storeCoordinateSystem(id, res.data.country)
+      qc.setQueryData(['map-platform-settings', res.data.country], res.data)
+      toast.success(`Coordinate system updated for ${res.data.country}`)
     },
     onError: () => toast.error('Could not save coordinate system'),
   })
 
   const active = data?.coordinate_system ?? 'arc1960'
   const current = coordinateSystemById(active as CoordinateSystemId)
+  const selectedCountry = countries.find((c) => c.code === countryCode)
 
   return (
     <div className="max-w-2xl">
@@ -38,19 +57,36 @@ export default function AdminMapSettingsPage() {
         <p className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-1">Platform</p>
         <h1 className="text-2xl font-bold text-app-text">Map settings</h1>
         <p className="mt-2 text-sm text-app-muted max-w-xl">
-          Choose the coordinate reference system (CRS) used across the public map. Explore area
-          labels, saved point lists, and coordinate readouts. Map users cannot change this; only
-          platform admins can.
+          Choose the coordinate reference system (CRS) used on the public map for each country.
+          Explore area labels, saved point lists, and coordinate readouts follow the active
+          country on the map. Map users cannot change this; only platform admins can.
         </p>
       </div>
 
       <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
-        <div className="border-b app-divider px-5 py-4">
-          <h2 className="font-semibold text-app-text">Coordinate reference system</h2>
-          <p className="text-sm text-app-muted mt-1">
-            Tanzania datasets commonly use <strong className="text-app-text-secondary">Arc 1960</strong>{' '}
-            geographic or UTM south zones 35S–37S. WGS 84 is used for GPS / satellite data.
-          </p>
+        <div className="border-b app-divider px-5 py-4 space-y-3">
+          <div>
+            <h2 className="font-semibold text-app-text">Coordinate reference system</h2>
+            <p className="text-sm text-app-muted mt-1">
+              Tanzania datasets commonly use <strong className="text-app-text-secondary">Arc 1960</strong>{' '}
+              geographic or UTM south zones 35S–37S. WGS 84 is used for GPS / satellite data.
+            </p>
+          </div>
+          <label className="block max-w-xs">
+            <span className="text-xs font-semibold uppercase tracking-wide text-app-muted">Country</span>
+            <select
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
+              disabled={countriesLoading}
+              className="mt-1.5 w-full rounded-lg border border-app-border bg-app-surface px-3 py-2 text-sm text-app-text"
+            >
+              {countries.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {displayName(country)} ({country.code})
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {isLoading ? (
@@ -109,13 +145,17 @@ export default function AdminMapSettingsPage() {
 
         <div className="border-t app-divider px-5 py-4 bg-app-subtle/40">
           <p className="text-xs text-app-text-muted">
-            Current selection:{' '}
+            Current selection for{' '}
+            <span className="font-medium text-app-text-secondary">
+              {selectedCountry ? displayName(selectedCountry) : countryCode}
+            </span>
+            :{' '}
             <span className="font-medium text-app-text-secondary">{current.label}</span>
             {' '}({current.epsg})
           </p>
           <p className="text-xs text-app-text-muted mt-2">
-            Changes apply immediately for everyone viewing the map. Manual coordinate entry in Explore
-            area always uses WGS84 lat/lng; labels display in the selected CRS above.
+            Changes apply immediately for everyone viewing the map in this country. Manual coordinate
+            entry in Explore area always uses WGS84 lat/lng; labels display in the selected CRS above.
           </p>
         </div>
       </section>

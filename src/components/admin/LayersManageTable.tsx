@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useState, useEffect, useRef, type ReactNode } from 'react'
 import type { MapLayer } from '../../types'
+import ActionMenu, { ActionMenuItem } from '../ui/ActionMenu'
 import { sortLayersTopToBottom, stackPositionLabel } from './layerOrder'
 import { layerDisplayColor } from './layerColors'
 import {
@@ -9,6 +10,12 @@ import {
 } from '../map/structureLineRank'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import { useAlternateName } from '../../i18n/useAlternateName'
+import {
+  clampBufferKm,
+  formatBufferKmRange,
+  LAYER_BUFFER_KM_MAX,
+  LAYER_BUFFER_KM_MIN,
+} from '../../constants/layerBufferZone'
 
 export const LAYER_ARRANGE_GROUPS = [
   {
@@ -41,145 +48,62 @@ function GripIcon() {
   )
 }
 
-function VerticalEllipsisIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <circle cx="8" cy="3" r="1.25" />
-      <circle cx="8" cy="8" r="1.25" />
-      <circle cx="8" cy="13" r="1.25" />
-    </svg>
-  )
-}
-
-interface LayerActionsMenuProps {
-  layer: MapLayer
-  isOpen: boolean
-  historyOpen: boolean
-  isAdmin: boolean
-  updateBusy: boolean
-  deleteBusy: boolean
-  onToggle: () => void
-  onClose: () => void
-  onToggleExpanded: () => void
-  onToggleActive: () => void
-  onTogglePreview: () => void
-  onDelete: () => void
-  onEditDetails?: () => void
-}
-
 function LayerActionsMenu({
   layer,
+  layerLabel,
   isOpen,
   historyOpen,
   isAdmin,
   updateBusy,
   deleteBusy,
-  onToggle,
-  onClose,
+  onOpenChange,
   onToggleExpanded,
   onToggleActive,
   onTogglePreview,
   onDelete,
   onEditDetails,
-}: LayerActionsMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!isOpen) return
-    const handlePointerDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose()
-      }
-    }
-    document.addEventListener('mousedown', handlePointerDown)
-    return () => document.removeEventListener('mousedown', handlePointerDown)
-  }, [isOpen, onClose])
-
-  const itemClass =
-    'block w-full text-left px-3 py-2 text-sm hover:bg-app-subtle disabled:opacity-50 disabled:cursor-not-allowed'
-
+}: {
+  layer: MapLayer
+  layerLabel: string
+  isOpen: boolean
+  historyOpen: boolean
+  isAdmin: boolean
+  updateBusy?: boolean
+  deleteBusy?: boolean
+  onOpenChange: (open: boolean) => void
+  onToggleExpanded: () => void
+  onToggleActive: () => void
+  onTogglePreview: () => void
+  onDelete: () => void
+  onEditDetails?: () => void
+}) {
   return (
-    <div className="relative inline-block" ref={menuRef}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-label="Layer actions"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-app-text-muted hover:bg-app-subtle hover:text-app-text"
-      >
-        <VerticalEllipsisIcon />
-      </button>
-      {isOpen && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-app-border bg-app-surface py-1 shadow-lg"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onToggleExpanded()
-              onClose()
-            }}
-            className={`${itemClass} text-terra-600 dark:text-terra-400`}
-          >
-            {historyOpen ? 'Hide history' : 'History'}
-          </button>
-          {onEditDetails && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onEditDetails()
-                onClose()
-              }}
-              className={`${itemClass} text-app-text-secondary`}
-            >
-              Edit
-            </button>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onToggleActive()
-              onClose()
-            }}
-            disabled={updateBusy}
-            className={`${itemClass} text-app-text-secondary`}
-          >
-            {layer.is_active ? 'Hide' : 'Show'}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              onTogglePreview()
-              onClose()
-            }}
-            disabled={updateBusy}
-            className={`${itemClass} text-app-text-secondary`}
-          >
-            {layer.is_preview ? 'Unpreview' : 'Preview'}
-          </button>
-          {isAdmin && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onDelete()
-                onClose()
-              }}
-              disabled={deleteBusy}
-              className={`${itemClass} text-red-600 dark:text-red-400`}
-            >
-              Delete
-            </button>
-          )}
-        </div>
+    <ActionMenu
+      label={`Actions for ${layerLabel}`}
+      open={isOpen}
+      onOpenChange={onOpenChange}
+      minWidth="10rem"
+    >
+      <ActionMenuItem onClick={onToggleExpanded} className="text-sm text-terra-600 dark:text-terra-400">
+        {historyOpen ? 'Hide history' : 'History'}
+      </ActionMenuItem>
+      {onEditDetails && (
+        <ActionMenuItem onClick={onEditDetails} className="text-sm text-app-text-secondary">
+          Edit
+        </ActionMenuItem>
       )}
-    </div>
+      <ActionMenuItem onClick={onToggleActive} disabled={updateBusy} className="text-sm text-app-text-secondary">
+        {layer.is_active ? 'Hide' : 'Show'}
+      </ActionMenuItem>
+      <ActionMenuItem onClick={onTogglePreview} disabled={updateBusy} className="text-sm text-app-text-secondary">
+        {layer.is_preview ? 'Unpreview' : 'Preview'}
+      </ActionMenuItem>
+      {isAdmin && (
+        <ActionMenuItem onClick={onDelete} disabled={deleteBusy} destructive className="text-sm">
+          Delete
+        </ActionMenuItem>
+      )}
+    </ActionMenu>
   )
 }
 
@@ -194,11 +118,13 @@ interface LayersManageTableProps {
   showHidden: boolean
   onShowHiddenChange: (value: boolean) => void
   expandedLayerId: number | null
+  highlightLayerId?: number | null
   onToggleExpanded: (layerId: number) => void
   onReorderGroup: (groupType: string, orderedTopToBottom: MapLayer[]) => void
   onResetDefault: () => void
   onColorChange: (layer: MapLayer, color: string) => void
   onStructureRankChange: (layer: MapLayer, rank: StructureLineRank) => void
+  onBufferChange: (layer: MapLayer, bufferKm: number | null) => void
   onToggleActive: (layer: MapLayer) => void
   onTogglePreview: (layer: MapLayer) => void
   onDelete: (layer: MapLayer) => void
@@ -216,11 +142,13 @@ export default function LayersManageTable({
   showHidden,
   onShowHiddenChange,
   expandedLayerId,
+  highlightLayerId = null,
   onToggleExpanded,
   onReorderGroup,
   onResetDefault,
   onColorChange,
   onStructureRankChange,
+  onBufferChange,
   onToggleActive,
   onTogglePreview,
   onDelete,
@@ -236,6 +164,12 @@ export default function LayersManageTable({
   const [dragGroup, setDragGroup] = useState<string | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [openMenuLayerId, setOpenMenuLayerId] = useState<number | null>(null)
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null)
+
+  useEffect(() => {
+    if (highlightLayerId == null) return
+    highlightRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [highlightLayerId])
 
   const canResetStack = stackableLayers.length > 1
 
@@ -275,7 +209,7 @@ export default function LayersManageTable({
   }
 
   return (
-    <div className="card overflow-hidden">
+    <div className="card overflow-x-auto">
       <div className="px-5 py-4 border-b app-divider flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h2 className="font-bold text-app-text">Commodity layers ({layers.length})</h2>
@@ -284,14 +218,14 @@ export default function LayersManageTable({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <label className="flex items-center gap-2 text-sm text-app-text-secondary">
+          <label className="checkbox-label checkbox-label--muted">
             <input
               type="checkbox"
               checked={showHidden}
               onChange={(e) => onShowHiddenChange(e.target.checked)}
-              className="rounded border-app-border"
+              className="checkbox"
             />
-            Include hidden layers
+            <span>Include hidden layers</span>
           </label>
           {canResetStack && (
             <button
@@ -318,6 +252,7 @@ export default function LayersManageTable({
               <th>Last upload</th>
               <th>Color</th>
               <th>Line weight</th>
+              <th>Buffer</th>
               <th className="w-12 text-right" aria-label="Actions" />
             </tr>
           </thead>
@@ -328,7 +263,7 @@ export default function LayersManageTable({
               return (
                 <Fragment key={group.type}>
                   <tr className="bg-app-subtle/60">
-                    <td colSpan={9} className="!py-2.5">
+                    <td colSpan={10} className="!py-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold text-app-text">{group.label}</p>
@@ -353,12 +288,17 @@ export default function LayersManageTable({
                     const isDragging =
                       dragGroup === group.type && dragIndex === activeIndex && activeIndex >= 0
 
+                    const isHighlighted = highlightLayerId === layer.id
+
                     return (
                       <Fragment key={layer.id}>
                         <tr
+                          ref={isHighlighted ? highlightRowRef : undefined}
                           className={`${!layer.is_active ? 'opacity-70' : ''} ${
                             canDrag ? 'hover:bg-app-subtle/40' : ''
-                          } ${isDragging ? 'opacity-50 bg-app-subtle/40' : ''}`}
+                          } ${isDragging ? 'opacity-50 bg-app-subtle/40' : ''} ${
+                            isHighlighted ? 'bg-terra-500/10 ring-1 ring-inset ring-terra-500/35' : ''
+                          }`}
                           draggable={canDrag}
                           onDragStart={() => {
                             if (!canDrag || activeIndex < 0) return
@@ -474,20 +414,52 @@ export default function LayersManageTable({
                               <span className="text-app-text-muted">-</span>
                             )}
                           </td>
+                          <td>
+                            <input
+                              type="number"
+                              min={LAYER_BUFFER_KM_MIN}
+                              max={LAYER_BUFFER_KM_MAX}
+                              step={1}
+                              value={layer.buffer_km ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value
+                                if (raw === '') {
+                                  onBufferChange(layer, null)
+                                  return
+                                }
+                                const n = Number(raw)
+                                if (Number.isFinite(n)) onBufferChange(layer, n)
+                              }}
+                              onBlur={(e) => {
+                                const raw = e.target.value
+                                if (raw === '') return
+                                const n = Number(raw)
+                                if (!Number.isFinite(n)) {
+                                  onBufferChange(layer, null)
+                                  return
+                                }
+                                const clamped = clampBufferKm(n)
+                                if (clamped !== layer.buffer_km) onBufferChange(layer, clamped)
+                              }}
+                              disabled={updateBusy}
+                              placeholder="Off"
+                              className="input !py-1 !px-2 text-xs max-w-[6.5rem]"
+                              aria-label={`Reference buffer for ${displayName(layer)}`}
+                              title={`Insight influence radius (${formatBufferKmRange()}, leave empty to disable)`}
+                            />
+                          </td>
                           <td className="text-right w-12">
                             <LayerActionsMenu
                               layer={layer}
+                              layerLabel={displayName(layer)}
                               isOpen={openMenuLayerId === layer.id}
                               historyOpen={expandedLayerId === layer.id}
                               isAdmin={isAdmin}
                               updateBusy={updateBusy}
                               deleteBusy={deleteBusy}
-                              onToggle={() =>
-                                setOpenMenuLayerId((current) =>
-                                  current === layer.id ? null : layer.id
-                                )
+                              onOpenChange={(open) =>
+                                setOpenMenuLayerId(open ? layer.id : null)
                               }
-                              onClose={() => setOpenMenuLayerId(null)}
                               onToggleExpanded={() => onToggleExpanded(layer.id)}
                               onToggleActive={() => onToggleActive(layer)}
                               onTogglePreview={() => onTogglePreview(layer)}
@@ -500,7 +472,7 @@ export default function LayersManageTable({
                         </tr>
                         {expandedLayerId === layer.id && (
                           <tr>
-                            <td colSpan={9} className="!py-3 bg-app-subtle/40">
+                            <td colSpan={10} className="!py-3 bg-app-subtle/40">
                               {renderVersionHistory(layer.id)}
                             </td>
                           </tr>

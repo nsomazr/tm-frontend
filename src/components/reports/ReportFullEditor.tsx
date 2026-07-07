@@ -13,6 +13,8 @@ interface ReportFullEditorProps {
   words?: number
   approved?: boolean
   empty?: boolean
+  hideToolbar?: boolean
+  fitWorkspace?: boolean
 }
 
 export default function ReportFullEditor({
@@ -26,16 +28,22 @@ export default function ReportFullEditor({
   words: wordsProp,
   approved = false,
   empty = false,
+  hideToolbar = false,
+  fitWorkspace = false,
 }: ReportFullEditorProps) {
   const words = wordsProp ?? reportWordCount(executiveSummary)
   const findingsCount = reportFindingsCount(executiveSummary)
 
   return (
-    <section className={`report-canvas report-canvas--full ${generating ? 'report-canvas--generating' : ''}`}>
-      <div className="report-canvas__toolbar">
-        {contextLine && <span className="report-canvas__context">{contextLine}</span>}
-        <ReportMetricsPanel words={words} findingsCount={findingsCount} approved={approved} compact />
-      </div>
+    <section
+      className={`report-canvas report-canvas--full ${fitWorkspace ? 'report-canvas--fit-workspace' : ''} ${generating ? 'report-canvas--generating' : ''}`}
+    >
+      {!hideToolbar && (
+        <div className="report-canvas__toolbar">
+          {contextLine && <span className="report-canvas__context">{contextLine}</span>}
+          <ReportMetricsPanel words={words} findingsCount={findingsCount} approved={approved} compact />
+        </div>
+      )}
 
       <div className="report-canvas__surface">
         <article className="report-canvas__content">
@@ -60,8 +68,8 @@ export default function ReportFullEditor({
             variant="body"
             value={executiveSummary}
             onChange={onExecutiveSummaryChange}
-            placeholder="Report body — use the toolbar for headings, bold, underline, and lists."
-            minHeight="min(62vh, 720px)"
+            placeholder="Report body: headings, lists, links, colors, and standard sections available in the toolbar."
+            minHeight={fitWorkspace ? '100%' : 'min(62vh, 680px)'}
             disabled={generating}
           />
         </article>

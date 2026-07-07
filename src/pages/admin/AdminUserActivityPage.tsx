@@ -1,8 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { DonutChart, VerticalBarChart } from '../../components/analytics/Charts'
 import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 import type { AdminUserActivityAnalytics } from '../../types'
+
+const ACTIVITY_LOG_PAGE_SIZE = 5
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -19,7 +24,79 @@ function kindLabel(kind: string) {
 }
 
 function formatWhen(iso: string) {
-  return new Date(iso).toLocaleString()
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function PaginatedActivityTable<T>({
+  title,
+  subtitle,
+  emptyMessage,
+  items,
+  columns,
+  rowKey,
+  renderRow,
+}: {
+  title: string
+  subtitle: string
+  emptyMessage: string
+  items: T[]
+  columns: string[]
+  rowKey: (item: T, index: number) => string
+  renderRow: (item: T) => ReactNode[]
+}) {
+  const pagination = usePagination(items, ACTIVITY_LOG_PAGE_SIZE)
+
+  return (
+    <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden flex flex-col">
+      <div className="px-4 py-3 border-b app-divider flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-app-text">{title}</h2>
+          <p className="text-xs text-app-text-muted mt-0.5">{subtitle}</p>
+        </div>
+        {items.length > 0 && (
+          <span className="text-[11px] text-app-text-muted tabular-nums shrink-0 pt-0.5">
+            {items.length} total
+          </span>
+        )}
+      </div>
+
+      {items.length === 0 ? (
+        <p className="px-4 py-6 text-xs text-app-text-muted">{emptyMessage}</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto">
+            <table className="admin-table admin-table--compact w-full">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pagination.pageItems.map((item, index) => (
+                  <tr key={rowKey(item, index)}>{renderRow(item)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ListPagination
+            page={pagination.page}
+            pageCount={pagination.pageCount}
+            total={pagination.total}
+            pageSize={pagination.pageSize}
+            onPageChange={pagination.setPage}
+            className="px-4 py-2.5 border-t app-divider mt-auto"
+          />
+        </>
+      )}
+    </section>
+  )
 }
 
 function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
@@ -132,71 +209,47 @@ function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
         </section>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
-          <div className="px-5 py-4 border-b app-divider">
-            <h2 className="font-semibold text-app-text">Recent explorations</h2>
-            <p className="text-sm text-app-text-muted mt-0.5">Latest mineral deep-explore events.</p>
-          </div>
-          {data.recent_explorations.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-app-text-muted">No explorations logged yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>User</th>
-                    <th>Mineral</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent_explorations.map((row, index) => (
-                    <tr key={`${row.created_at}-${index}`}>
-                      <td className="text-app-text-muted whitespace-nowrap">{formatWhen(row.created_at)}</td>
-                      <td>{row.username}</td>
-                      <td className="capitalize">{row.mineral_slug.replace(/-/g, ' ')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+      <div className="grid lg:grid-cols-2 gap-4 items-start">
+        <PaginatedActivityTable
+          title="Recent explorations"
+          subtitle="Latest mineral deep-explore events"
+          emptyMessage="No explorations logged yet."
+          items={data.recent_explorations}
+          columns={['When', 'User', 'Mineral']}
+          rowKey={(row, index) => `${row.created_at}-${index}`}
+          renderRow={(row) => [
+            <td key="when" className="text-app-text-muted whitespace-nowrap tabular-nums">
+              {formatWhen(row.created_at)}
+            </td>,
+            <td key="user" className="truncate max-w-[7rem]">
+              {row.username}
+            </td>,
+            <td key="mineral" className="capitalize truncate max-w-[10rem]">
+              {row.mineral_slug.replace(/-/g, ' ')}
+            </td>,
+          ]}
+        />
 
-        <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
-          <div className="px-5 py-4 border-b app-divider">
-            <h2 className="font-semibold text-app-text">Recent assistant usage</h2>
-            <p className="text-sm text-app-text-muted mt-0.5">Map insights, chats, and exports.</p>
-          </div>
-          {data.recent_assistant_usage.length === 0 ? (
-            <p className="px-5 py-8 text-sm text-app-text-muted">No assistant usage logged yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>User</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent_assistant_usage.map((row, index) => (
-                    <tr key={`${row.created_at}-${index}`}>
-                      <td className="text-app-text-muted whitespace-nowrap">{formatWhen(row.created_at)}</td>
-                      <td>{row.username}</td>
-                      <td className="capitalize">
-                        {kindLabel(row.kind)}
-                        {row.credits > 1 ? ` (${row.credits} credits)` : ''}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <PaginatedActivityTable
+          title="Recent assistant usage"
+          subtitle="Map insights, chats, and exports"
+          emptyMessage="No assistant usage logged yet."
+          items={data.recent_assistant_usage}
+          columns={['When', 'User', 'Action']}
+          rowKey={(row, index) => `${row.created_at}-${index}`}
+          renderRow={(row) => [
+            <td key="when" className="text-app-text-muted whitespace-nowrap tabular-nums">
+              {formatWhen(row.created_at)}
+            </td>,
+            <td key="user" className="truncate max-w-[7rem]">
+              {row.username}
+            </td>,
+            <td key="action" className="capitalize truncate max-w-[12rem]">
+              {kindLabel(row.kind)}
+              {row.credits > 1 ? ` · ${row.credits} cr` : ''}
+            </td>,
+          ]}
+        />
       </div>
 
       <p className="text-xs text-app-text-muted">

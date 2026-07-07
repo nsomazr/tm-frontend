@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
+import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import WorkspaceTabs from '../../components/layout/WorkspaceTabs'
 import WorkspaceSidebar, { WorkspaceMobileNav } from '../../components/layout/WorkspaceSidebar'
 
@@ -13,23 +14,18 @@ const mainLinks = [
   { to: '/dashboard/reports', label: 'My downloads' },
 ]
 
-const contentLinks = [
-  { to: '/admin/reports', label: 'Write & upload reports' },
-  { to: '/admin/layers', label: 'Map layers' },
-  { to: '/admin/minerals', label: 'Minerals' },
-]
-
 const quickLinks = [{ to: '/', label: 'Map' }]
 
 export default function DashboardLayout() {
-  const { user, hasPaidAccess, isManager } = useAuth()
+  const { user } = useAuth()
+  const { hasFullMapAccess } = useMapEntitlements()
   const { pathname } = useLocation()
   const isAssistantPage = pathname === '/dashboard/assistant'
 
   const accountLinks = mainLinks.map((link) => ({
     ...link,
     badge:
-      link.to === '/dashboard/analytics' && !hasPaidAccess ? (
+      link.to === '/dashboard/analytics' && !hasFullMapAccess ? (
         <span className="ml-1 text-[10px] text-amber-600">Pro</span>
       ) : undefined,
   }))
@@ -45,12 +41,7 @@ export default function DashboardLayout() {
             <p className="text-xs text-app-muted truncate mt-0.5">{user?.email}</p>
           </div>
         }
-        groups={[
-          { id: 'account', title: 'Account', links: accountLinks },
-          ...(isManager
-            ? [{ id: 'content', title: 'Content management', links: contentLinks }]
-            : []),
-        ]}
+        groups={[{ id: 'account', title: 'Account', links: accountLinks }]}
         footerLinks={quickLinks}
       />
 

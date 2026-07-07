@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { mapsApi } from '../../api'
 import {
   COORDINATE_SYSTEM_CHANGE_EVENT,
-  COORDINATE_SYSTEM_STORAGE_KEY,
   COORDINATE_SYSTEMS,
   type CoordinateSystemId,
+  coordinateSystemStorageKey,
   readStoredCoordinateSystem,
   storeCoordinateSystem,
 } from './coordinateSystems'
@@ -14,24 +14,29 @@ function isCoordinateSystemId(value: string): value is CoordinateSystemId {
   return COORDINATE_SYSTEMS.some((c) => c.id === value)
 }
 
-export function useCoordinateSystemState() {
-  const [coordinateSystem, setCoordinateSystemState] = useState<CoordinateSystemId>(
-    readStoredCoordinateSystem
+export function useCoordinateSystemState(countryCode = 'TZ') {
+  const normalizedCountry = countryCode.toUpperCase()
+  const [coordinateSystem, setCoordinateSystemState] = useState<CoordinateSystemId>(() =>
+    readStoredCoordinateSystem(normalizedCountry)
   )
 
   const { data: platformSettings } = useQuery({
-    queryKey: ['map-platform-settings'],
-    queryFn: () => mapsApi.platformSettings().then((r) => r.data),
+    queryKey: ['map-platform-settings', normalizedCountry],
+    queryFn: () => mapsApi.platformSettings(normalizedCountry).then((r) => r.data),
     staleTime: 60_000,
   })
+
+  useEffect(() => {
+    setCoordinateSystemState(readStoredCoordinateSystem(normalizedCountry))
+  }, [normalizedCountry])
 
   useEffect(() => {
     const crs = platformSettings?.coordinate_system
     if (crs && isCoordinateSystemId(crs)) {
       setCoordinateSystemState(crs)
-      storeCoordinateSystem(crs)
+      storeCoordinateSystem(crs, normalizedCountry)
     }
-  }, [platformSettings?.coordinate_system])
+  }, [platformSettings?.coordinate_system, normalizedCountry])
 
   useEffect(() => {
     const apply = (id: string | null | undefined) => {
@@ -41,14 +46,16 @@ export function useCoordinateSystemState() {
     }
 
     const onStorage = (event: StorageEvent) => {
-      if (event.key === COORDINATE_SYSTEM_STORAGE_KEY) {
+      if (event.key === coordinateSystemStorageKey(normalizedCountry)) {
         apply(event.newValue)
       }
     }
 
     const onCustom = (event: Event) => {
-      const detail = (event as CustomEvent<CoordinateSystemId>).detail
-      if (detail) apply(detail)
+      const detail = (event as CustomEvent<{ id: CoordinateSystemId; countryCode: string }>).detail
+      if (detail?.countryCode === normalizedCountry && detail.id) {
+        apply(detail.id)
+      }
     }
 
     window.addEventListener('storage', onStorage)
@@ -57,11 +64,11 @@ export function useCoordinateSystemState() {
       window.removeEventListener('storage', onStorage)
       window.removeEventListener(COORDINATE_SYSTEM_CHANGE_EVENT, onCustom)
     }
-  }, [])
+  }, [normalizedCountry])
 
   const setCoordinateSystem = (id: CoordinateSystemId) => {
     setCoordinateSystemState(id)
-    storeCoordinateSystem(id)
+    storeCoordinateSystem(id, normalizedCountry)
   }
 
   return [coordinateSystem, setCoordinateSystem] as const

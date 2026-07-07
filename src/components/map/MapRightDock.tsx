@@ -7,9 +7,11 @@ import CountryBoundaryPanel from './CountryBoundaryPanel'
 import CoordinateSystemPicker from './CoordinateSystemPicker'
 import type { BoundaryLevelKey, BoundaryVisibility } from './adminBoundaryStyles'
 import type { CoordinateSystemId } from './coordinateSystems'
+import type { CoordinateDisplayFormat } from './coordinateFormat'
 import type { Country } from '../../types'
 import type { BoundaryFocus } from './boundaryFocus'
 import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
+import AdPlacementSlot from '../ads/AdPlacementSlot'
 import { useTranslation } from '../../i18n/LocaleContext'
 
 interface MapRightDockProps {
@@ -33,8 +35,11 @@ interface MapRightDockProps {
   lockedBoundaryLevels?: BoundaryLevelKey[]
   coordinateSystem: CoordinateSystemId
   onCoordinateSystemChange: (id: CoordinateSystemId) => void
+  coordinateFormat?: CoordinateDisplayFormat
+  onCoordinateFormatChange?: (format: CoordinateDisplayFormat) => void
   hasPaidAccess?: boolean
   showCoordinateSystem?: boolean
+  showMapAds?: boolean
 }
 
 export default function MapRightDock({
@@ -58,8 +63,11 @@ export default function MapRightDock({
   lockedBoundaryLevels = [],
   coordinateSystem,
   onCoordinateSystemChange,
+  coordinateFormat = 'decimal',
+  onCoordinateFormatChange,
   hasPaidAccess = false,
   showCoordinateSystem = false,
+  showMapAds = true,
 }: MapRightDockProps) {
   const { m } = useTranslation()
   const current = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
@@ -107,7 +115,13 @@ export default function MapRightDock({
       ) : null}
       {showCoordinateSystem && (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
-          <CoordinateSystemPicker value={coordinateSystem} onChange={onCoordinateSystemChange} />
+          <CoordinateSystemPicker
+            value={coordinateSystem}
+            onChange={onCoordinateSystemChange}
+            countryCode={countryCode}
+            coordinateFormat={coordinateFormat}
+            onCoordinateFormatChange={onCoordinateFormatChange}
+          />
         </div>
       )}
       <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
@@ -119,6 +133,9 @@ export default function MapRightDock({
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
           <LegendPanel layers={layers} embedded defaultOpen />
         </div>
+      )}
+      {!hasPaidAccess && showMapAds && (
+        <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full shrink-0" />
       )}
     </aside>
   )

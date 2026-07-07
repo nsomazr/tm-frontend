@@ -22,7 +22,9 @@ import {
 } from '../../components/map/explorationGeometry'
 import ListPagination from '../../components/ui/ListPagination'
 import { toast } from '../../components/ui/toast'
+import LayerBulkImportPanel from '../../components/admin/LayerBulkImportPanel'
 import { layerDisplayColor } from '../../components/admin/layerColors'
+import { parseCoordinateComponent } from '../../components/map/coordinateFormat'
 import { usePagination } from '../../hooks/usePagination'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapFeature, MapLayer } from '../../types'
@@ -190,9 +192,9 @@ export default function CoordinatesEditor() {
   )
 
   const addManualPoint = () => {
-    const lat = parseFloat(manualLat)
-    const lng = parseFloat(manualLng)
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+    const lat = parseCoordinateComponent(manualLat, 'lat')
+    const lng = parseCoordinateComponent(manualLng, 'lng')
+    if (lat == null || lng == null) return
     addDrawPoint(lng, lat)
     setManualLat('')
     setManualLng('')
@@ -264,12 +266,20 @@ export default function CoordinatesEditor() {
     [layerList, displayName]
   )
 
+  const handleImportSuccess = () => {
+    clearLayerGeojsonCache()
+    setMapRefreshKey((key) => key + 1)
+    void refetch()
+    qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-app-text">Coordinate editor</h1>
         <p className="text-app-muted text-sm mt-1 max-w-2xl">
-          Pick a map layer, preview it on the map, then draw or type coordinates to add features.
+          Pick a map layer, preview it on the map, then draw coordinates one at a time or import
+          points, polygons, and structures in bulk from ZIP, GeoJSON, or CSV.
         </p>
       </div>
 
@@ -325,7 +335,7 @@ export default function CoordinatesEditor() {
             )}
             {featureCount === 0 && (
               <span className="text-amber-700 dark:text-amber-300">
-                · No geometry yet — draw below or check upload status in Layers
+                · No geometry yet — draw below or bulk import
               </span>
             )}
           </div>
@@ -372,6 +382,19 @@ export default function CoordinatesEditor() {
             </div>
 
             <div className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
+              <h2 className="font-semibold text-app-text mb-1">Bulk import</h2>
+              <p className="text-xs text-app-text-muted mb-4">
+                Upload a ZIP, GeoJSON, JSON, or CSV file to add many features to{' '}
+                <span className="font-medium text-app-text">{displayName(selectedLayer)}</span>.
+              </p>
+              <LayerBulkImportPanel
+                layer={selectedLayer}
+                compact
+                onSuccess={handleImportSuccess}
+              />
+            </div>
+
+            <div className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
               <h2 className="font-semibold text-app-text mb-1">{ADD_LABELS[drawMode]}</h2>
               <p className="text-xs text-app-text-muted mb-4">{ADD_HINTS[drawMode]}</p>
 
@@ -382,7 +405,7 @@ export default function CoordinatesEditor() {
                     value={manualLat}
                     onChange={(e) => setManualLat(e.target.value)}
                     className="input mt-1"
-                    placeholder="-6.5"
+                    placeholder="-6.5 or 6° 30' 0&quot; S"
                     inputMode="decimal"
                   />
                 </label>
@@ -392,7 +415,7 @@ export default function CoordinatesEditor() {
                     value={manualLng}
                     onChange={(e) => setManualLng(e.target.value)}
                     className="input mt-1"
-                    placeholder="34.8"
+                    placeholder="34.8 or 34° 48' 0&quot; E"
                     inputMode="decimal"
                   />
                 </label>

@@ -5,9 +5,12 @@ import SimpleAuthForm from '../components/auth/SimpleAuthForm'
 import CompanyCredit from '../components/brand/CompanyCredit'
 
 function authErrorMessage(err: unknown, fallback: string) {
-  const detail = (err as { response?: { data?: { detail?: string; email?: string[] } } })?.response?.data
-  if (typeof detail?.detail === 'string') return detail.detail
-  if (detail?.email?.[0]) return detail.email[0]
+  const data = (err as { response?: { data?: Record<string, unknown> } })?.response?.data
+  if (typeof data?.detail === 'string') return data.detail
+  if (Array.isArray(data?.email) && typeof data.email[0] === 'string') return data.email[0]
+  if (Array.isArray(data?.phone) && typeof data.phone[0] === 'string') return data.phone[0]
+  if (typeof data?.phone === 'string') return data.phone
+  if (typeof data?.email === 'string') return data.email
   return fallback
 }
 
@@ -29,11 +32,11 @@ export default function RegisterPage() {
     navigate(profileComplete ? from : '/complete-profile', { replace: true })
   }
 
-  const handleSendOtp = async (email: string) => {
+  const handleSendOtp = async (identifier: string) => {
     setError('')
     setLoading(true)
     try {
-      await registerWithOtp.send(email)
+      return await registerWithOtp.send(identifier)
     } catch (err) {
       setError(authErrorMessage(err, 'Could not send verification code'))
       throw err
@@ -42,11 +45,11 @@ export default function RegisterPage() {
     }
   }
 
-  const handleVerifyOtp = async (email: string, code: string) => {
+  const handleVerifyOtp = async (identifier: string, code: string) => {
     setError('')
     setLoading(true)
     try {
-      const profileComplete = await registerWithOtp.verify(email, code)
+      const profileComplete = await registerWithOtp.verify(identifier, code)
       afterAuth(profileComplete)
     } catch (err) {
       setError(authErrorMessage(err, 'Invalid or expired code'))

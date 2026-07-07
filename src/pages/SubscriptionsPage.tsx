@@ -16,6 +16,7 @@ import {
 import { formatUsd, tzsToUsd } from '../hooks/useTzsUsdRate'
 import type { SubscriptionPlan, UserSubscription } from '../types'
 import MarketingHero from '../components/marketing/MarketingHero'
+import AdPlacementSlot from '../components/ads/AdPlacementSlot'
 import MarketingCta, { MarketingCtaLink } from '../components/marketing/MarketingCta'
 import { useTranslation } from '../i18n/LocaleContext'
 import {
@@ -363,6 +364,10 @@ function SubscriptionsPageContent() {
         <Link to="/" className="btn-primary text-sm">{p.exploreFree}</Link>
       </MarketingHero>
 
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-6 mb-8">
+        <AdPlacementSlot placement="subscriptions_banner" />
+      </div>
+
       <section className="py-12 sm:py-16 bg-slate-50/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           {usingFallbackPlans && !isLoading && (
@@ -467,6 +472,13 @@ function SubscriptionsPageContent() {
               </div>
             </>
           )}
+        </div>
+      </section>
+
+      <section className="py-12 sm:py-14 border-y border-app-border bg-app-subtle/40">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-xl sm:text-2xl font-bold text-app-text">{p.aerialZoneTitle}</h2>
+          <p className="text-sm sm:text-base text-app-muted mt-3 leading-relaxed">{p.aerialZoneBody}</p>
         </div>
       </section>
 

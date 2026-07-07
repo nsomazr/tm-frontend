@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { isAxiosError } from 'axios'
+import { useQueryClient } from '@tanstack/react-query'
 import { analyticsApi } from '../../api'
 import { useTranslation } from '../../i18n/LocaleContext'
 import type { AssistantMessage } from '../../types'
 import type { TerraAssistantMapContext } from './TerraAssistantPanel'
+import type { InsightSnapshotContext } from '../map/insightSnapshot'
 import { toast } from '../ui/toast'
+import { compressSnapshotForExport } from '../map/snapshotCompress'
 
 export type InsightExportSection =
   | 'overview'
@@ -41,7 +44,8 @@ interface TerraInsightExportControlsProps {
   messages: AssistantMessage[]
   mapContext?: TerraAssistantMapContext | null
   mapSnapshot?: string | null
-  getMapSnapshot?: () => Promise<string | null>
+  getMapSnapshot?: (ctx: InsightSnapshotContext) => Promise<string | null>
+  analysisAreaKm2?: number
   onCreditsRefresh?: () => void
   compact?: boolean
 }
@@ -53,16 +57,25 @@ export default function TerraInsightExportControls({
   mapContext,
   mapSnapshot,
   getMapSnapshot,
+  analysisAreaKm2,
   onCreditsRefresh,
   compact = false,
 }: TerraInsightExportControlsProps) {
   const { m } = useTranslation()
+  const qc = useQueryClient()
   const ta = m.assistant
   const [open, setOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [sections, setSections] = useState<Set<InsightExportSection>>(
-    () => new Set(['overview', 'minerals', 'regions', 'analytics', 'chat'])
-  )
+  const [sections, setSections] = useState<Set<InsightExportSection>>(() => {
+    const defaults: InsightExportSection[] = [
+      'overview',
+      'minerals',
+      'regions',
+      'analytics',
+    ]
+    if (mode === 'map') defaults.push('map_snapshot')
+    return new Set(defaults)
+  })
 
   const sectionLabels: Record<InsightExportSection, string> = {
     overview: ta.exportSectionOverview,
@@ -73,7 +86,8 @@ export default function TerraInsightExportControls({
     map_snapshot: ta.exportSectionMap,
   }
 
-  const mapSnapshotAvailable = mode === 'map' && !!(mapSnapshot || getMapSnapshot)
+  const mapSnapshotAvailable =
+    mode === 'map' && !!(mapSnapshot || mapContext?.lat != null || getMapSnapshot)
 
   const visibleSections = useMemo(
     () => SECTION_KEYS.filter((key) => key !== 'map_snapshot' || mapSnapshotAvailable),
@@ -103,12 +117,44 @@ export default function TerraInsightExportControls({
       const useMapMode =
         hasPaidAccess &&
         mode === 'map' &&
-        !!(mapContext?.fromMapClick || mapContext?.mineralSlug || mapContext?.regionId != null)
+        !!(
+          mapContext?.fromMapClick ||
+          mapContext?.mineralSlug ||
+          mapContext?.regionId != null ||
+          mapContext?.explorationGeometry ||
+          (mapContext?.lat != null && mapContext?.lng != null)
+        )
 
-      const snapshot =
-        sections.has('map_snapshot') && (getMapSnapshot || mapSnapshot)
-          ? (await getMapSnapshot?.()) ?? mapSnapshot ?? undefined
-          : undefined
+      let snapshot =
+        sections.has('map_snapshot') && mapSnapshot ? mapSnapshot : undefined
+
+      if (
+        sections.has('map_snapshot') &&
+        !snapshot &&
+        getMapSnapshot &&
+        mapContext?.lat != null &&
+        mapContext?.lng != null
+      ) {
+        try {
+          const raw = await getMapSnapshot({
+            lat: mapContext.lat,
+            lng: mapContext.lng,
+            zoom: mapContext.zoom,
+            analysisAreaKm2,
+            explorationGeometry: mapContext.explorationGeometry,
+            countryCode: mapContext.countryCode,
+          })
+          if (raw) {
+            try {
+              snapshot = await compressSnapshotForExport(raw)
+            } catch {
+              snapshot = raw
+            }
+          }
+        } catch {
+          /* server renders snapshot when client capture fails */
+        }
+      }
 
       const { data } = await analyticsApi.exportInsightReport({
         mode: useMapMode ? 'map' : 'account',
@@ -121,12 +167,16 @@ export default function TerraInsightExportControls({
         featureIds: mapContext?.featureIds,
         mineralSlug: mapContext?.mineralSlug,
         regionId: mapContext?.regionId,
-        boundaryId: mapContext?.boundaryId,
+        boundaryId: mapContext?.explorationGeometry ? undefined : mapContext?.boundaryId,
         countryCode: mapContext?.countryCode,
+        explorationGeometry: mapContext?.explorationGeometry,
+        analysisAreaKm2,
+        basemap: mapContext?.basemap,
       })
       const stamp = new Date().toISOString().slice(0, 16).replace(':', '-')
       downloadBlob(new Blob([data]), `terra-insight-${stamp}.pdf`)
       toast.success(ta.exportSuccess)
+      void qc.invalidateQueries({ queryKey: ['purchases'] })
       onCreditsRefresh?.()
       setOpen(false)
     } catch (err) {

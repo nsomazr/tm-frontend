@@ -20,7 +20,7 @@ import {
   Undo,
 } from 'ckeditor5'
 import 'ckeditor5/ckeditor5.css'
-import { htmlToFindingsText, plainTextToHtml, findingsTextToHtml, looksLikeHtml } from './reportEditorText'
+import { htmlToFindingsText, plainTextToHtml, findingsTextToHtml, looksLikeHtml, normalizeMarkdownInHtml } from './reportEditorText'
 
 type EditorVariant = 'body' | 'findings'
 type EditorLayout = 'default' | 'document-body' | 'document-inline' | 'canvas'
@@ -59,9 +59,9 @@ const FINDINGS_PLUGINS = [Essentials, Paragraph, Bold, Italic, Underline, List, 
 function toEditorHtml(variant: EditorVariant, value: string) {
   if (!value.trim()) return ''
   if (variant === 'findings') {
-    return looksLikeHtml(value) ? value : findingsTextToHtml(value)
+    return looksLikeHtml(value) ? normalizeMarkdownInHtml(value) : findingsTextToHtml(value)
   }
-  return looksLikeHtml(value) ? value : plainTextToHtml(value)
+  return looksLikeHtml(value) ? normalizeMarkdownInHtml(value) : plainTextToHtml(value)
 }
 
 function fromEditorHtml(variant: EditorVariant, html: string) {

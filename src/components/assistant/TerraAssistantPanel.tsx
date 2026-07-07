@@ -5,13 +5,19 @@ import { analyticsApi, paymentsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import type { AreaInsight, AssistantCredits, AssistantMessage, AerialAccess } from '../../types'
+import type { AreaInsight, AssistantCredits, AssistantMessage, AerialAccess, SimilarAreaRecommendation } from '../../types'
 import AssistantMessageContent from './AssistantMessageContent'
 import TerraInsightExportControls from './TerraInsightExportControls'
 import RelatedReportsPanel from '../reports/RelatedReportsPanel'
 import { SendArrowIcon, TerraAssistantAvatar } from './AssistantIcons'
 import PhoneCheckoutModal, { handleCheckoutResponse } from '../payments/PhoneCheckoutModal'
 import { EXTENSION_KM2_OPTIONS } from '../map/analysisZoneGeometry'
+import type { DrawGeometry } from '../map/explorationGeometry'
+import {
+  basemapInsightLabel,
+  type BasemapId,
+} from '../map/basemaps'
+import type { InsightSnapshotContext } from '../map/insightSnapshot'
 
 export interface TerraAssistantMapContext {
   lat: number
@@ -28,11 +34,16 @@ export interface TerraAssistantMapContext {
   districtBoundaryName?: string
   wardBoundaryName?: string
   villageBoundaryName?: string
+  explorationGeometry?: DrawGeometry
+  basemap?: BasemapId
+  /** False when the map click was outside uploaded admin boundaries. */
+  insideAdminBoundaries?: boolean
 }
 
 interface TerraAssistantPanelProps {
   insight: AreaInsight | null
   loading?: boolean
+  loadingTerrainView?: boolean
   hasPaidAccess: boolean
   initialCredits?: AssistantCredits | null
   mapContext?: TerraAssistantMapContext | null
@@ -41,7 +52,10 @@ interface TerraAssistantPanelProps {
   mobileSheet?: boolean
   insightExport?: boolean
   mapSnapshot?: string | null
-  getMapSnapshot?: () => Promise<string | null>
+  getMapSnapshot?: (ctx: InsightSnapshotContext) => Promise<string | null>
+  onRefreshInsight?: () => void
+  refreshInsightPending?: boolean
+  onExploreSimilarArea?: (lat: number, lng: number, boundaryId?: number) => void
 }
 
 function formatPeriodEnd(iso: string | null | undefined): string {
@@ -93,6 +107,81 @@ function defaultSeedMessage(
   return [{ role: 'assistant', content: ta.emptyStateMessage }]
 }
 
+function SimilarAreasStrip({
+  areas,
+  title,
+  onExplore,
+}: {
+  areas: SimilarAreaRecommendation[]
+  title: string
+  onExplore: (lat: number, lng: number, boundaryId?: number) => void
+}) {
+  if (!areas.length) return null
+
+  const cardClass =
+    'map-chrome snap-start shrink-0 flex h-14 w-[10.25rem] flex-col justify-between rounded-xl border border-app-border-strong bg-app-surface px-2.5 py-2 text-left shadow-sm transition-colors hover:border-terra-500/50 hover:bg-terra-50/50 dark:hover:bg-terra-950/25'
+
+  return (
+    <div className="min-w-0 max-w-full">
+      <p className="mb-1 px-0.5 text-[10px] font-medium text-app-text-secondary">{title}</p>
+      <div className="flex h-14 gap-2 overflow-x-auto overscroll-x-contain pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory scrollbar-pane">
+        {areas.map((area) => (
+          <button
+            key={area.boundary_id}
+            type="button"
+            onClick={() => onExplore(area.lat, area.lng, area.boundary_id)}
+            title={[area.region, area.match_reasons?.join(' · ')].filter(Boolean).join(' — ')}
+            className={cardClass}
+          >
+            <div className="flex min-h-0 items-start justify-between gap-1.5">
+              <p className="min-w-0 truncate text-[11px] font-semibold leading-tight map-text">
+                {area.label}
+              </p>
+              <span className="shrink-0 text-[10px] font-semibold leading-tight text-terra-600 tabular-nums">
+                {area.score}%
+              </span>
+            </div>
+            <div className="min-h-0 space-y-0.5">
+              {area.region ? (
+                <p className="truncate text-[10px] leading-tight map-text-muted">{area.region}</p>
+              ) : (
+                <span className="block h-[13px]" aria-hidden />
+              )}
+              <p className="line-clamp-1 text-[9px] leading-tight map-text-muted">
+                {area.match_reasons?.[0] ?? '\u00A0'}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SupplementaryInsightBlock({
+  title,
+  lines,
+  embedded = false,
+}: {
+  title: string
+  lines: string[]
+  embedded?: boolean
+}) {
+  if (!lines.length) return null
+  return (
+    <div
+      className={
+        embedded
+          ? 'border-t border-app-border/50 pt-2 mt-2 text-[11px] map-text-muted leading-snug'
+          : 'rounded-xl border border-app-border/60 bg-app-surface/80 px-3 py-2 text-[11px] map-text-muted leading-snug'
+      }
+    >
+      <p className="mb-1 font-medium text-app-text-secondary">{title}</p>
+      <AssistantMessageContent role="assistant" content={lines.join('\n')} />
+    </div>
+  )
+}
+
 export default function TerraAssistantPanel({
   insight,
   loading = false,
@@ -105,6 +194,10 @@ export default function TerraAssistantPanel({
   insightExport = false,
   mapSnapshot = null,
   getMapSnapshot,
+  onRefreshInsight,
+  refreshInsightPending = false,
+  onExploreSimilarArea,
+  loadingTerrainView = false,
 }: TerraAssistantPanelProps) {
   const { m } = useTranslation()
   const ta = m.assistant
@@ -257,6 +350,11 @@ export default function TerraAssistantPanel({
   const canSend = !loading && !sending && question.trim().length > 0 && !atLimit && historyReady
 
   const aerialAccess: AerialAccess | null = insight?.aerial ?? null
+  const extensionOptions = useMemo(() => {
+    const fromApi = aerialAccess?.extension_options_km2
+    if (fromApi?.length) return fromApi
+    return [...EXTENSION_KM2_OPTIONS]
+  }, [aerialAccess?.extension_options_km2])
   const showExtensionOffer =
     hasPaidAccess &&
     mapContext?.fromMapClick &&
@@ -275,6 +373,15 @@ export default function TerraAssistantPanel({
   const showFooterUpgradeHint = !hasPaidAccess && !showThreadUpgrade
   const showZoneNote =
     !loading && hasPaidAccess && aerialAccess && mapContext?.fromMapClick && !showExtensionOffer
+  const activeBasemapLabel = mapContext?.basemap
+    ? basemapInsightLabel(mapContext.basemap)
+    : insight?.basemap_label ?? null
+  const basemapViewChanged =
+    !!onRefreshInsight &&
+    !!mapContext?.fromMapClick &&
+    !!mapContext.basemap &&
+    !!insight?.basemap &&
+    mapContext.basemap !== insight.basemap
 
   function creditsFooterText(): string {
     if (!credits) return ''
@@ -321,6 +428,12 @@ export default function TerraAssistantPanel({
 
   const ratePerKm2 = aerialAccess?.aerial_price_per_km2 ?? 10000
   const selectedExtensionPrice = extensionPrice(extensionKm2, ratePerKm2)
+
+  useEffect(() => {
+    if (!extensionOptions.includes(extensionKm2)) {
+      setExtensionKm2(extensionOptions[0] ?? EXTENSION_KM2_OPTIONS[0])
+    }
+  }, [extensionOptions, extensionKm2])
 
   const aerialCheckout = useMutation({
     mutationFn: (payload: {
@@ -381,6 +494,8 @@ export default function TerraAssistantPanel({
         boundaryId: mapContext?.boundaryId,
         countryCode: mapContext?.countryCode,
         threadKey,
+        explorationGeometry: mapContext?.explorationGeometry,
+        basemap: mapContext?.basemap,
       })
       setMessages((prev) => [
         ...prev,
@@ -514,8 +629,13 @@ export default function TerraAssistantPanel({
               {breadcrumbText}
             </p>
           )}
-          {(showRegionChip || (hasMapped && insight && insight.minerals.length > 0)) && (
+          {(showRegionChip || (hasMapped && insight && insight.minerals.length > 0) || activeBasemapLabel) && (
             <div className={`flex flex-wrap items-center gap-1 ${breadcrumbText ? 'mt-1' : ''}`}>
+              {activeBasemapLabel && (
+                <span className="inline-flex items-center rounded-md bg-app-surface border border-app-border/80 px-1.5 py-0.5 text-[11px] font-medium map-text-secondary">
+                  {m.map.viewingBasemap.replace('{name}', activeBasemapLabel)}
+                </span>
+              )}
               {showRegionChip && (
                 <span className="inline-flex items-center rounded-md bg-app-surface border border-app-border/80 px-1.5 py-0.5 text-[11px] font-medium map-text">
                   {regionLabel}
@@ -546,6 +666,11 @@ export default function TerraAssistantPanel({
                 : ta.zoneHighlightActive.replace('{area}', fmtKm2(currentZoneKm2(aerialAccess)))}
             </p>
           )}
+          {mapContext?.explorationGeometry && (
+            <p className="text-[10px] text-terra-700 dark:text-terra-300 mt-1 leading-snug">
+              Insights and reports are limited to your drawn exploration area.
+            </p>
+          )}
         </div>
       )}
 
@@ -570,28 +695,91 @@ export default function TerraAssistantPanel({
         {loading ? (
           <div className={`flex items-center gap-2 text-sm map-text-muted justify-center ${isCompact ? 'py-4' : 'py-8'}`}>
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
-            {ta.generating}
+            {loadingTerrainView ? m.map.analyzingTerrainView : ta.generating}
           </div>
         ) : (
-          messages.map((msg, i) => (
-            <div
-              key={`${msg.role}-${i}`}
-              className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              {msg.role === 'assistant' && (
-                <TerraAssistantAvatar className={`shrink-0 mt-0.5 ${mobileSheet ? 'h-6 w-6' : 'h-7 w-7'}`} />
-              )}
-              <div
-                className={`${mobileSheet ? 'max-w-[88%]' : 'max-w-[85%]'} rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                  msg.role === 'user'
-                    ? 'bg-terra-600 text-white rounded-br-md'
-                    : 'bg-app-surface map-text shadow-sm rounded-bl-md'
-                }`}
-              >
-                <AssistantMessageContent content={msg.content} role={msg.role} />
-              </div>
-            </div>
-          ))
+          <>
+            {messages.map((msg, i) => {
+              const isPrimaryInsight =
+                i === 0 && msg.role === 'assistant' && hasInsightContext
+              const hasEnrichments =
+                isPrimaryInsight &&
+                !!(
+                  insight?.terrain_context?.summary_lines?.length ||
+                  insight?.visual_observations ||
+                  insight?.direction_insights?.summary_lines?.length ||
+                  insight?.geological_context?.summary_lines?.length
+                )
+
+              return (
+                <div key={`${msg.role}-${i}`}>
+                  <div
+                    className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    {msg.role === 'assistant' && (
+                      <TerraAssistantAvatar className={`shrink-0 mt-0.5 ${mobileSheet ? 'h-6 w-6' : 'h-7 w-7'}`} />
+                    )}
+                    <div
+                      className={`${mobileSheet ? 'max-w-[88%]' : 'max-w-[85%]'} rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                        msg.role === 'user'
+                          ? 'bg-terra-600 text-white rounded-br-md'
+                          : 'bg-app-surface map-text shadow-sm rounded-bl-md'
+                      }`}
+                    >
+                      <AssistantMessageContent content={msg.content} role={msg.role} />
+                      {hasEnrichments && (
+                        <>
+                          {insight?.terrain_context?.summary_lines?.length ? (
+                            <SupplementaryInsightBlock
+                              embedded
+                              title={m.map.terrainInsightTitle}
+                              lines={insight.terrain_context.summary_lines}
+                            />
+                          ) : null}
+                          {insight?.visual_observations ? (
+                            <SupplementaryInsightBlock
+                              embedded
+                              title={m.map.visualInsightTitle}
+                              lines={[insight.visual_observations]}
+                            />
+                          ) : null}
+                          {insight?.direction_insights?.summary_lines?.length ? (
+                            <SupplementaryInsightBlock
+                              embedded
+                              title={m.map.directionInsightTitle}
+                              lines={insight.direction_insights.summary_lines}
+                            />
+                          ) : null}
+                          {insight?.geological_context?.summary_lines?.length ? (
+                            <SupplementaryInsightBlock
+                              embedded
+                              title={m.map.geologyInsightTitle}
+                              lines={insight.geological_context.summary_lines}
+                            />
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {isPrimaryInsight && basemapViewChanged && onRefreshInsight && (
+                    <div className={`mt-1.5 ${mobileSheet ? 'ml-8' : 'ml-9'}`}>
+                      <button
+                        type="button"
+                        onClick={onRefreshInsight}
+                        disabled={refreshInsightPending || loading}
+                        className="text-[11px] font-medium text-terra-600 hover:text-terra-700 disabled:opacity-50"
+                      >
+                        {m.map.refreshInsightForView.replace(
+                          '{name}',
+                          mapContext?.basemap ? basemapInsightLabel(mapContext.basemap) : '',
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </>
         )}
 
         {sending && (
@@ -617,7 +805,7 @@ export default function TerraAssistantPanel({
           <div className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 leading-relaxed space-y-2">
             <p>{ta.extensionOfferMessage.replace('{included}', String(defaultAnalysisKm2(aerialAccess)))}</p>
             <div className="flex flex-wrap gap-1.5">
-              {EXTENSION_KM2_OPTIONS.map((km2) => (
+              {extensionOptions.map((km2) => (
                 <button
                   key={km2}
                   type="button"
@@ -678,6 +866,7 @@ export default function TerraAssistantPanel({
             mapContext={mapContext}
             mapSnapshot={mapSnapshot}
             getMapSnapshot={getMapSnapshot}
+            analysisAreaKm2={insight?.aerial?.analysis_area_km2}
             onCreditsRefresh={() => void refreshCredits()}
             compact={mobileSheet || isCompact}
           />
@@ -689,6 +878,13 @@ export default function TerraAssistantPanel({
               {ta.viewPlans}
             </Link>
           </p>
+        )}
+        {!loading && insight?.similar_areas && insight.similar_areas.length > 0 && onExploreSimilarArea && (
+          <SimilarAreasStrip
+            areas={insight.similar_areas}
+            title={m.map.similarAreasTitle}
+            onExplore={onExploreSimilarArea}
+          />
         )}
         {composerForm}
       </div>

@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { geographyApi, mineralsApi, reportsApi, subscriptionsApi } from '../api'
+import { mineralsApi, reportsApi, subscriptionsApi } from '../api'
 import { useAuth } from '../auth/AuthContext'
 import { ReportQuotaBanner } from '../components/reports/ReportQuotaBanner'
 import { ReportCatalogTeaser } from '../components/reports/ReportPreviewContent'
+import AdPlacementSlot from '../components/ads/AdPlacementSlot'
 import { useTranslation } from '../i18n/LocaleContext'
 import { interpolate } from '../i18n/utils'
 
@@ -20,22 +21,42 @@ export default function DownloadsPage() {
     queryFn: () => mineralsApi.list().then((res) => res.data),
   })
 
-  const { data: regions } = useQuery({
-    queryKey: ['regions'],
-    queryFn: () => geographyApi.regions().then((res) => res.data),
-  })
-
-  const listParams = useMemo(() => {
+  const catalogParams = useMemo(() => {
     const params: Record<string, string> = {}
     if (mineralFilter) params.mineral = mineralFilter
-    if (regionFilter) params.region = regionFilter
     return params
-  }, [mineralFilter, regionFilter])
+  }, [mineralFilter])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['reports', listParams],
-    queryFn: () => reportsApi.list(listParams).then((res) => res.data),
+    queryKey: ['reports', catalogParams],
+    queryFn: () => reportsApi.list(catalogParams).then((res) => res.data),
   })
+
+  const catalogReports = data?.results ?? []
+
+  const regionOptions = useMemo(() => {
+    const seen = new Map<number, string>()
+    for (const report of catalogReports) {
+      if (report.region != null && report.region_name?.trim()) {
+        seen.set(report.region, report.region_name.trim())
+      }
+    }
+    return Array.from(seen.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [catalogReports])
+
+  const reports = useMemo(() => {
+    if (!regionFilter) return catalogReports
+    return catalogReports.filter((report) => String(report.region) === regionFilter)
+  }, [catalogReports, regionFilter])
+
+  useEffect(() => {
+    if (!regionFilter) return
+    if (!regionOptions.some((region) => String(region.id) === regionFilter)) {
+      setRegionFilter('')
+    }
+  }, [regionFilter, regionOptions])
 
   const { data: subscription } = useQuery({
     queryKey: ['subscription'],
@@ -43,7 +64,6 @@ export default function DownloadsPage() {
     enabled: !!user && hasPaidAccess,
   })
 
-  const reports = data?.results || []
   const quota = subscription?.download_quota
 
   return (
@@ -57,6 +77,8 @@ export default function DownloadsPage() {
       </div>
 
       {quota && !quota.unlimited && <ReportQuotaBanner quota={quota} />}
+
+      <AdPlacementSlot placement="downloads_banner" className="mb-8" />
 
       {hasPaidAccess && (
         <div className="mb-8 rounded-xl bg-terra-50 border border-terra-100 px-4 py-3 text-sm text-terra-900">
@@ -81,9 +103,10 @@ export default function DownloadsPage() {
           value={regionFilter}
           onChange={(e) => setRegionFilter(e.target.value)}
           className="input max-w-xs text-sm"
+          disabled={regionOptions.length === 0}
         >
           <option value="">{r.filterAllRegions}</option>
-          {(regions?.results ?? []).map((region) => (
+          {regionOptions.map((region) => (
             <option key={region.id} value={String(region.id)}>
               {region.name}
             </option>

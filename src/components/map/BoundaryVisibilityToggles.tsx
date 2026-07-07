@@ -63,8 +63,7 @@ export default function BoundaryVisibilityToggles({
     BOUNDARY_LEVEL_OPTIONS.map((opt) => [opt.key, opt.accent])
   ) as Record<BoundaryLevelKey, string>
 
-  const checkboxClass =
-    'shrink-0 rounded border-app-border-strong text-terra-600 focus:ring-terra-500/30 size-3'
+  const checkboxClass = 'checkbox checkbox--sm'
 
   const rowGap = compact ? 'gap-0.5' : 'gap-1'
 

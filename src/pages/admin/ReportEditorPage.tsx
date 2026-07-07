@@ -1,17 +1,25 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
 import { fetchAllMapLayers, reportsApi, subscriptionsApi } from '../../api'
 import ReportLocationPicker, { type ReportLocationValue } from '../../components/reports/ReportLocationPicker'
 import ReportLayerPicker from '../../components/reports/ReportLayerPicker'
 import ReportSetupPanel from '../../components/reports/ReportSetupPanel'
 import type { LayerRegionRef } from '../../components/reports/reportEditorText'
 import ReportContentWorkflow from '../../components/reports/ReportContentWorkflow'
-import { mergeReportDocument, splitReportDocument, htmlToFindingsText } from '../../components/reports/reportEditorText'
+import ReportPublishPanel from '../../components/reports/ReportPublishPanel'
+import ReportStageBar from '../../components/reports/ReportStageBar'
+import { mergeReportDocument, splitReportDocument, htmlToFindingsText, filterReportFindings } from '../../components/reports/reportEditorText'
+import {
+  clearDraftDocument,
+  loadDraftDocument,
+  saveDraftDocument,
+} from '../../components/reports/reportEditorDraftFile'
 import FileUploadField from '../../components/ui/FileUploadField'
 import { toast } from '../../components/ui/toast'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import type { Report } from '../../types'
+import type { Report, MapLayer } from '../../types'
 
 const DOCUMENT_ACCEPT =
   '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
@@ -25,6 +33,73 @@ const REPORT_STEPS: { id: EditorStep; label: string; hint: string }[] = [
   { id: 3, label: 'Publish', hint: 'Price, format & catalog' },
 ]
 
+const NEW_REPORT_DRAFT_KEY = 'terra-report-editor-new-draft'
+
+function parseStepParam(value: string | null): EditorStep | null {
+  if (value === '1' || value === '2' || value === '3') return Number(value) as EditorStep
+  return null
+}
+
+function clampStep(step: EditorStep, max: EditorStep): EditorStep {
+  return Math.min(step, max) as EditorStep
+}
+
+function inferMaxStep(args: {
+  step1Complete: boolean
+  step2Complete: boolean
+}): EditorStep {
+  if (args.step2Complete) return 3
+  if (args.step1Complete) return 2
+  return 1
+}
+
+function inferDefaultStep(args: {
+  step1Complete: boolean
+  hasContent: boolean
+  hasPdf: boolean
+}): EditorStep {
+  if (args.step1Complete && (args.hasContent || args.hasPdf)) return 2
+  return 1
+}
+
+function flattenFieldErrors(value: unknown, prefix = ''): string[] {
+  if (value == null) return []
+  if (typeof value === 'string') return prefix ? [`${prefix}: ${value}`] : [value]
+  if (Array.isArray(value)) {
+    const text = value.map(String).filter(Boolean).join(', ')
+    return text ? (prefix ? [`${prefix}: ${text}`] : [text]) : []
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) =>
+      flattenFieldErrors(nested, prefix ? `${prefix}.${key}` : key),
+    )
+  }
+  return prefix ? [`${prefix}: ${String(value)}`] : [String(value)]
+}
+
+function formatSaveError(err: unknown): string {
+  if (!isAxiosError(err)) return 'Check required fields and try again.'
+  const data = err.response?.data
+  if (typeof data === 'string' && data.trim()) return data
+  if (data && typeof data === 'object') {
+    if ('detail' in data) {
+      const detail = (data as { detail?: unknown }).detail
+      if (typeof detail === 'string' && detail.trim()) return detail
+      if (Array.isArray(detail)) return detail.map(String).join(' ')
+    }
+    const fieldMessages = flattenFieldErrors(data)
+    if (fieldMessages.length) return fieldMessages.join(' · ')
+  }
+  return 'Check required fields and try again.'
+}
+
+function resolveMineralId(form: { mineral: string; primary_layer_id: string }, layers: MapLayer[]) {
+  const parsed = Number(form.mineral)
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  const primary = layers.find((layer) => String(layer.id) === form.primary_layer_id)
+  return primary?.mineral && primary.mineral > 0 ? primary.mineral : null
+}
+
 function findingsToText(findings: string[] | undefined) {
   return (findings ?? []).join('\n')
 }
@@ -35,10 +110,12 @@ function wordCount(text: string) {
 
 function textToFindings(text: string) {
   const plain = text.includes('<') ? htmlToFindingsText(text) : text
-  return plain
-    .split('\n')
-    .map((line) => line.trim().replace(/^[-•]\s*/, ''))
-    .filter(Boolean)
+  return filterReportFindings(
+    plain
+      .split('\n')
+      .map((line) => line.trim().replace(/^[-•]\s*/, ''))
+      .filter(Boolean),
+  )
 }
 
 function ReportStepIndicator({
@@ -98,11 +175,41 @@ export default function ReportEditorPage() {
   const { slug } = useParams<{ slug: string }>()
   const isNew = !slug || slug === 'new'
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const qc = useQueryClient()
   const displayName = useDisplayName()
+  const restoredNewDraft = useRef(false)
+  const hydratedReportSlug = useRef<string | null>(null)
 
-  const [currentStep, setCurrentStep] = useState<EditorStep>(1)
+  const syncStepToUrl = useCallback(
+    (step: EditorStep) => {
+      setSearchParams(
+        (prev) => {
+          if (prev.get('step') === String(step)) return prev
+          const next = new URLSearchParams(prev)
+          next.set('step', String(step))
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  const [currentStep, setCurrentStepState] = useState<EditorStep>(
+    () => parseStepParam(searchParams.get('step')) ?? 1,
+  )
+
+  const setCurrentStep = useCallback(
+    (step: EditorStep | ((prev: EditorStep) => EditorStep)) => {
+      setCurrentStepState((prev) => {
+        const next = typeof step === 'function' ? step(prev) : step
+        syncStepToUrl(next)
+        return next
+      })
+    },
+    [syncStepToUrl],
+  )
   const [reportMode, setReportMode] = useState<ReportMode>(() =>
     searchParams.get('mode') === 'upload' ? 'upload' : 'write',
   )
@@ -131,6 +238,9 @@ export default function ReportEditorPage() {
     locationLabel: '',
   })
   const [documentFile, setDocumentFile] = useState<File | null>(null)
+  const [restoredDocumentName, setRestoredDocumentName] = useState<string | null>(null)
+  const [documentDraftReady, setDocumentDraftReady] = useState(!isNew)
+  const restoredDocument = useRef(false)
   const [regeneratePdf, setRegeneratePdf] = useState(false)
   const [contentApproved, setContentApproved] = useState(false)
 
@@ -167,13 +277,116 @@ export default function ReportEditorPage() {
   })
 
   useEffect(() => {
-    if (!report) return
-    const executive = mergeReportDocument(
-      report.ai_summary?.summary || '',
-      findingsToText(report.ai_summary?.key_findings),
+    if (!isNew || restoredNewDraft.current) return
+    restoredNewDraft.current = true
+
+    try {
+      const raw = sessionStorage.getItem(NEW_REPORT_DRAFT_KEY)
+      if (!raw) return
+      const draft = JSON.parse(raw) as {
+        step?: EditorStep
+        reportMode?: ReportMode
+        form?: typeof form
+        location?: ReportLocationValue
+        contentApproved?: boolean
+        documentFileName?: string
+      }
+
+      if (draft.reportMode) setReportMode(draft.reportMode)
+      if (draft.form) {
+        if (draft.reportMode === 'upload') {
+          setForm({ ...draft.form, executive_summary: '', key_findings: '' })
+        } else {
+          setForm(draft.form)
+        }
+      }
+      if (draft.location) setLocation(draft.location)
+      if (draft.contentApproved && draft.reportMode !== 'upload') setContentApproved(true)
+      if (draft.documentFileName) setRestoredDocumentName(draft.documentFileName)
+
+      const urlStep = parseStepParam(searchParams.get('step'))
+      const draftStep = parseStepParam(draft.step != null ? String(draft.step) : null)
+      const restoredStep = urlStep ?? draftStep
+      if (restoredStep) {
+        setCurrentStepState(restoredStep)
+        syncStepToUrl(restoredStep)
+      }
+    } catch {
+      // Ignore corrupted draft data.
+    }
+  }, [isNew, searchParams, syncStepToUrl])
+
+  useEffect(() => {
+    if (!isNew) {
+      setDocumentDraftReady(true)
+      return
+    }
+    if (restoredDocument.current) return
+    restoredDocument.current = true
+
+    loadDraftDocument()
+      .then((file) => {
+        if (file) {
+          setDocumentFile(file)
+          setRestoredDocumentName(file.name)
+        }
+      })
+      .catch(() => {
+        // Ignore restore failures; user can re-attach the file.
+      })
+      .finally(() => setDocumentDraftReady(true))
+  }, [isNew])
+
+  useEffect(() => {
+    if (!isNew) return
+    sessionStorage.setItem(
+      NEW_REPORT_DRAFT_KEY,
+      JSON.stringify({
+        step: currentStep,
+        reportMode,
+        form:
+          reportMode === 'upload'
+            ? { ...form, executive_summary: '', key_findings: '' }
+            : form,
+        location,
+        contentApproved,
+        documentFileName: documentFile?.name ?? restoredDocumentName ?? null,
+      }),
     )
+  }, [isNew, currentStep, reportMode, form, location, contentApproved, documentFile, restoredDocumentName])
+
+  useEffect(() => {
+    if (!isNew || !documentDraftReady) return
+    if (documentFile) {
+      setRestoredDocumentName(documentFile.name)
+      saveDraftDocument(documentFile).catch(() => {
+        toast.warning('Could not keep uploaded file after refresh', {
+          description: 'Your document is attached for now, but re-upload it if you refresh the page.',
+        })
+      })
+      return
+    }
+    setRestoredDocumentName(null)
+    clearDraftDocument().catch(() => {})
+  }, [isNew, documentFile, documentDraftReady])
+
+  useEffect(() => {
+    if (!report) return
+    if (hydratedReportSlug.current === report.slug) return
+    hydratedReportSlug.current = report.slug
+
+    const isUploadedReport = report.source_type === 'uploaded'
+    const executive = isUploadedReport
+      ? ''
+      : mergeReportDocument(
+          report.ai_summary?.summary || '',
+          findingsToText(report.ai_summary?.key_findings),
+        )
     const bbox = report.bounding_box ?? {}
     const linkedLayerIds = report.linked_layers?.map((l) => l.id) ?? []
+    const hasWritten = !isUploadedReport && executive.trim().length > 0
+    const uploadOnly = isUploadedReport || (report.has_pdf && !hasWritten)
+
     setForm({
       title: report.title,
       mineral: String(report.mineral),
@@ -203,17 +416,42 @@ export default function ReportEditorPage() {
       boundaryIds: report.location_tags?.map((t) => t.id) ?? [],
       locationLabel: report.location_tags?.map((t) => t.name).join(' · ') ?? '',
     })
-    const hasWritten = executive.trim().length > 0
-    if (report.has_pdf && !hasWritten) {
+
+    if (uploadOnly || isUploadedReport) {
       setReportMode('upload')
     }
     if (hasWritten) {
       setContentApproved(true)
     }
-    if (hasWritten || report.has_pdf) {
-      setCurrentStep(2)
+
+    const step1Complete = linkedLayerIds.length > 0 && Boolean(linkedLayerIds[0])
+    const step2Complete =
+      step1Complete &&
+      Boolean(report.title?.trim()) &&
+      Boolean(uploadOnly ? report.has_pdf : hasWritten)
+
+    const maxStep = inferMaxStep({ step1Complete, step2Complete })
+    const urlStep = parseStepParam(searchParams.get('step'))
+    const resolvedStep = urlStep
+      ? clampStep(urlStep, maxStep)
+      : inferDefaultStep({
+          step1Complete,
+          hasContent: hasWritten,
+          hasPdf: Boolean(report.has_pdf),
+        })
+
+    setCurrentStepState(resolvedStep)
+    syncStepToUrl(resolvedStep)
+  }, [report, syncStepToUrl])
+
+  useEffect(() => {
+    if (!form.primary_layer_id || availableLayers.length === 0) return
+    const primary = availableLayers.find((layer) => String(layer.id) === form.primary_layer_id)
+    if (!primary) return
+    if (String(primary.mineral) !== form.mineral) {
+      setForm((prev) => ({ ...prev, mineral: String(primary.mineral) }))
     }
-  }, [report])
+  }, [form.primary_layer_id, form.mineral, availableLayers])
 
   useEffect(() => {
     if (!form.mineral || form.primary_layer_id || availableLayers.length === 0) return
@@ -230,15 +468,23 @@ export default function ReportEditorPage() {
   }
 
   const buildPayload = () => {
+    const mineralId = resolveMineralId(form, availableLayers)
+    if (!mineralId) {
+      throw new Error('Select a map layer in step 1 before saving.')
+    }
     const bbox: Record<string, number> = {}
     for (const edge of ['west', 'south', 'east', 'north'] as const) {
       const raw = location.boundingBox[edge]
       if (raw.trim()) bbox[edge] = Number(raw)
     }
-    const { body, findings } = splitReportDocument(form.executive_summary)
+    const { body, findings, references } =
+      reportMode === 'upload'
+        ? { body: '', findings: '', references: '' }
+        : splitReportDocument(form.executive_summary)
+    const storedSummary = references ? `${body}${references}` : body
     return {
-      title: form.title,
-      mineral: Number(form.mineral),
+      title: form.title.trim(),
+      mineral: mineralId,
       region: form.region ? Number(form.region) : location.regionId ? Number(location.regionId) : null,
       description: form.description,
       price: form.price,
@@ -253,7 +499,7 @@ export default function ReportEditorPage() {
       center_lng: location.centerLng ? Number(location.centerLng) : null,
       zoom: location.zoom ? Number(location.zoom) : null,
       bounding_box: bbox,
-      executive_summary: body,
+      executive_summary: storedSummary,
       key_findings: textToFindings(findings),
       ...(regeneratePdf ? { regenerate_pdf: true } : {}),
     }
@@ -261,7 +507,12 @@ export default function ReportEditorPage() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const payload = buildPayload()
+      let payload
+      try {
+        payload = buildPayload()
+      } catch (err) {
+        throw err instanceof Error ? err : new Error('Could not build report payload.')
+      }
 
       if (isNew) {
         if (reportMode === 'upload' && documentFile) {
@@ -303,10 +554,16 @@ export default function ReportEditorPage() {
       invalidate()
       toast.success(isNew ? 'Report created' : 'Report saved')
       if (isNew) {
-        navigate(`/admin/reports/${res.data.slug}/edit`, { replace: true })
+        sessionStorage.removeItem(NEW_REPORT_DRAFT_KEY)
+        clearDraftDocument().catch(() => {})
+        navigate('/admin/reports', { replace: true })
       }
     },
-    onError: () => toast.error('Could not save report', { description: 'Check required fields and try again.' }),
+    onError: (err) => {
+      const description =
+        err instanceof Error && !isAxiosError(err) ? err.message : formatSaveError(err)
+      toast.error('Could not save report', { description })
+    },
   })
 
   const hasWrittenContent = form.executive_summary.trim().length > 0
@@ -316,7 +573,7 @@ export default function ReportEditorPage() {
     step1Complete &&
     Boolean(form.title.trim()) &&
     (reportMode === 'upload'
-      ? Boolean(documentFile || (!isNew && report?.has_pdf))
+      ? Boolean(documentFile || (restoredDocumentName && documentDraftReady) || (!isNew && report?.has_pdf))
       : hasWrittenContent && contentApproved)
 
   const canContinue =
@@ -337,15 +594,37 @@ export default function ReportEditorPage() {
             : !hasWrittenContent
               ? 'Generate or write report content.'
               : !contentApproved
-                ? 'Approve your draft to continue.'
+                ? 'Open Preview and approve your draft to continue.'
                 : ''
         : ''
 
   const maxReachableStep: EditorStep = step2Complete ? 3 : step1Complete ? 2 : 1
 
   function handleSave() {
+    if (!form.title.trim()) {
+      toast.error('Add a report title before saving.')
+      return
+    }
+    if (!form.layer_ids.length || !form.primary_layer_id) {
+      toast.error('Select a map layer in step 1 before saving.')
+      return
+    }
+    const mineralId = resolveMineralId(form, availableLayers)
+    if (!mineralId) {
+      toast.error('Could not determine report commodity', {
+        description: 'Re-select your primary layer in step 1, then try again.',
+      })
+      return
+    }
     if (reportMode === 'upload' && isNew && !documentFile) {
-      toast.error('Choose a PDF or Word document to upload')
+      toast.error(
+        restoredDocumentName
+          ? 'Re-attach your document before saving'
+          : 'Choose a PDF or Word document to upload',
+        restoredDocumentName
+          ? { description: `${restoredDocumentName} was detached on refresh. Upload it again in step 2.` }
+          : undefined,
+      )
       return
     }
     if (reportMode === 'write' && !hasWrittenContent) {
@@ -359,8 +638,11 @@ export default function ReportEditorPage() {
     setReportMode(next)
     if (next === 'write') {
       setDocumentFile(null)
+      setRestoredDocumentName(null)
+      clearDraftDocument().catch(() => {})
     } else {
       setContentApproved(false)
+      setForm((prev) => ({ ...prev, executive_summary: '', key_findings: '' }))
     }
   }
 
@@ -397,7 +679,7 @@ export default function ReportEditorPage() {
         return false
       } else if (!contentApproved) {
         toast.error('Approve your content', {
-          description: 'Review the draft and click Approve content before continuing.',
+          description: 'Open Preview, review the draft, then click Approve content.',
         })
         return false
       }
@@ -478,7 +760,7 @@ export default function ReportEditorPage() {
           </Link>
           <h1 className="text-2xl font-bold text-app-text mt-2">{isNew ? 'New report' : 'Edit report'}</h1>
           <p className="text-sm text-app-muted mt-1">
-            Step {currentStep} of 3 — {activeStepMeta.hint}
+            Step {currentStep} of 3: {activeStepMeta.hint}
           </p>
         </div>
         {!isNew && report && (
@@ -489,25 +771,18 @@ export default function ReportEditorPage() {
       </div>
 
       <div className="card !p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b app-divider">
+        <div className={`px-5 border-b app-divider ${currentStep === 2 ? 'py-3' : 'py-4'}`}>
           <ReportStepIndicator
             currentStep={currentStep}
             maxReachableStep={maxReachableStep}
             onStepClick={goToStep}
           />
-          {currentStep !== 1 && (
-            <div className="mt-3">
-              <h2 className="font-bold text-app-text">
-                Step {currentStep}: {activeStepMeta.label}
-              </h2>
-              <p className="text-sm text-app-muted mt-0.5">{activeStepMeta.hint}</p>
-            </div>
-          )}
         </div>
 
-        <div className="px-5 py-5 space-y-6">
+        <div className={currentStep === 2 || currentStep === 3 ? 'report-step-panel' : 'px-5 py-5 space-y-6'}>
           {currentStep === 1 && (
             <ReportSetupPanel
+              hasLayersSelected={form.layer_ids.length > 0}
               layers={
                 <ReportLayerPicker
                   layers={availableLayers}
@@ -526,48 +801,26 @@ export default function ReportEditorPage() {
                 />
               }
               locations={
-                <ReportLocationPicker
-                  key={slug ?? 'new'}
-                  value={{ ...location, regionId: form.region || location.regionId }}
-                  layerRegions={layerRegions}
-                  hasLayersSelected={form.layer_ids.length > 0}
-                  onChange={(next) => {
-                    setLocation(next)
-                    if (next.regionId) setForm((prev) => ({ ...prev, region: next.regionId }))
-                  }}
-                />
+                form.layer_ids.length > 0 ? (
+                  <ReportLocationPicker
+                    key={slug ?? 'new'}
+                    value={{ ...location, regionId: form.region || location.regionId }}
+                    layerRegions={layerRegions}
+                    selectedLayerIds={form.layer_ids}
+                    hasLayersSelected={form.layer_ids.length > 0}
+                    onChange={(next) => {
+                      setLocation(next)
+                      if (next.regionId) setForm((prev) => ({ ...prev, region: next.regionId }))
+                    }}
+                  />
+                ) : undefined
               }
             />
           )}
 
           {currentStep === 2 && (
             <>
-              <div className="segmented w-full sm:w-auto max-w-xs" role="tablist" aria-label="Report content mode">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={reportMode === 'write'}
-                  onClick={() => switchReportMode('write')}
-                  className={`segmented-btn flex-1 px-3 py-1.5 text-sm ${
-                    reportMode === 'write' ? 'segmented-btn-active' : ''
-                  }`}
-                >
-                  Write
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={reportMode === 'upload'}
-                  onClick={() => switchReportMode('upload')}
-                  className={`segmented-btn flex-1 px-3 py-1.5 text-sm ${
-                    reportMode === 'upload' ? 'segmented-btn-active' : ''
-                  }`}
-                >
-                  Upload
-                </button>
-              </div>
-
-              <div className={reportMode === 'write' ? 'report-step-canvas' : 'space-y-4'}>
+              <div className="report-step-panel__body">
               {reportMode === 'write' ? (
                 <ReportContentWorkflow
                   title={form.title}
@@ -587,9 +840,19 @@ export default function ReportEditorPage() {
                   assistantDisabled={!form.primary_layer_id}
                   contentApproved={contentApproved}
                   onContentApprovedChange={setContentApproved}
+                  contentMode={reportMode}
+                  onContentModeChange={switchReportMode}
                 />
               ) : (
                 <section className="space-y-4">
+                  <div className="report-upload-toolbar">
+                    <ReportStageBar
+                      contentMode={reportMode}
+                      onContentModeChange={switchReportMode}
+                      showViewToggle={false}
+                    />
+                  </div>
+
                   <label className="block rounded-xl border border-app-border overflow-hidden bg-app-surface px-4 py-4">
                     <span className="text-xs font-semibold uppercase tracking-wide text-app-text-muted">
                       Report title
@@ -609,8 +872,12 @@ export default function ReportEditorPage() {
                     accept={DOCUMENT_ACCEPT}
                     value={documentFile}
                     onChange={setDocumentFile}
-                    placeholder="PDF or Word (.docx)"
-                    hint="Word documents convert to PDF automatically when you publish."
+                    placeholder={
+                      !documentDraftReady && restoredDocumentName
+                        ? `Restoring ${restoredDocumentName}…`
+                        : 'PDF or Word (.docx)'
+                    }
+                    hint="Word documents convert to PDF automatically when you publish. Your file is kept if you refresh this page."
                   />
                   {documentFile && documentFile.name.toLowerCase().endsWith('.docx') && (
                     <p className="text-xs text-app-text-muted">Will convert to PDF on save.</p>
@@ -628,178 +895,51 @@ export default function ReportEditorPage() {
           )}
 
           {currentStep === 3 && (
-            <>
-              <section className="rounded-xl border border-app-border bg-app-subtle/25 p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-app-text">Review before publishing</h3>
-                <dl className="grid gap-2 sm:grid-cols-2 text-sm">
-                  <div>
-                    <dt className="text-xs text-app-text-muted">Title</dt>
-                    <dd className="font-medium text-app-text">{form.title || '—'}</dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-xs text-app-text-muted">Layers ({selectedLayersForReview.length})</dt>
-                    <dd className="font-medium text-app-text mt-0.5">
-                      {selectedLayersForReview.length
-                        ? selectedLayersForReview
-                            .map((layer) => {
-                              const name = displayName(layer!)
-                              return String(layer!.id) === form.primary_layer_id ? `${name} (primary)` : name
-                            })
-                            .join(' · ')
-                        : '—'}
-                      {mineralName ? ` · ${mineralName}` : ''}
-                    </dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-xs text-app-text-muted">
-                      Locations ({location.boundaryIds.length})
-                    </dt>
-                    <dd className="font-medium text-app-text mt-0.5">
-                      {location.locationLabel || 'Not set'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-app-text-muted">Content</dt>
-                    <dd className="font-medium text-app-text">
-                      {reportMode === 'upload'
-                        ? documentFile
-                          ? documentFile.name
-                          : report?.has_pdf
-                            ? 'Existing PDF on file'
-                            : 'No document'
-                        : hasWrittenContent
-                          ? `${form.executive_summary.trim().split(/\s+/).filter(Boolean).length} words written`
-                          : 'Empty'}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section className="space-y-4">
-                <h3 className="text-sm font-semibold text-app-text">Access and pricing</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <span className="text-sm font-medium text-app-text-secondary">Access type</span>
-                    <select
-                      value={form.access_type}
-                      onChange={(e) =>
-                        setForm({ ...form, access_type: e.target.value as Report['access_type'] })
-                      }
-                      className="input mt-1.5 w-full"
-                    >
-                      <option value="free">Free</option>
-                      <option value="paid">Paid</option>
-                      <option value="subscriber_only">Subscriber only</option>
-                      <option value="subscriber_or_paid">Subscriber or paid</option>
-                    </select>
-                  </label>
-                  {form.access_type !== 'free' && (
-                    <label className="block">
-                      <span className="text-sm font-medium text-app-text-secondary">Price (TZS)</span>
-                      <input
-                        type="number"
-                        value={form.price}
-                        onChange={(e) => setForm({ ...form, price: e.target.value })}
-                        className="input mt-1.5 w-full"
-                      />
-                    </label>
-                  )}
-                </div>
-                {(form.access_type === 'subscriber_only' || form.access_type === 'subscriber_or_paid') && (
-                  <div>
-                    <span className="text-sm font-medium text-app-text-secondary">Allowed subscription plans</span>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(plans?.results ?? []).map((plan) => {
-                        const checked = form.allowed_plan_ids.includes(plan.id)
-                        return (
-                          <label
-                            key={plan.id}
-                            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm cursor-pointer ${
-                              checked ? 'border-terra-500 bg-terra-50' : 'border-app-border'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setForm((prev) => ({
-                                  ...prev,
-                                  allowed_plan_ids: checked
-                                    ? prev.allowed_plan_ids.filter((id) => id !== plan.id)
-                                    : [...prev.allowed_plan_ids, plan.id],
-                                }))
-                              }}
-                            />
-                            {plan.name}
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </section>
-
-              {reportMode === 'write' && (
-                <section className="space-y-3">
-                  <h3 className="text-sm font-semibold text-app-text">Output format</h3>
-                  <select
-                    value={form.report_format}
-                    onChange={(e) =>
-                      setForm({ ...form, report_format: e.target.value as Report['report_format'] })
-                    }
-                    className="input max-w-md"
-                  >
-                    <option value="pdf">PDF only</option>
-                    <option value="web_article">Web article only</option>
-                    <option value="pdf_and_article">PDF and web article</option>
-                  </select>
-                  {form.report_format !== 'pdf' && !isNew && report?.has_article && (
-                    <Link to={`/downloads/${report.slug}/read`} className="text-sm text-terra-600 hover:underline block">
-                      Preview web article
-                    </Link>
-                  )}
-                </section>
-              )}
-
-              <section className="space-y-3 rounded-xl border border-app-border p-4">
-                <h3 className="text-sm font-semibold text-app-text">Catalog visibility</h3>
-                <label className="flex items-start gap-3 text-sm text-app-text-secondary cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.is_active}
-                    onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                    className="rounded border-app-border mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium text-app-text block">Visible in catalog</span>
-                    <span className="text-xs text-app-text-muted">
-                      {form.is_active
-                        ? 'Report will appear in the public catalog after you save.'
-                        : 'Save as draft — hidden from catalog until you enable visibility.'}
-                    </span>
-                  </span>
-                </label>
-                {!isNew && report?.has_pdf && reportMode === 'write' && (
-                  <label className="flex items-center gap-2 text-sm text-app-text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={regeneratePdf}
-                      onChange={(e) => setRegeneratePdf(e.target.checked)}
-                      className="rounded border-app-border"
-                    />
-                    Regenerate PDF after save
-                  </label>
-                )}
-              </section>
-
-              <section className="rounded-lg border border-dashed border-app-border px-4 py-3 text-sm text-app-text-secondary">
-                <p>
-                  <span className="font-medium text-app-text">Ready to publish:</span> {accessLabel}
-                  {reportMode === 'write' ? ` · ${formatLabel}` : ' · PDF from upload'}
-                  {form.is_active ? ' · Public catalog' : ' · Draft (hidden)'}
-                </p>
-              </section>
-            </>
+            <ReportPublishPanel
+              title={form.title}
+              layersSummary={
+                selectedLayersForReview.length
+                  ? selectedLayersForReview
+                      .map((layer) => {
+                        const name = displayName(layer!)
+                        return String(layer!.id) === form.primary_layer_id ? `${name} (primary)` : name
+                      })
+                      .join(' · ') + (mineralName ? ` · ${mineralName}` : '')
+                  : 'No layers selected'
+              }
+              locationsSummary={location.locationLabel || 'No locations set'}
+              contentSummary={
+                reportMode === 'upload'
+                  ? documentFile
+                    ? documentFile.name
+                    : report?.has_pdf
+                      ? 'PDF on file'
+                      : 'No document'
+                  : hasWrittenContent
+                    ? `${form.executive_summary.trim().split(/\s+/).filter(Boolean).length} words`
+                    : 'Empty'
+              }
+              reportMode={reportMode}
+              accessType={form.access_type}
+              price={form.price}
+              reportFormat={form.report_format}
+              isActive={form.is_active}
+              regeneratePdf={regeneratePdf}
+              allowedPlanIds={form.allowed_plan_ids}
+              plans={plans?.results ?? []}
+              isNew={isNew}
+              hasPdf={report?.has_pdf}
+              hasArticle={report?.has_article}
+              reportSlug={report?.slug}
+              onAccessTypeChange={(access_type) => setForm((prev) => ({ ...prev, access_type }))}
+              onPriceChange={(price) => setForm((prev) => ({ ...prev, price }))}
+              onReportFormatChange={(report_format) => setForm((prev) => ({ ...prev, report_format }))}
+              onIsActiveChange={(is_active) => setForm((prev) => ({ ...prev, is_active }))}
+              onRegeneratePdfChange={setRegeneratePdf}
+              onAllowedPlanIdsChange={(allowed_plan_ids) =>
+                setForm((prev) => ({ ...prev, allowed_plan_ids }))
+              }
+            />
           )}
         </div>
 
@@ -839,8 +979,8 @@ export default function ReportEditorPage() {
               {!continueHint && currentStep === 2 &&
                 (reportMode === 'write'
                   ? contentApproved
-                    ? 'Approved — continue to publish.'
-                    : 'Generate, edit, then approve.'
+                    ? 'Approved. Continue to publish.'
+                    : 'Generate, edit, then preview and approve.'
                   : 'Upload a finished PDF or Word file.')}
               {!continueHint && currentStep === 3 &&
                 (form.is_active

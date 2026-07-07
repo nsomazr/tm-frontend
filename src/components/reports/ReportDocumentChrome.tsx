@@ -33,8 +33,8 @@ export default function ReportDocumentChrome({ report, children }: ReportDocumen
 
       <footer className="report-document__footer">
         <div className="report-document__footer-copy">
-          <p className="report-document__footer-title">Terra Meta · Mineral Intelligence Platform</p>
-          <p className="report-document__footer-meta">© Terra Meta · 5G Geology · terrameta.5ggeology.com</p>
+          <p className="report-document__footer-title">Terra Meta · Mineral Intelligence</p>
+          <p className="report-document__footer-meta">© Terra Meta · 5G Geology Futures · terrameta.5ggeology.com</p>
         </div>
         <Logo variant="icon" className="report-document__footer-icon" />
       </footer>

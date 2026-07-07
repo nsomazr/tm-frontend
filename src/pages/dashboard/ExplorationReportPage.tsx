@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { reportsApi } from '../../api'
-import { useAuth } from '../../auth/AuthContext'
+import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import { toast } from '../../components/ui/toast'
 import type { UserExplorationReport } from '../../types'
 import { EmptyState, PageHeader } from './DashboardUi'
@@ -19,7 +19,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export default function ExplorationReportPage() {
-  const { hasPaidAccess } = useAuth()
+  const { hasFullMapAccess } = useMapEntitlements()
   const qc = useQueryClient()
   const [step, setStep] = useState<WizardStep>('describe')
   const [prompt, setPrompt] = useState('')
@@ -30,7 +30,7 @@ export default function ExplorationReportPage() {
   const { data: listData, isLoading } = useQuery({
     queryKey: ['exploration-reports'],
     queryFn: () => reportsApi.explorationList().then((r) => r.data.results ?? []),
-    enabled: hasPaidAccess,
+    enabled: hasFullMapAccess,
   })
 
   const { data: activeReport } = useQuery({
@@ -83,7 +83,7 @@ export default function ExplorationReportPage() {
     if (report.status === 'failed' && step === 'generating') setStep('preview')
   }, [report, step])
 
-  if (!hasPaidAccess) {
+  if (!hasFullMapAccess) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-10">
         <PageHeader

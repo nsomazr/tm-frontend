@@ -1,4 +1,5 @@
 import { toast as sonner } from 'sonner'
+import { showConfirm } from './confirmStore'
 
 export type ToastAction = {
   label: string
@@ -52,28 +53,15 @@ function show(
 }
 
 function confirm(title: string, options: ConfirmOptions) {
-  const toastId = sonner.warning(title, {
+  showConfirm({
+    title,
     description: options.description,
-    duration: 15000,
-    action: {
-      label: options.confirmLabel ?? 'Confirm',
-      onClick: () => {
-        sonner.dismiss(toastId)
-        options.onConfirm()
-      },
-    },
-    cancel: {
-      label: options.cancelLabel ?? 'Cancel',
-      onClick: () => options.onCancel?.(),
-    },
-    classNames: options.destructive
-      ? {
-          actionButton:
-            '!rounded-lg !bg-red-600 !text-white !font-medium hover:!bg-red-700 !border-0',
-        }
-      : undefined,
+    confirmLabel: options.confirmLabel ?? 'Confirm',
+    cancelLabel: options.cancelLabel ?? 'Cancel',
+    destructive: options.destructive ?? false,
+    onConfirm: options.onConfirm,
+    onCancel: options.onCancel,
   })
-  return toastId
 }
 
 export const toast = {

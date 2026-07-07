@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import type { MapLayer } from '../../types'
+import LayerPickList, { layerSublabel } from './LayerPickList'
 import SelectionChipList from './SelectionChipList'
-import SearchPickList from './SearchPickList'
 
 interface ReportLayerPickerProps {
   layers: MapLayer[]
@@ -29,17 +29,6 @@ export default function ReportLayerPicker({
         .map((id) => layers.find((layer) => layer.id === id))
         .filter(Boolean) as MapLayer[],
     [selectedIds, layers]
-  )
-
-  const listItems = useMemo(
-    () =>
-      layers.map((layer) => ({
-        id: layer.id,
-        label: displayName(layer),
-        sublabel: [layer.mineral_name, layer.region_name].filter(Boolean).join(' · ') || undefined,
-        badge: String(layer.id) === primaryLayerId ? 'Primary' : undefined,
-      })),
-    [layers, displayName, primaryLayerId]
   )
 
   function applySelection(nextIds: number[], nextPrimaryId: string) {
@@ -78,29 +67,48 @@ export default function ReportLayerPicker({
   }
 
   return (
-    <div className="space-y-3">
-      {selectedLayers.length > 0 && (
-        <SelectionChipList
-          items={selectedLayers.map((layer) => ({
-            id: layer.id,
-            label: displayName(layer),
-            badge: String(layer.id) === primaryLayerId ? 'Primary' : undefined,
-          }))}
-          onRemove={(id) => removeLayer(Number(id))}
-        />
+    <div className="report-layer-setup">
+      <div className="report-layer-setup__controls">
+        <div className="report-layer-setup__picker">
+          <LayerPickList
+            layers={layers}
+            selectedIds={selectedSet}
+            primaryLayerId={primaryLayerId}
+            displayName={displayName}
+            onToggle={toggleLayer}
+            loading={loading}
+          />
+        </div>
+        {selectedLayers.length > 1 && (
+          <SelectionChipList
+            items={selectedLayers.map((layer) => ({
+              id: layer.id,
+              label: displayName(layer),
+              meta: layerSublabel(layer, displayName(layer)),
+              badge: String(layer.id) === primaryLayerId ? 'Primary' : undefined,
+            }))}
+            onRemove={(id) => removeLayer(Number(id))}
+          />
+        )}
+      </div>
+
+      {primaryLayer && (
+        <div className="report-layer-setup__primary">
+          <div className="report-layer-setup__primary-copy">
+            <p className="report-layer-setup__primary-label">Primary layer</p>
+            <p className="report-layer-setup__primary-name">{displayName(primaryLayer)}</p>
+            <p className="report-layer-setup__primary-meta">
+              {layerSublabel(primaryLayer, displayName(primaryLayer))}
+            </p>
+          </div>
+          {primaryLayer.mineral_name && (
+            <span className="report-layer-setup__primary-badge">{primaryLayer.mineral_name}</span>
+          )}
+        </div>
       )}
 
-      <SearchPickList
-        items={listItems}
-        selectedIds={selectedSet}
-        onToggle={toggleLayer}
-        loading={loading}
-        placeholder="Search layers…"
-        emptyLabel="No layers available"
-      />
-
       {selectedLayers.length > 1 && (
-        <p className="text-xs text-app-text-muted">
+        <div className="report-layer-setup__notes">
           {selectedLayers
             .filter((layer) => String(layer.id) !== primaryLayerId)
             .map((layer) => (
@@ -108,18 +116,18 @@ export default function ReportLayerPicker({
                 key={layer.id}
                 type="button"
                 onClick={() => setPrimary(layer.id)}
-                className="text-terra-600 dark:text-terra-400 hover:underline mr-3"
+                className="report-layer-setup__link"
               >
-                Set {displayName(layer)} as primary
+                Make {displayName(layer)} primary
               </button>
             ))}
-        </p>
+        </div>
       )}
 
       {primaryLayer &&
         selectedLayers.some((layer) => layer.mineral !== primaryLayer.mineral) && (
-          <p className="text-xs text-amber-800 dark:text-amber-200">
-            Commodity follows primary layer ({primaryLayer.mineral_name}).
+          <p className="report-layer-setup__warn">
+            Report commodity follows the primary layer ({primaryLayer.mineral_name}).
           </p>
         )}
     </div>

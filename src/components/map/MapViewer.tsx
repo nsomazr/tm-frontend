@@ -23,13 +23,25 @@ import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
 import MapRightDock from './MapRightDock'
 import MapBottomControls from './MapBottomControls'
 import MapZoomControls from './MapZoomControls'
+import MapCompass from './MapCompass'
 import MapCoordinateReadout from './MapCoordinateReadout'
 import MineralHeatmapColorbar from './MineralHeatmapColorbar'
+import AdPlacementSlot from '../ads/AdPlacementSlot'
 import { registerCoordinateProjections } from './coordinateSystems'
 import { useCoordinateSystemState } from './useCoordinateSystemState'
+import { useCoordinateFormatState } from './useCoordinateFormatState'
 import { Fill, RegularShape, Stroke, Style } from 'ol/style'
-import { explorationBounds, type ExplorationDraw } from './explorationGeometry'
+import {
+  boundsFromDrawGeometry,
+  explorationBounds,
+  explorationReady,
+  paddedExplorationFitBounds,
+  type ExplorationDraw,
+} from './explorationGeometry'
 import { analysisZoneRadiusKm, recommendedZoomForAnalysisZone, type AnalysisZoneSpec } from './analysisZoneGeometry'
+import { compositeInsightSnapshot } from './mapSnapshotComposite'
+import { mountMapFreezeOverlay } from './mapSnapshotFreeze'
+import type { InsightSnapshotContext } from './insightSnapshot'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { useBasemapState } from './useBasemapState'
 import { useMapLabelState } from './usePlaceNamesState'
@@ -45,6 +57,7 @@ import { pickFeatureAtPixel } from './mapHitUtils'
 import Heatmap from 'ol/layer/Heatmap'
 import { loadLayerGeojson } from './mapGeojsonCache'
 import { syncMineralHeatmapLayer, MINERAL_HEATMAP_Z_INDEX, type MineralHeatmapSpec } from './mineralHeatmapLayer'
+import { syncMineralHeatmapContours } from './mineralHeatmapContours'
 import { useTranslation } from '../../i18n/LocaleContext'
 import {
   boundaryLabelZoom,
@@ -73,6 +86,8 @@ export interface MapControls {
   zoomOut: () => void
   resetView: () => void
   captureSnapshot: () => Promise<string | null>
+  captureMapFrame: () => Promise<string | null>
+  captureInsightSnapshot: (ctx: InsightSnapshotContext) => Promise<string | null>
 }
 export interface MapFocusTarget {
   lat: number
@@ -115,7 +130,12 @@ interface MapViewerProps {
   insightLoading?: boolean
   hasPaidAccess?: boolean
   assistantMapContext?: import('../assistant/TerraAssistantPanel').TerraAssistantMapContext | null
-  getMapSnapshot?: () => Promise<string | null>
+  mapSnapshot?: string | null
+  getMapSnapshot?: (ctx: InsightSnapshotContext) => Promise<string | null>
+  onRefreshInsight?: () => void
+  refreshInsightPending?: boolean
+  insightLoadingTerrainView?: boolean
+  onExploreSimilarArea?: (lat: number, lng: number, boundaryId?: number) => void
   analysisZone?: AnalysisZoneSpec | null
   countryFocus?: CountryFocus | null
   countries?: Country[]
@@ -138,20 +158,30 @@ interface MapViewerProps {
   minimalChrome?: boolean
   /** Show region/district toggles even when minimalChrome is set */
   showBoundaryControls?: boolean
+  /** When false, boundary toggles are omitted from the map surface (render them elsewhere). */
+  boundaryControlsOnMap?: boolean
   /** Limit which boundary toggles appear (defaults to all levels in GeoJSON) */
   boundaryControlLevels?: BoundaryLevelKey[]
   /** Unpaid preview: mineral layers always on; boundary toggles are user-controlled. */
   staticMap?: boolean
   mineralHighlight?: MineralHighlightSpec | null
   mineralHeatmap?: MineralHeatmapSpec | null
+  mineralHeatmapLoading?: boolean
   /** Show the coordinate-system (CRS) picker. Reserved for admin/editor contexts. */
   showCoordinateSystem?: boolean
   showCoordinateReadout?: boolean
+  showBasemapLabels?: boolean
+  onShowBasemapLabelsChange?: (next: boolean) => void
+  showBoundaryLabels?: boolean
+  onShowBoundaryLabelsChange?: (next: boolean) => void
   /** User-entered exploration geometry to draw/mark (WGS84 [lng,lat] points). */
   explorationDraw?: ExplorationDraw | null
   /** When true, a map click appends a vertex to the exploration draw (paid tool). */
   drawActive?: boolean
   onDrawPoint?: (lng: number, lat: number) => void
+  /** Sponsored carousel in the map left dock (and mobile overlay). */
+  showMapAds?: boolean
+  onBasemapChange?: (id: import('./basemaps').BasemapId) => void
 }
 
 function mineralTintForFeature(
@@ -171,10 +201,15 @@ function mineralTintForFeature(
 const TANZANIA_CENTER = fromLonLat([DEFAULT_COUNTRY_FOCUS.center.lng, DEFAULT_COUNTRY_FOCUS.center.lat])
 const TANZANIA_EXTENT = boundsToExtent(DEFAULT_COUNTRY_FOCUS.bounds)
 
-function fitAdminBounds(map: OlMap, bounds: AdminFitBounds, mobile: boolean) {
+function fitAdminBounds(
+  map: OlMap,
+  bounds: AdminFitBounds,
+  mobile: boolean,
+  duration?: number,
+) {
   const size = map.getSize()
   if (!size || size[0] === 0 || size[1] === 0) {
-    requestAnimationFrame(() => fitAdminBounds(map, bounds, mobile))
+    requestAnimationFrame(() => fitAdminBounds(map, bounds, mobile, duration))
     return
   }
 
@@ -183,9 +218,9 @@ function fitAdminBounds(map: OlMap, bounds: AdminFitBounds, mobile: boolean) {
   map.getView().fit(extent, {
     // Extra bottom padding on mobile clears the stacked bottom controls
     // (Country panel + Ask Terra + dock) so the target isn't hidden behind them.
-    padding: mobile ? [88, 16, 184, 16] : [104, 48, 120, 48],
+    padding: mobile ? [96, 16, 184, 16] : [116, 48, 120, 48],
     maxZoom: 12,
-    duration: mobile ? 500 : 700,
+    duration: duration ?? (mobile ? 500 : 700),
   })
 }
 
@@ -218,14 +253,29 @@ interface CountryFitChrome {
 /** Padding [top, right, bottom, left] that keeps the country centered in the visible map area. */
 function countryFitPadding(mobile: boolean, chrome: CountryFitChrome = {}): [number, number, number, number] {
   if (mobile) {
-    return [64, 12, 176, 12]
+    return [96, 12, 176, 12]
   }
 
-  const top = 64
+  const top = 104
   const bottom = 64
   const right = chrome.rightDock === false ? 48 : 268
   const left = chrome.leftPanel ? 288 : 48
   return [top, right, bottom, left]
+}
+
+function lockMinZoomToCurrentView(map: OlMap, duration: number) {
+  const view = map.getView()
+  const apply = () => {
+    const zoom = view.getZoom()
+    if (zoom != null && Number.isFinite(zoom)) {
+      view.setMinZoom(zoom)
+    }
+  }
+  if (duration <= 0) {
+    apply()
+    return
+  }
+  map.once('moveend', apply)
 }
 
 function fitCountryView(
@@ -252,6 +302,7 @@ function fitCountryView(
     maxZoom: mobile ? 6 : Math.min(focus.default_zoom + 1.5, 7),
     duration,
   })
+  lockMinZoomToCurrentView(map, duration)
 }
 
 function layerOlZIndex(layer: MapLayer) {
@@ -399,7 +450,12 @@ export default function MapViewer({
   insightLoading = false,
   hasPaidAccess = false,
   assistantMapContext = null,
+  mapSnapshot = null,
   getMapSnapshot,
+  onRefreshInsight,
+  refreshInsightPending = false,
+  insightLoadingTerrainView = false,
+  onExploreSimilarArea,
   analysisZone = null,
   countryFocus = null,
   countries = [],
@@ -420,15 +476,23 @@ export default function MapViewer({
   fullScreen = false,
   minimalChrome = false,
   showBoundaryControls = false,
+  boundaryControlsOnMap = true,
   boundaryControlLevels,
   staticMap = false,
   mineralHighlight = null,
   mineralHeatmap = null,
+  mineralHeatmapLoading = false,
   showCoordinateSystem = false,
   showCoordinateReadout = false,
+  showBasemapLabels: showBasemapLabelsProp,
+  onShowBasemapLabelsChange: onShowBasemapLabelsChangeProp,
+  showBoundaryLabels: showBoundaryLabelsProp,
+  onShowBoundaryLabelsChange: onShowBoundaryLabelsChangeProp,
   explorationDraw = null,
   drawActive = false,
   onDrawPoint,
+  showMapAds = true,
+  onBasemapChange,
 }: MapViewerProps) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<OlMap | null>(null)
@@ -441,12 +505,19 @@ export default function MapViewer({
   const programmaticMoveRef = useRef(false)
   continuousInspectRef.current = continuousInspect
   const hoverLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
+  const analysisFitKeyRef = useRef('')
   const analysisZoneLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const userDrawLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const drawActiveRef = useRef(drawActive)
   drawActiveRef.current = drawActive
   const onDrawPointRef = useRef(onDrawPoint)
   onDrawPointRef.current = onDrawPoint
+  const onAreaInspectRef = useRef(onAreaInspect)
+  onAreaInspectRef.current = onAreaInspect
+  const onFeatureClickRef = useRef(onFeatureClick)
+  onFeatureClickRef.current = onFeatureClick
+  const onMapControlsReadyRef = useRef(onMapControlsReady)
+  onMapControlsReadyRef.current = onMapControlsReady
   const countryLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const regionLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const districtLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
@@ -454,6 +525,7 @@ export default function MapViewer({
   const villageLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const villageLabelLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const heatmapLayerRef = useRef<Heatmap | null>(null)
+  const heatmapContourLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const villageBatchCancelRef = useRef<(() => void) | null>(null)
   const boundaryVisibilityRef = useRef(boundaryVisibility)
   const boundaryFocusRef = useRef(boundaryFocus)
@@ -461,7 +533,6 @@ export default function MapViewer({
   const mapZoomRef = useRef(6)
   const showBasemapLabelsRef = useRef(true)
   const showBoundaryLabelsRef = useRef(true)
-  boundaryVisibilityRef.current = boundaryVisibility
   boundaryFocusRef.current = boundaryFocus
   mineralHighlightRef.current = mineralHighlight
   const countryFocusRef = useRef<CountryFocus>(DEFAULT_COUNTRY_FOCUS)
@@ -470,27 +541,58 @@ export default function MapViewer({
   const hadMapFocusRef = useRef(false)
   const basemapRef = useRef<BasemapId>('light')
   const [mapEpoch, setMapEpoch] = useState(0)
-  const [basemap, setBasemap] = useBasemapState()
-  const {
-    showBasemapLabels,
-    setShowBasemapLabels,
-    showBoundaryLabels,
-    setShowBoundaryLabels,
-  } = useMapLabelState()
-  const [coordinateSystem, setCoordinateSystem] = useCoordinateSystemState()
+  const [mapRotation, setMapRotation] = useState(0)
+  const [basemap, setBasemapState] = useBasemapState()
+
+  const handleBasemapChange = useCallback(
+    (id: import('./basemaps').BasemapId) => {
+      setBasemapState(id)
+    },
+    [setBasemapState],
+  )
+
+  useEffect(() => {
+    onBasemapChange?.(basemap)
+  }, [basemap, onBasemapChange])
+  const internalLabelState = useMapLabelState()
+  const showBasemapLabels = showBasemapLabelsProp ?? internalLabelState.showBasemapLabels
+  const setShowBasemapLabels = onShowBasemapLabelsChangeProp ?? internalLabelState.setShowBasemapLabels
+  const showBoundaryLabels = showBoundaryLabelsProp ?? internalLabelState.showBoundaryLabels
+  const setShowBoundaryLabels = onShowBoundaryLabelsChangeProp ?? internalLabelState.setShowBoundaryLabels
+  const [internalBoundaryVisibility, setInternalBoundaryVisibility] = useState(boundaryVisibility)
+  const isBoundaryControlled = onBoundaryVisibilityChange != null
+  const activeBoundaryVisibility = isBoundaryControlled ? boundaryVisibility : internalBoundaryVisibility
+  const handleBoundaryVisibilityChange = useCallback(
+    (next: BoundaryVisibility) => {
+      if (isBoundaryControlled) {
+        onBoundaryVisibilityChange?.(next)
+      } else {
+        setInternalBoundaryVisibility(next)
+      }
+    },
+    [isBoundaryControlled, onBoundaryVisibilityChange],
+  )
+  boundaryVisibilityRef.current = activeBoundaryVisibility
+  const [coordinateSystem, setCoordinateSystem] = useCoordinateSystemState(countryCode)
+  const [coordinateFormat, setCoordinateFormat] = useCoordinateFormatState()
   const [pointerCoordinate, setPointerCoordinate] = useState<number[] | null>(null)
   const { theme } = useTheme()
   const themeRef = useRef(theme)
   const [layers, setLayers] = useState(initialLayers)
-  countryFitChromeRef.current = {
-    leftPanel: Boolean(showLayerPanel && hasPaidAccess && layers.length > 0 && !minimalChrome),
-    rightDock: !minimalChrome,
-  }
   const [internalVisible, setInternalVisible] = useState<Set<number>>(
     () => new Set(initialLayers.map((l) => l.id))
   )
   const visibleLayers = externalVisible ?? internalVisible
   const isMobile = useMediaQuery('(max-width: 767px)')
+  countryFitChromeRef.current = {
+    leftPanel: Boolean(
+      hasPaidAccess &&
+        !minimalChrome &&
+        !isMobile &&
+        ((showLayerPanel && layers.length > 0) || !!mineralHeatmap?.points?.length || mineralHeatmapLoading),
+    ),
+    rightDock: !minimalChrome,
+  }
   const { locale, m } = useTranslation()
   const prevLocaleRef = useRef(locale)
   const isMobileRef = useRef(isMobile)
@@ -574,16 +676,13 @@ export default function MapViewer({
       })
   }, [])
 
-  const inspectAt = useCallback(
-    (coordinate: number[], featureIds?: number[]) => {
-      if (!onAreaInspect || !mapInstance.current) return
-      const map = mapInstance.current
-      const [lng, lat] = toLonLat(coordinate)
-      const zoom = Math.round(map.getView().getZoom() ?? 8)
-      onAreaInspect(lat, lng, zoom, featureIds)
-    },
-    [onAreaInspect]
-  )
+  const inspectAtCoordinate = useCallback((coordinate: number[], featureIds?: number[]) => {
+    if (!onAreaInspectRef.current || !mapInstance.current) return
+    const map = mapInstance.current
+    const [lng, lat] = toLonLat(coordinate)
+    const zoom = Math.round(map.getView().getZoom() ?? 8)
+    onAreaInspectRef.current(lat, lng, zoom, featureIds)
+  }, [])
 
   useEffect(() => {
     setLayers(initialLayers)
@@ -791,12 +890,12 @@ export default function MapViewer({
         hoverLayerRef.current
       )
       if (picked) {
-        if (onFeatureClick) onFeatureClick(picked.feature.getProperties())
+        onFeatureClickRef.current?.(picked.feature.getProperties())
         const ids = picked.featureId != null ? [picked.featureId] : undefined
-        inspectAt(evt.coordinate, ids)
+        inspectAtCoordinate(evt.coordinate, ids)
         return
       }
-      inspectAt(evt.coordinate)
+      inspectAtCoordinate(evt.coordinate)
     }
 
     map.on('singleclick', handleMapInspect)
@@ -859,11 +958,11 @@ export default function MapViewer({
     })
 
     map.on('moveend', () => {
-      if (!onAreaInspect || !continuousInspectRef.current || programmaticMoveRef.current) return
+      if (!onAreaInspectRef.current || !continuousInspectRef.current || programmaticMoveRef.current) return
       if (inspectTimer.current) clearTimeout(inspectTimer.current)
       inspectTimer.current = setTimeout(() => {
         const center = map.getView().getCenter()
-        if (center) inspectAt(center)
+        if (center) inspectAtCoordinate(center)
       }, 700)
     })
 
@@ -890,7 +989,7 @@ export default function MapViewer({
       vectorLayersRef.current.clear()
       layerMetaRef.current.clear()
     }
-  }, [inspectAt, onAreaInspect, onFeatureClick])
+  }, [inspectAtCoordinate])
 
   // Keep OpenLayers canvas in sync with flex layout (mobile toolbars, orientation, etc.)
   useEffect(() => {
@@ -922,10 +1021,26 @@ export default function MapViewer({
   useEffect(() => {
     const map = mapInstance.current
     if (!map) return
+    const view = map.getView()
+    const syncRotation = () => setMapRotation(view.getRotation())
+    syncRotation()
+    view.on('change:rotation', syncRotation)
+    return () => {
+      view.un('change:rotation', syncRotation)
+    }
+  }, [mapEpoch])
+
+  useEffect(() => {
+    const map = mapInstance.current
+    if (!map) return
+
+    // Analysis zone owns the viewport while active — avoid competing mapFocus animations.
+    if (analysisZone) return
 
     if (!mapFocus) {
       if (!hadMapFocusRef.current) return
       hadMapFocusRef.current = false
+      if (adminFitBounds || analysisZone) return
       programmaticMoveRef.current = true
       const mobile = isMobileRef.current
       fitCountryView(map, countryFocusRef.current, mobile, true, countryFitChromeRef.current)
@@ -956,7 +1071,7 @@ export default function MapViewer({
         }, 200)
       }
     )
-  }, [mapFocus, countryFocus])
+  }, [mapFocus, countryFocus, adminFitBounds, analysisZone])
 
   useEffect(() => {
     const map = mapInstance.current
@@ -997,15 +1112,15 @@ export default function MapViewer({
 
     const zoom = map.getView().getZoom() ?? 6
     mapZoomRef.current = zoom
-    countryLayer.setVisible(boundaryVisibility.country)
-    regionLayer.setVisible(boundaryVisibility.regions && zoom >= boundaryMinZoom(1))
-    districtLayer.setVisible(boundaryVisibility.districts && zoom >= boundaryMinZoom(2))
-    wardLayer.setVisible(boundaryVisibility.wards && zoom >= boundaryMinZoom(3))
+    countryLayer.setVisible(activeBoundaryVisibility.country)
+    regionLayer.setVisible(activeBoundaryVisibility.regions && zoom >= boundaryMinZoom(1))
+    districtLayer.setVisible(activeBoundaryVisibility.districts && zoom >= boundaryMinZoom(2))
+    wardLayer.setVisible(activeBoundaryVisibility.wards && zoom >= boundaryMinZoom(3))
     syncVillageLayers(zoom)
     regionLayer.changed()
     districtLayer.changed()
     wardLayer.changed()
-  }, [boundariesGeoJson, boundaryVisibility, boundaryFocus, syncVillageLayers])
+  }, [boundariesGeoJson, activeBoundaryVisibility, boundaryFocus, syncVillageLayers])
 
   useEffect(() => {
     const map = mapInstance.current
@@ -1020,7 +1135,7 @@ export default function MapViewer({
     villageSource.clear()
 
     const zoom = map.getView().getZoom() ?? 6
-    const showVillages = boundaryVisibility.villages && zoom >= boundaryMinZoom(4)
+    const showVillages = activeBoundaryVisibility.villages && zoom >= boundaryMinZoom(4)
     syncVillageLayers(zoom)
 
     if (!showVillages || !villagesGeoJson?.features?.length) {
@@ -1038,7 +1153,7 @@ export default function MapViewer({
     villageBatchCancelRef.current = addFeaturesInBatches(villageSource, villageFeatures, 500, () => {
       syncVillageLayers()
     })
-  }, [villagesGeoJson, boundaryVisibility.villages, boundaryFocus, syncVillageLayers])
+  }, [villagesGeoJson, activeBoundaryVisibility.villages, boundaryFocus, syncVillageLayers])
 
   useEffect(() => {
     boundaryFocusRef.current = boundaryFocus
@@ -1074,19 +1189,37 @@ export default function MapViewer({
 
   useEffect(() => {
     const map = mapInstance.current
+    if (!map || mapEpoch === 0) return
+    let cancelled = false
+    const contourSpec =
+      mineralHeatmap?.contours?.length && mineralHeatmap.color
+        ? {
+            slug: mineralHeatmap.slug,
+            color: mineralHeatmap.color,
+            contours: mineralHeatmap.contours,
+          }
+        : null
+    void syncMineralHeatmapContours(map, heatmapContourLayerRef, contourSpec, () => cancelled)
+    return () => {
+      cancelled = true
+    }
+  }, [mineralHeatmap, mapEpoch])
+
+  useEffect(() => {
+    const map = mapInstance.current
     if (!map || !countryFocus) return
 
     const extent = boundsToExtent(countryFocus.bounds)
     map.getView().set('extent', extent)
 
-    if (!analysisZone) {
+    if (!analysisZone && !adminFitBounds) {
       programmaticMoveRef.current = true
       fitCountryView(map, countryFocus, isMobileRef.current, true, countryFitChromeRef.current)
       window.setTimeout(() => {
         programmaticMoveRef.current = false
       }, isMobileRef.current ? 650 : 900)
     }
-  }, [countryFocus, analysisZone])
+  }, [countryFocus, analysisZone, adminFitBounds])
 
   useEffect(() => {
     const map = mapInstance.current
@@ -1097,7 +1230,7 @@ export default function MapViewer({
       programmaticMoveRef.current = false
     }, isMobileRef.current ? 650 : 900)
     return () => window.clearTimeout(timer)
-  }, [showLayerPanel, hasPaidAccess, layers.length, minimalChrome, isMobile, analysisZone, adminFitBounds])
+  }, [showLayerPanel, hasPaidAccess, layers.length, minimalChrome, isMobile, analysisZone, adminFitBounds, mineralHeatmap?.points?.length])
 
   useEffect(() => {
     const map = mapInstance.current
@@ -1116,7 +1249,10 @@ export default function MapViewer({
     if (!map || !layer || !source) return
 
     source.clear()
-    if (!analysisZone || boundaryFocus) return
+    if (!analysisZone || adminFitBounds) {
+      analysisFitKeyRef.current = ''
+      return
+    }
 
     const radiusM = analysisZoneRadiusKm(analysisZone.areaKm2) * 1000
     const feature = new Feature({
@@ -1124,6 +1260,15 @@ export default function MapViewer({
       extended: analysisZone.extended === true,
     })
     source.addFeature(feature)
+
+    const fitKey = [
+      analysisZone.lat,
+      analysisZone.lng,
+      analysisZone.areaKm2,
+      analysisZone.extended === true,
+    ].join('|')
+    if (analysisFitKeyRef.current === fitKey) return
+    analysisFitKeyRef.current = fitKey
 
     const geometry = feature.getGeometry()
     const extent = geometry?.getExtent()
@@ -1143,23 +1288,31 @@ export default function MapViewer({
     programmaticMoveRef.current = true
     const mobile = isMobileRef.current
     const view = map.getView()
+    view.cancelAnimations()
+
+    const currentZoom = view.getZoom() ?? 6
     const padding = mobile ? [72, 28, 176, 28] : [48, 56, 152, 56]
+
+    // Already close enough: pan only (no second zoom pass).
+    if (currentZoom >= targetZoom - 0.15) {
+      view.animate(
+        { center, duration: mobile ? 350 : 450 },
+        () => {
+          programmaticMoveRef.current = false
+        }
+      )
+      return
+    }
 
     view.fit(extent, {
       padding,
-      maxZoom: 15.5,
-      duration: mobile ? 550 : 750,
+      maxZoom: Math.min(targetZoom, 15.5),
+      duration: mobile ? 500 : 650,
       callback: () => {
-        const fittedZoom = view.getZoom() ?? 6
-        if (fittedZoom < targetZoom - 0.15) {
-          view.animate({ center, zoom: targetZoom, duration: 450 })
-        }
-        window.setTimeout(() => {
-          programmaticMoveRef.current = false
-        }, 500)
+        programmaticMoveRef.current = false
       },
     })
-  }, [analysisZone, boundaryFocus])
+  }, [analysisZone, adminFitBounds])
 
   // Render the user's exploration draw (point / line / polygon + vertices).
   useEffect(() => {
@@ -1171,15 +1324,8 @@ export default function MapViewer({
     if (explorationDraw && explorationDraw.points.length) {
       source.addFeatures(buildUserDrawFeatures(explorationDraw))
       layer?.changed()
-      if (drawActive && minimalChrome && map) {
-        programmaticMoveRef.current = true
-        fitDrawPoints(map, explorationDraw.points, isMobileRef.current)
-        window.setTimeout(() => {
-          programmaticMoveRef.current = false
-        }, 400)
-      }
     }
-  }, [explorationDraw, mapEpoch, drawActive, minimalChrome])
+  }, [explorationDraw, mapEpoch])
 
   // Switch basemap / place-name tiles
   useEffect(() => {
@@ -1204,7 +1350,7 @@ export default function MapViewer({
 
   useEffect(() => {
     syncVillageLayers()
-  }, [boundaryVisibility, syncVillageLayers])
+  }, [activeBoundaryVisibility, syncVillageLayers])
 
   useEffect(() => {
     restyleVectorLayers()
@@ -1334,7 +1480,12 @@ export default function MapViewer({
     const map = mapInstance.current
     if (!map) return
     const view = map.getView()
-    view.animate({ zoom: (view.getZoom() ?? 6) + delta, duration: 200 })
+    const current = view.getZoom() ?? 6
+    const min = view.getMinZoom() ?? 0
+    const max = view.getMaxZoom() ?? 28
+    const next = Math.min(max, Math.max(min, current + delta))
+    if (next === current) return
+    view.animate({ zoom: next, duration: 200 })
   }, [])
 
   const resetMapView = useCallback(() => {
@@ -1348,62 +1499,239 @@ export default function MapViewer({
     }, isMobileRef.current ? 650 : 900)
   }, [onViewReset])
 
-  const captureSnapshot = useCallback((): Promise<string | null> => {
+  const compositeMapCanvases = useCallback((map: OlMap): string | null => {
+    try {
+      const size = map.getSize()
+      if (!size) return null
+      const [width, height] = size
+      const composite = document.createElement('canvas')
+      composite.width = width
+      composite.height = height
+      const ctx = composite.getContext('2d')
+      if (!ctx) return null
+      map.getViewport().querySelectorAll<HTMLCanvasElement>('canvas').forEach((canvas) => {
+        if (!canvas.width || !canvas.height) return
+        const parent = canvas.parentElement as HTMLElement | null
+        const opacity = parent?.style.opacity
+        ctx.globalAlpha = opacity === '' || !opacity ? 1 : Number(opacity)
+        const matrix = canvas.style.transform.match(/matrix\(([^)]+)\)/)
+        if (matrix) {
+          const values = matrix[1].split(',').map((v) => parseFloat(v.trim()))
+          if (values.length === 6) {
+            ctx.setTransform(values[0], values[1], values[2], values[3], values[4], values[5])
+            ctx.drawImage(canvas, 0, 0)
+            ctx.setTransform(1, 0, 0, 1, 0, 0)
+            return
+          }
+        }
+        ctx.drawImage(canvas, 0, 0)
+      })
+      try {
+        return composite.toDataURL('image/png')
+      } catch {
+        try {
+          return composite.toDataURL('image/jpeg', 0.88)
+        } catch {
+          return null
+        }
+      }
+    } catch {
+      return null
+    }
+  }, [])
+
+  const captureMapFrame = useCallback((): Promise<string | null> => {
     const map = mapInstance.current
     if (!map) return Promise.resolve(null)
 
     return new Promise((resolve) => {
       map.once('rendercomplete', () => {
-        try {
-          const size = map.getSize()
-          if (!size) {
-            resolve(null)
-            return
-          }
-          const [width, height] = size
-          const composite = document.createElement('canvas')
-          composite.width = width
-          composite.height = height
-          const ctx = composite.getContext('2d')
-          if (!ctx) {
-            resolve(null)
-            return
-          }
-          map.getViewport().querySelectorAll<HTMLCanvasElement>('.ol-layer canvas, canvas.ol-fixedoverlay').forEach((canvas) => {
-            if (!canvas.width || !canvas.height) return
-            const parent = canvas.parentElement as HTMLElement | null
-            const opacity = parent?.style.opacity
-            ctx.globalAlpha = opacity === '' || !opacity ? 1 : Number(opacity)
-            const matrix = canvas.style.transform.match(/matrix\(([^)]+)\)/)
-            if (matrix) {
-              const values = matrix[1].split(',').map((v) => parseFloat(v.trim()))
-              if (values.length === 6) {
-                ctx.setTransform(values[0], values[1], values[2], values[3], values[4], values[5])
-                ctx.drawImage(canvas, 0, 0)
-                ctx.setTransform(1, 0, 0, 1, 0, 0)
-                return
-              }
-            }
-            ctx.drawImage(canvas, 0, 0)
-          })
-          resolve(composite.toDataURL('image/png'))
-        } catch {
-          resolve(null)
-        }
+        resolve(compositeMapCanvases(map))
       })
       map.renderSync()
     })
+  }, [compositeMapCanvases])
+
+  const waitMapRender = useCallback((): Promise<void> => {
+    const map = mapInstance.current
+    if (!map) return Promise.resolve()
+    return new Promise((resolve) => {
+      window.setTimeout(() => {
+        map.once('rendercomplete', () => resolve())
+        map.renderSync()
+      }, 50)
+    })
   }, [])
 
+  const captureInsightSnapshot = useCallback(
+    async (ctx: InsightSnapshotContext): Promise<string | null> => {
+      const map = mapInstance.current
+      if (!map) return null
+
+      const view = map.getView()
+      const savedCenter = view.getCenter()
+      const savedZoom = view.getZoom()
+      const savedRotation = view.getRotation()
+      const mobile = isMobileRef.current
+      const container = mapRef.current?.parentElement
+
+      const fitDetailView = () => {
+        const draw = ctx.explorationDraw ?? explorationDraw
+        if (draw && explorationReady(draw)) {
+          const fit = paddedExplorationFitBounds(draw.points, draw.mode)
+          if (fit) {
+            fitAdminBounds(map, { ...fit, key: 0 }, mobile, 0)
+            return true
+          }
+          if (draw.mode === 'point' && draw.points[0]) {
+            const [lng, lat] = draw.points[0]
+            view.setCenter(fromLonLat([lng, lat]))
+            view.setZoom(13)
+            return true
+          }
+        }
+        if (ctx.explorationGeometry) {
+          const fit = boundsFromDrawGeometry(ctx.explorationGeometry)
+          if (fit) {
+            fitAdminBounds(map, { ...fit, key: 0 }, mobile, 0)
+            return true
+          }
+        }
+        const km2 = ctx.analysisAreaKm2 ?? 10
+        const radiusM = analysisZoneRadiusKm(km2) * 1000
+        const circle = new Circle(fromLonLat([ctx.lng, ctx.lat]), radiusM)
+        const extent = circle.getExtent()
+        view.fit(extent, {
+          padding: mobile ? [48, 32, 48, 32] : [64, 48, 64, 48],
+          maxZoom: 15,
+          duration: 0,
+        })
+        return true
+      }
+
+      programmaticMoveRef.current = true
+      let removeFreeze: (() => void) | null = null
+      const analysisLayer = analysisZoneLayerRef.current
+      const analysisLayerVisible = analysisLayer?.getVisible() ?? true
+
+      map.renderSync()
+      const instantFreeze = container ? compositeMapCanvases(map) : null
+      if (instantFreeze && container) {
+        removeFreeze = mountMapFreezeOverlay(container, instantFreeze)
+      }
+
+      if (analysisLayer) analysisLayer.setVisible(false)
+
+      const countryLayer = countryLayerRef.current
+      const regionLayer = regionLayerRef.current
+      const districtLayer = districtLayerRef.current
+      const wardLayer = wardLayerRef.current
+      const villageLayer = villageLayerRef.current
+      const boundaryVis = {
+        country: countryLayer?.getVisible() ?? true,
+        regions: regionLayer?.getVisible() ?? true,
+        districts: districtLayer?.getVisible() ?? false,
+        wards: wardLayer?.getVisible() ?? false,
+        villages: villageLayer?.getVisible() ?? false,
+      }
+      try {
+        countryLayer?.setVisible(true)
+        regionLayer?.setVisible(true)
+        districtLayer?.setVisible(false)
+        wardLayer?.setVisible(false)
+        villageLayer?.setVisible(false)
+
+        fitCountryView(
+          map,
+          countryFocusRef.current,
+          mobile,
+          false,
+          { leftPanel: false, rightDock: false },
+        )
+        map.renderSync()
+        await waitMapRender()
+
+        const size = map.getSize()
+        const markerPixel = map.getPixelFromCoordinate(fromLonLat([ctx.lng, ctx.lat]))
+        const marker = size && markerPixel
+          ? { x: markerPixel[0] / size[0], y: markerPixel[1] / size[1] }
+          : { x: 0.5, y: 0.42 }
+
+        const overviewUrl = await captureMapFrame()
+        if (!overviewUrl) return null
+
+        fitDetailView()
+        if (analysisLayer) analysisLayer.setVisible(false)
+        await waitMapRender()
+        const detailUrl = await captureMapFrame()
+        if (!detailUrl) return overviewUrl
+
+        try {
+          return await compositeInsightSnapshot(overviewUrl, detailUrl, marker, {
+            lat: ctx.lat,
+            lng: ctx.lng,
+          })
+        } catch {
+          return detailUrl
+        }
+      } finally {
+        removeFreeze?.()
+        if (analysisLayer) analysisLayer.setVisible(analysisLayerVisible)
+        countryLayer?.setVisible(boundaryVis.country)
+        regionLayer?.setVisible(boundaryVis.regions)
+        districtLayer?.setVisible(boundaryVis.districts)
+        wardLayer?.setVisible(boundaryVis.wards)
+        villageLayer?.setVisible(boundaryVis.villages)
+        if (savedCenter) {
+          view.setCenter(savedCenter)
+          if (savedZoom != null) view.setZoom(savedZoom)
+          view.setRotation(savedRotation)
+        }
+        programmaticMoveRef.current = false
+        map.renderSync()
+      }
+    },
+    [captureMapFrame, waitMapRender, explorationDraw, compositeMapCanvases],
+  )
+
+  const captureSnapshot = useCallback((): Promise<string | null> => {
+    const map = mapInstance.current
+    if (!map) return Promise.resolve(null)
+
+    const draw = explorationDraw
+    if (draw && explorationReady(draw)) {
+      let lat = 0
+      let lng = 0
+      if (draw.mode === 'point') {
+        ;[lng, lat] = draw.points[0]
+      } else {
+        lng = draw.points.reduce((s, p) => s + p[0], 0) / draw.points.length
+        lat = draw.points.reduce((s, p) => s + p[1], 0) / draw.points.length
+      }
+      return captureInsightSnapshot({ lat, lng, explorationDraw: draw })
+    }
+
+    const center = map.getView().getCenter()
+    if (!center) return captureMapFrame()
+    const [lng, lat] = toLonLat(center)
+    return captureInsightSnapshot({
+      lat,
+      lng,
+      zoom: Math.round(map.getView().getZoom() ?? 11),
+    })
+  }, [captureInsightSnapshot, captureMapFrame, explorationDraw])
+
   useEffect(() => {
-    if (!onMapControlsReady || mapEpoch === 0) return
-    onMapControlsReady({
+    if (mapEpoch === 0) return
+    onMapControlsReadyRef.current?.({
       zoomIn: () => zoomMap(1),
       zoomOut: () => zoomMap(-1),
       resetView: resetMapView,
       captureSnapshot,
+      captureMapFrame,
+      captureInsightSnapshot,
     })
-  }, [mapEpoch, onMapControlsReady, zoomMap, resetMapView, captureSnapshot])
+  }, [mapEpoch, zoomMap, resetMapView, captureSnapshot, captureMapFrame, captureInsightSnapshot])
 
   const legendLayers = [...layers]
     .sort((a, b) => a.z_index - b.z_index)
@@ -1413,10 +1741,26 @@ export default function MapViewer({
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
-      {!minimalChrome && showCoordinateReadout && (
+      {!minimalChrome && (
+        <MapCompass
+          rotationRad={mapRotation}
+          className={
+            isMobile
+              ? 'absolute z-20 left-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
+              : `map-compass${
+                  showCoordinateReadout && hasPaidAccess && pointerCoordinate
+                    ? ' map-compass--above-readout'
+                    : ''
+                }`
+          }
+        />
+      )}
+      {!minimalChrome && showCoordinateReadout && hasPaidAccess && (
         <MapCoordinateReadout
           mapCoordinate={pointerCoordinate}
           coordinateSystem={coordinateSystem}
+          coordinateFormat={coordinateFormat}
+          onCoordinateFormatChange={setCoordinateFormat}
           className={
             isMobile
               ? 'absolute z-20 left-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
@@ -1425,57 +1769,77 @@ export default function MapViewer({
         />
       )}
       {minimalChrome && (
-        <div className="absolute z-10 bottom-3 right-3 pointer-events-none">
+        <div className="map-minimal-dock pointer-events-none">
+          {boundaryControlsOnMap && showBoundaryControls && boundaryToggleLevels.length > 0 && (
+            <div className="map-minimal-dock__panel map-chrome pointer-events-auto">
+              <span className="map-minimal-dock__title">{m.map.boundaryLayersTitle}</span>
+              <BoundaryVisibilityToggles
+                availableLevels={boundaryToggleLevels}
+                value={activeBoundaryVisibility}
+                onChange={handleBoundaryVisibilityChange}
+                showBasemapLabels={showBasemapLabels}
+                onShowBasemapLabelsChange={setShowBasemapLabels}
+                showBoundaryLabels={showBoundaryLabels}
+                onShowBoundaryLabelsChange={setShowBoundaryLabels}
+                villagesLoading={villagesLoading}
+                villagesError={villagesError}
+                compact
+              />
+            </div>
+          )}
+          <MapCompass rotationRad={mapRotation} compact className="map-minimal-dock__compass shrink-0 self-end" />
           <MapZoomControls
+            className="map-minimal-dock__zoom shrink-0"
             onZoomIn={() => zoomMap(1)}
             onZoomOut={() => zoomMap(-1)}
             onResetView={resetMapView}
           />
         </div>
       )}
-      {minimalChrome && showBoundaryControls && boundaryToggleLevels.length > 0 && (
-        <div className="absolute z-10 top-3 right-3 map-chrome rounded-xl p-2.5 pointer-events-auto">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide map-text-muted px-0.5 mb-1.5">
-            {m.map.boundaryLayersTitle}
-          </span>
-          <BoundaryVisibilityToggles
-            availableLevels={boundaryToggleLevels}
-            value={boundaryVisibility}
-            onChange={onBoundaryVisibilityChange ?? (() => {})}
-            showBasemapLabels={showBasemapLabels}
-            onShowBasemapLabelsChange={setShowBasemapLabels}
-            showBoundaryLabels={showBoundaryLabels}
-            onShowBoundaryLabelsChange={setShowBoundaryLabels}
-            villagesLoading={villagesLoading}
-            villagesError={villagesError}
-            compact
-          />
-        </div>
-      )}
-      {showLayerPanel && layers.length > 0 && !minimalChrome && !isMobile && hasPaidAccess && (
-        <div className="absolute z-10 top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] w-[min(18rem,calc(100vw-1.5rem))] max-h-[min(calc(100%-6rem),85vh)] hidden md:flex flex-col gap-1.5 pointer-events-none">
-          <LayerPanel
-            embedded
-            layers={layers}
-            visibleLayers={visibleLayers}
-            onToggle={toggleLayer}
-            onToggleType={toggleLayerType}
-            onReorder={reorderLayers}
-            allowReorder={allowReorder || editable}
-            layersLocked={staticMap}
-            className="pointer-events-auto min-h-0 max-h-[min(40vh,calc(100%-6rem))]"
-          />
+      {hasPaidAccess && !minimalChrome && !isMobile && (showLayerPanel && layers.length > 0 || mineralHeatmap?.points?.length || mineralHeatmapLoading) && (
+        <div className="map-left-dock absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] max-h-[min(calc(100%-6rem),85vh)] hidden md:flex flex-col gap-2 pointer-events-none">
+          {showLayerPanel && layers.length > 0 && (
+            <LayerPanel
+              embedded
+              layers={layers}
+              visibleLayers={visibleLayers}
+              onToggle={toggleLayer}
+              onToggleType={toggleLayerType}
+              onReorder={reorderLayers}
+              allowReorder={allowReorder || editable}
+              layersLocked={staticMap}
+              className="pointer-events-auto min-h-0 max-h-[min(36vh,calc(100%-10rem))]"
+            />
+          )}
           <MineralHeatmapColorbar
             embedded
             spec={mineralHeatmap?.points?.length ? mineralHeatmap : null}
+            loading={mineralHeatmapLoading}
             className="pointer-events-none shrink-0 w-full"
           />
+          {showMapAds && (
+            <AdPlacementSlot
+              placement="map_overlay"
+              compact
+              className="pointer-events-auto w-full shrink-0"
+            />
+          )}
+        </div>
+      )}
+      {!minimalChrome && !isMobile && showMapAds && hasPaidAccess && !(showLayerPanel && layers.length > 0) && !mineralHeatmap?.points?.length && (
+        <div className="map-left-dock map-left-dock--ads-only absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex flex-col pointer-events-none">
+          <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
+        </div>
+      )}
+      {isMobile && showMapAds && !minimalChrome && hasPaidAccess && (
+        <div className="map-left-dock absolute z-20 bottom-[calc(9rem+env(safe-area-inset-bottom,0px))] pointer-events-none md:hidden">
+          <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
         </div>
       )}
       {!minimalChrome && !isMobile && (
         <MapRightDock
           basemap={basemap}
-          onBasemapChange={setBasemap}
+          onBasemapChange={handleBasemapChange}
           showBasemapLabels={showBasemapLabels}
           onShowBasemapLabelsChange={setShowBasemapLabels}
           showBoundaryLabels={showBoundaryLabels}
@@ -1485,8 +1849,8 @@ export default function MapViewer({
           countryCode={countryCode}
           onCountryChange={onCountryChange ?? (() => {})}
           availableBoundaryLevels={boundaryUiLevels}
-          boundaryVisibility={boundaryVisibility}
-          onBoundaryVisibilityChange={onBoundaryVisibilityChange ?? (() => {})}
+          boundaryVisibility={activeBoundaryVisibility}
+          onBoundaryVisibilityChange={handleBoundaryVisibilityChange}
           boundaryFocus={boundaryFocus}
           onClearBoundaryFocus={onClearBoundaryFocus}
           villagesLoading={villagesLoading}
@@ -1494,18 +1858,22 @@ export default function MapViewer({
           lockedBoundaryLevels={lockedBoundaryLevels}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
+          coordinateFormat={coordinateFormat}
+          onCoordinateFormatChange={setCoordinateFormat}
           hasPaidAccess={hasPaidAccess}
-          showCoordinateSystem={showCoordinateSystem}
+          showCoordinateSystem={showCoordinateSystem && hasPaidAccess}
+          showMapAds={showMapAds}
         />
       )}
-      {isMobile && showLayerPanel && !minimalChrome && (
+      {isMobile && !minimalChrome && (
         <MapBottomControls
+          showLayersPanel={showLayerPanel}
           layers={layers}
           visibleLayers={visibleLayers}
           onToggleLayer={toggleLayer}
           onToggleLayerType={toggleLayerType}
           basemap={basemap}
-          onBasemapChange={setBasemap}
+          onBasemapChange={handleBasemapChange}
           showBasemapLabels={showBasemapLabels}
           onShowBasemapLabelsChange={setShowBasemapLabels}
           showBoundaryLabels={showBoundaryLabels}
@@ -1518,8 +1886,8 @@ export default function MapViewer({
           countryCode={countryCode}
           onCountryChange={onCountryChange ?? (() => {})}
           availableBoundaryLevels={boundaryUiLevels}
-          boundaryVisibility={boundaryVisibility}
-          onBoundaryVisibilityChange={onBoundaryVisibilityChange ?? (() => {})}
+          boundaryVisibility={activeBoundaryVisibility}
+          onBoundaryVisibilityChange={handleBoundaryVisibilityChange}
           boundaryFocus={boundaryFocus}
           onClearBoundaryFocus={onClearBoundaryFocus}
           villagesLoading={villagesLoading}
@@ -1528,7 +1896,9 @@ export default function MapViewer({
           staticMap={staticMap}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
-          showCoordinateSystem={showCoordinateSystem}
+          coordinateFormat={coordinateFormat}
+          onCoordinateFormatChange={setCoordinateFormat}
+          showCoordinateSystem={showCoordinateSystem && hasPaidAccess}
           assistantOpen={assistantOpen ?? false}
           onAssistantToggle={onAssistantToggle ?? (() => {})}
           onAssistantClose={onAssistantClose ?? (() => {})}
@@ -1536,8 +1906,15 @@ export default function MapViewer({
           insightLoading={insightLoading ?? false}
           hasPaidAccess={hasPaidAccess ?? false}
           assistantMapContext={assistantMapContext ?? null}
+          mapSnapshot={mapSnapshot}
           getMapSnapshot={getMapSnapshot}
+          onRefreshInsight={onRefreshInsight}
+          refreshInsightPending={refreshInsightPending}
+          insightLoadingTerrainView={insightLoadingTerrainView}
+          onExploreSimilarArea={onExploreSimilarArea}
           mineralHeatmap={mineralHeatmap?.points?.length ? mineralHeatmap : null}
+          mineralHeatmapLoading={mineralHeatmapLoading}
+          showMapAds={showMapAds}
         />
       )}
     </div>

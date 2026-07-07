@@ -19,7 +19,7 @@ export default function ReportGenerationProgress({ progress, label }: ReportGene
         <div className="report-gen-progress__track" aria-hidden>
           <div className="report-gen-progress__bar" style={{ width: `${pct}%` }} />
         </div>
-        <p className="report-gen-progress__hint">Building a 3–5 page draft — usually 15–45 seconds.</p>
+        <p className="report-gen-progress__hint">Building a 3-5 page draft, usually 15-45 seconds.</p>
       </div>
     </div>
   )

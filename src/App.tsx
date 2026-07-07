@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom'
+import { Navigate, Routes, Route } from 'react-router-dom'
 import Layout from './components/layout/Layout'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import HomePage from './pages/HomePage'
@@ -40,6 +40,10 @@ import ReportEditorPage from './pages/admin/ReportEditorPage'
 import RevenuePage from './pages/admin/RevenuePage'
 import CompliancePage from './pages/admin/CompliancePage'
 import AdminMapSettingsPage from './pages/admin/AdminMapSettingsPage'
+import AdminAssistantSettingsPage from './pages/admin/AdminAssistantSettingsPage'
+import AdsCampaignsPage from './pages/admin/ads/AdsCampaignsPage'
+import AdsPerformancePage from './pages/admin/ads/AdsPerformancePage'
+import AdsPlacementsPage from './pages/admin/ads/AdsPlacementsPage'
 
 export default function App() {
   return (
@@ -102,6 +106,14 @@ export default function App() {
             element={
               <AdminOnly>
                 <AdminMapSettingsPage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="assistant-settings"
+            element={
+              <AdminOnly>
+                <AdminAssistantSettingsPage />
               </AdminOnly>
             }
           />
@@ -180,6 +192,38 @@ export default function App() {
             element={
               <AdminOnly>
                 <CompliancePage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="ads"
+            element={
+              <AdminOnly>
+                <Navigate to="/admin/ads/campaigns" replace />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="ads/campaigns"
+            element={
+              <AdminOnly>
+                <AdsCampaignsPage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="ads/performance"
+            element={
+              <AdminOnly>
+                <AdsPerformancePage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="ads/placements"
+            element={
+              <AdminOnly>
+                <AdsPlacementsPage />
               </AdminOnly>
             }
           />

@@ -10,10 +10,16 @@ import {
   pct,
 } from '../../components/analytics/AnalyticsViz'
 import { analyticsApi } from '../../api'
-import { useAuth } from '../../auth/AuthContext'
+import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import { formatAreaKm2 } from '../../components/map/mapFormat'
 import { EmptyState, PageHeader, StatCard } from './DashboardUi'
+
+function layerTypeLabel(layerType: string): string {
+  if (layerType === 'polygon' || layerType === 'point') return 'Mineral'
+  if (layerType === 'line') return 'Structures'
+  return layerType
+}
 
 function AnalyticsSkeleton() {
   return (
@@ -33,19 +39,19 @@ function AnalyticsSkeleton() {
 }
 
 export default function DashboardAnalytics() {
-  const { hasPaidAccess } = useAuth()
+  const { hasFullMapAccess } = useMapEntitlements()
   const displayName = useDisplayName()
 
   const { data: hotspots, isLoading } = useQuery({
     queryKey: ['hotspots'],
     queryFn: () => analyticsApi.hotspots().then((r) => r.data),
-    enabled: hasPaidAccess,
+    enabled: hasFullMapAccess,
   })
 
   const { data: investor } = useQuery({
     queryKey: ['investor'],
     queryFn: () => analyticsApi.investor().then((r) => r.data),
-    enabled: hasPaidAccess,
+    enabled: hasFullMapAccess,
   })
 
   const layerHotspots = (hotspots?.layer_hotspots ?? []) as {
@@ -133,7 +139,7 @@ export default function DashboardAnalytics() {
     color: selectedLayer?.color,
   }))
 
-  if (!hasPaidAccess) {
+  if (!hasFullMapAccess) {
     return (
       <>
         <PageHeader title="Analytics" description="Regional mineral hotspot data." />
@@ -153,7 +159,7 @@ export default function DashboardAnalytics() {
     <div className="max-w-4xl animate-fade-in">
       <PageHeader
         title="Analytics"
-        description="Mapped zone concentration on the map: where uploaded layers and regions stand out."
+        description="Mapped area concentration on the map: where uploaded layers and regions stand out."
       />
 
       {isLoading ? (
@@ -161,18 +167,18 @@ export default function DashboardAnalytics() {
       ) : (
         <div className="space-y-5">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard label="Mapped zones" value={fmt(totalZones)} hint={totalZones > 0 ? 'Active prospect features' : 'Upload layers in Admin'} />
+            <StatCard label="Mapped areas" value={fmt(totalZones)} hint={totalZones > 0 ? 'Active prospect features' : 'Upload layers in Admin'} />
             <StatCard
-              label="Polygon coverage"
+              label="Mineral coverage"
               value={totalCoverageArea && totalCoverageArea > 0 ? formatAreaKm2(totalCoverageArea) : '-'}
-              hint={totalCoverageArea && totalCoverageArea > 0 ? 'Total mapped polygon area' : 'Polygon layers only'}
+              hint={totalCoverageArea && totalCoverageArea > 0 ? 'Total mapped mineral area' : 'Mineral layers only'}
             />
             <StatCard
               label="Leading region"
               value={topRegion?.region ?? '-'}
               hint={
                 topRegion
-                  ? `${topRegion.feature_count} zones${topRegion.area_km2 ? ` · ${formatAreaKm2(topRegion.area_km2)}` : ''} · ${pct(topRegion.feature_count, selectedLayerZones)}%`
+                  ? `${topRegion.feature_count} areas${topRegion.area_km2 ? ` · ${formatAreaKm2(topRegion.area_km2)}` : ''} · ${pct(topRegion.feature_count, selectedLayerZones)}%`
                   : 'No regional data yet'
               }
             />
@@ -181,7 +187,7 @@ export default function DashboardAnalytics() {
               value={topLayer ? displayName(topLayer) : '-'}
               hint={
                 topLayer
-                  ? `${topLayer.feature_count} zones${topLayer.area_km2 ? ` · ${formatAreaKm2(topLayer.area_km2)}` : ''} · ${pct(topLayer.feature_count, totalZones)}%`
+                  ? `${topLayer.feature_count} areas${topLayer.area_km2 ? ` · ${formatAreaKm2(topLayer.area_km2)}` : ''} · ${pct(topLayer.feature_count, totalZones)}%`
                   : 'No layer data yet'
               }
             />
@@ -198,7 +204,7 @@ export default function DashboardAnalytics() {
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4">
                 <div>
                   <h2 className="text-sm font-semibold text-app-text">Regional hotspots</h2>
-                  <p className="text-xs text-app-muted mt-0.5">Zones per region for the selected layer</p>
+                  <p className="text-xs text-app-muted mt-0.5">Areas per region for the selected layer</p>
                 </div>
                 {mineralHotspots.length > 0 && (
                   <select
@@ -223,7 +229,7 @@ export default function DashboardAnalytics() {
 
             <section className="rounded-2xl bg-app-surface p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-app-text">Uploaded layers</h2>
-              <p className="text-xs text-app-muted mt-0.5 mb-2">Share of mapped zones by layer</p>
+              <p className="text-xs text-app-muted mt-0.5 mb-2">Share of mapped areas by layer</p>
               {layerBars.length === 0 ? (
                 <p className="text-sm text-app-muted">No layer data yet.</p>
               ) : (
@@ -244,7 +250,7 @@ export default function DashboardAnalytics() {
             <section className="rounded-2xl bg-app-surface overflow-hidden">
               <div className="px-4 sm:px-5 py-4 border-b app-divider">
                 <h2 className="text-sm font-semibold text-app-text">Layer inventory</h2>
-                <p className="text-xs text-app-muted mt-0.5">Uploaded layers and zone counts</p>
+                <p className="text-xs text-app-muted mt-0.5">Uploaded layers and area counts</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -253,7 +259,7 @@ export default function DashboardAnalytics() {
                       <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide">Layer</th>
                       <th className="px-3 py-2.5 font-medium text-xs uppercase tracking-wide">Geometry</th>
                       <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Coverage</th>
-                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Zones</th>
+                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Areas</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -271,7 +277,7 @@ export default function DashboardAnalytics() {
                               {displayName(layer)}
                             </span>
                           </td>
-                          <td className="px-3 py-2.5 capitalize text-app-secondary">{layer.layer_type}</td>
+                          <td className="px-3 py-2.5 text-app-secondary">{layerTypeLabel(layer.layer_type)}</td>
                           <td className="px-4 sm:px-5 py-2.5 text-right tabular-nums text-app-secondary">
                             {layer.area_km2 && layer.area_km2 > 0 ? formatAreaKm2(layer.area_km2) : '-'}
                           </td>

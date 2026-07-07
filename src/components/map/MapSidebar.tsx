@@ -1,5 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from '../../i18n/LocaleContext'
+import { formatLatLngPair } from './coordinateFormat'
+import { useCoordinateFormatState } from './useCoordinateFormatState'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import { TerraAssistantAvatar } from '../assistant/AssistantIcons'
 import AssistantMessageContent from '../assistant/AssistantMessageContent'
@@ -536,8 +538,9 @@ export default function MapSidebar({
   onGoToCoordinate,
 }: MapSidebarProps) {
   const { m } = useTranslation()
+  const [coordinateFormat] = useCoordinateFormatState()
 
-  const showSearch = debouncedSearch.length >= 2 || !!selectedMineral || !!coordinateResult
+  const showSearch = debouncedSearch.length >= 2 || !!selectedMineral || !!(hasPaidAccess && coordinateResult)
   const mobileBottom = 'bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
 
   return (
@@ -565,7 +568,7 @@ export default function MapSidebar({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-4">
-        {coordinateResult && !selectedMineral && (
+        {hasPaidAccess && coordinateResult && !selectedMineral && (
           <button
             type="button"
             onClick={() => onGoToCoordinate?.()}
@@ -578,12 +581,12 @@ export default function MapSidebar({
             <span className="min-w-0">
               <span className="block text-sm font-semibold map-text">{m.map.goToCoordinates}</span>
               <span className="block text-xs map-text-muted tabular-nums">
-                {coordinateResult.lat.toFixed(5)}, {coordinateResult.lng.toFixed(5)}
+                {formatLatLngPair(coordinateResult.lat, coordinateResult.lng, coordinateFormat)}
               </span>
             </span>
           </button>
         )}
-        {showSearch && !(coordinateResult && !selectedMineral) &&
+        {showSearch && !(hasPaidAccess && coordinateResult && !selectedMineral) &&
           (selectedMineral && isRegionSearchResult(selectedMineral) ? (
             <RegionDetailCard
               region={selectedMineral}

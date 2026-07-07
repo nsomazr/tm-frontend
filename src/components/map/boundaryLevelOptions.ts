@@ -30,8 +30,8 @@ export const BOUNDARY_LEVEL_OPTIONS: BoundaryLevelOption[] = [
     boundaryLabel: 'Region boundaries',
     admon: 'ADM1',
     uploadOrder: 2,
-    accent: '#16a34a',
-    accentSoft: 'rgba(22, 163, 74, 0.12)',
+    accent: '#4b5563',
+    accentSoft: 'rgba(75, 85, 99, 0.14)',
   },
   {
     value: 2,

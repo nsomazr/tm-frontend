@@ -27,14 +27,25 @@ import type {
   MyReport,
 } from '../types'
 
+export type OtpPurpose = 'register' | 'login'
+export type OtpChannel = 'email' | 'sms'
+
+export interface SendOtpPayload {
+  purpose: OtpPurpose
+  email?: string
+  phone?: string
+}
+
+export interface VerifyOtpPayload extends SendOtpPayload {
+  code: string
+}
+
 export const authApi = {
   login: (username: string, password: string) =>
     api.post('/auth/login/', { username, password }),
   register: (data: Record<string, string>) => api.post('/auth/register/', data),
-  sendOtp: (email: string, purpose: 'register' | 'login') =>
-    api.post('/auth/otp/send/', { email, purpose }),
-  verifyOtp: (email: string, code: string, purpose: 'register' | 'login') =>
-    api.post('/auth/otp/verify/', { email, code, purpose }),
+  sendOtp: (payload: SendOtpPayload) => api.post('/auth/otp/send/', payload),
+  verifyOtp: (payload: VerifyOtpPayload) => api.post('/auth/otp/verify/', payload),
   signupPassword: (email: string, password: string) =>
     api.post('/auth/signup/password/', { email, password }),
   completeProfile: (data: Record<string, string>) =>
@@ -67,10 +78,17 @@ export const mapsApi = {
   createFeature: (data: Partial<MapFeature>) => api.post('/maps/features/', data),
   updateFeature: (id: number, data: Partial<MapFeature>) => api.patch(`/maps/features/${id}/`, data),
   deleteFeature: (id: number) => api.delete(`/maps/features/${id}/`),
-  bulkImport: (slug: string, file: File, fileType?: string, mineralSlug?: string) => {
+  bulkImport: (
+    slug: string,
+    file: File,
+    fileType?: string,
+    mineralSlug?: string,
+    importMode?: 'replace' | 'append',
+  ) => {
     const form = new FormData()
     form.append('file', file)
     if (fileType) form.append('file_type', fileType)
+    if (importMode) form.append('import_mode', importMode)
     return api.post(`/maps/layers/${slug}/bulk_import/`, form, {
       params: layerLookupParams(mineralSlug),
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -91,16 +109,21 @@ export const mapsApi = {
   uploads: (params?: Record<string, string | number>) =>
     api.get<PaginatedResponse<LayerUpload>>('/maps/uploads/', { params }),
   savedExplorations: () =>
-    api.get<PaginatedResponse<SavedExploration>>('/maps/saved-explorations/'),
+    api
+      .get<SavedExploration[] | PaginatedResponse<SavedExploration>>('/maps/saved-explorations/')
+      .then((r) => (Array.isArray(r.data) ? r.data : r.data.results)),
   createSavedExploration: (data: {
     name: string
     mode: 'point' | 'line' | 'polygon'
     points: [number, number][]
   }) => api.post<SavedExploration>('/maps/saved-explorations/', data),
   deleteSavedExploration: (id: number) => api.delete(`/maps/saved-explorations/${id}/`),
-  platformSettings: () => api.get<{ coordinate_system: string }>('/maps/settings/'),
-  updatePlatformSettings: (data: { coordinate_system: string }) =>
-    api.patch<{ coordinate_system: string }>('/maps/settings/', data),
+  platformSettings: (country = 'TZ') =>
+    api.get<{ country: string; coordinate_system: string }>('/maps/settings/', {
+      params: { country },
+    }),
+  updatePlatformSettings: (data: { country: string; coordinate_system: string }) =>
+    api.patch<{ country: string; coordinate_system: string }>('/maps/settings/', data),
 }
 
 /** Load every page of map layers (admin reorder/arrange needs the full stack). */
@@ -153,6 +176,12 @@ export interface ReportAiDraftResponse {
   key_findings: string[]
   assistant_reply: string
   model_used: string
+  web_search?: {
+    requested?: boolean
+    used?: boolean
+    source_count?: number
+    warning?: string | null
+  }
 }
 
 export const reportsApi = {
@@ -169,7 +198,7 @@ export const reportsApi = {
       model_used: string
       citations: { page_number: number; excerpt: string }[]
       messages: import('../types').ReportChatMessage[]
-    }>(`/reports/${slug}/chat/`, { message }),
+    }>(`/reports/${slug}/chat/`, { message }, { timeout: 120_000 }),
   adminList: () => api.get<PaginatedResponse<Report>>('/reports/admin/'),
   adminGet: (slug: string) => api.get<Report>(`/reports/admin/${slug}/`),
   create: (data: FormData | Record<string, unknown>) =>
@@ -283,6 +312,35 @@ export const geographyApi = {
       level?: number
       error?: string
     }>(`/geography/admin/boundaries/import/${taskId}/`),
+  adminBoundaryItems: (params: { country?: string; level?: number; q?: string }) =>
+    api.get<{ country: string; results: import('../types').AdminBoundaryListItem[] }>(
+      '/geography/admin/boundaries/items/',
+      { params }
+    ),
+  adminBoundaryGeology: (boundaryId: number) =>
+    api.get<import('../types').AdminBoundaryGeology>(
+      `/geography/admin/boundaries/${boundaryId}/geology/`
+    ),
+  updateAdminBoundaryGeology: (
+    boundaryId: number,
+    payload: Partial<
+      Pick<
+        import('../types').AdminBoundaryGeology,
+        'geological_summary' | 'geological_summary_sw' | 'geological_metadata'
+      >
+    >
+  ) => api.patch<import('../types').AdminBoundaryGeology>(
+    `/geography/admin/boundaries/${boundaryId}/geology/`,
+    payload
+  ),
+  uploadBoundaryGeologyDocument: (boundaryId: number, form: FormData) =>
+    api.post<import('../types').BoundaryGeologyDocument>(
+      `/geography/admin/boundaries/${boundaryId}/geology/documents/`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
+  deleteBoundaryGeologyDocument: (boundaryId: number, documentId: number) =>
+    api.delete(`/geography/admin/boundaries/${boundaryId}/geology/documents/${documentId}/`),
 }
 
 export const adminApi = {
@@ -337,14 +395,24 @@ export const analyticsApi = {
         ...(options?.includeVillages ? { include_villages: 'true' } : {}),
       },
     }),
+  layerCoverage: (layerIds: number[], options?: { country?: string; includeVillages?: boolean }) =>
+    api.get<import('../types').LayerBoundaryCoverage>('/analytics/layers/coverage/', {
+      params: {
+        layer_ids: layerIds.join(','),
+        country: options?.country,
+        ...(options?.includeVillages ? { include_villages: 'true' } : {}),
+      },
+    }),
   mineralHeatmap: (
     slug: string,
-    options: { country?: string; layerIds: number[] },
+    options: { country?: string; layerIds?: number[] } = {},
   ) =>
     api.get<import('../types').MineralHeatmapData>(`/analytics/minerals/${slug}/heatmap/`, {
       params: {
         country: options.country,
-        layer_ids: options.layerIds.join(','),
+        ...(options.layerIds?.length
+          ? { layer_ids: options.layerIds.join(',') }
+          : {}),
       },
     }),
   searchContextInsights: (params: {
@@ -358,9 +426,32 @@ export const analyticsApi = {
     lat: number,
     lng: number,
     zoom: number,
-    options?: { featureIds?: number[]; country?: string; boundaryId?: number }
-  ) =>
-    api.get<AreaInsight>('/analytics/area-insights/', {
+    options?: {
+      featureIds?: number[]
+      country?: string
+      boundaryId?: number
+      explorationGeometry?: import('../components/map/explorationGeometry').DrawGeometry
+      basemap?: import('../components/map/basemaps').BasemapId
+      mapSnapshot?: string
+    }
+  ) => {
+    const payload = {
+      lat,
+      lng,
+      zoom,
+      ...(options?.featureIds?.length ? { feature_ids: options.featureIds } : {}),
+      ...(options?.country ? { country: options.country } : {}),
+      ...(options?.boundaryId != null ? { boundary_id: options.boundaryId } : {}),
+      ...(options?.basemap ? { basemap: options.basemap } : {}),
+      ...(options?.explorationGeometry
+        ? { exploration_geometry: options.explorationGeometry }
+        : {}),
+      ...(options?.mapSnapshot ? { map_snapshot: options.mapSnapshot } : {}),
+    }
+    if (options?.mapSnapshot) {
+      return api.post<AreaInsight>('/analytics/area-insights/', payload)
+    }
+    return api.get<AreaInsight>('/analytics/area-insights/', {
       params: {
         lat,
         lng,
@@ -368,10 +459,21 @@ export const analyticsApi = {
         ...(options?.featureIds?.length ? { feature_ids: options.featureIds.join(',') } : {}),
         ...(options?.country ? { country: options.country } : {}),
         ...(options?.boundaryId != null ? { boundary_id: options.boundaryId } : {}),
+        ...(options?.basemap ? { basemap: options.basemap } : {}),
+        ...(options?.explorationGeometry
+          ? { exploration_geometry: JSON.stringify(options.explorationGeometry) }
+          : {}),
       },
-    }),
+    })
+  },
   assistantCredits: () =>
     api.get<{ assistant_credits: import('../types').AssistantCredits }>('/analytics/assistant/credits/'),
+  assistantSettings: () =>
+    api.get<import('../types').AssistantPlatformSettings>('/analytics/assistant/settings/'),
+  updateAssistantSettings: (payload: {
+    ai_provider: 'groq' | 'gemini' | 'ollama'
+    ai_provider_fallback: Array<'groq' | 'gemini' | 'ollama'>
+  }) => api.patch<import('../types').AssistantPlatformSettings>('/analytics/assistant/settings/', payload),
   assistantHistory: (params: {
     mode?: 'map' | 'account'
     thread_key?: string
@@ -410,6 +512,8 @@ export const analyticsApi = {
     boundaryId?: number
     countryCode?: string
     threadKey?: string
+    explorationGeometry?: import('../components/map/explorationGeometry').DrawGeometry
+    basemap?: import('../components/map/basemaps').BasemapId
   }) =>
     api.post<AssistantChatResponse>('/analytics/assistant/chat/', {
       question: payload.question,
@@ -423,6 +527,10 @@ export const analyticsApi = {
       ...(payload.boundaryId != null ? { boundary_id: payload.boundaryId } : {}),
       ...(payload.countryCode ? { country: payload.countryCode } : {}),
       ...(payload.threadKey ? { thread_key: payload.threadKey } : {}),
+      ...(payload.basemap ? { basemap: payload.basemap } : {}),
+      ...(payload.explorationGeometry
+        ? { exploration_geometry: payload.explorationGeometry }
+        : {}),
     }),
   exportInsightReport: (payload: {
     mode?: 'map' | 'account'
@@ -437,6 +545,9 @@ export const analyticsApi = {
     regionId?: number
     boundaryId?: number
     countryCode?: string
+    explorationGeometry?: import('../components/map/explorationGeometry').DrawGeometry
+    analysisAreaKm2?: number
+    basemap?: import('../components/map/basemaps').BasemapId
   }) =>
     api.post('/analytics/assistant/export-report/', {
       mode: payload.mode || 'account',
@@ -449,5 +560,45 @@ export const analyticsApi = {
       ...(payload.regionId != null ? { region_id: payload.regionId } : {}),
       ...(payload.boundaryId != null ? { boundary_id: payload.boundaryId } : {}),
       ...(payload.countryCode ? { country: payload.countryCode } : {}),
+      ...(payload.analysisAreaKm2 != null ? { analysis_area_km2: payload.analysisAreaKm2 } : {}),
+      ...(payload.basemap ? { basemap: payload.basemap } : {}),
+      ...(payload.explorationGeometry
+        ? { exploration_geometry: payload.explorationGeometry }
+        : {}),
     }, { responseType: 'blob' }),
+}
+
+export const adsApi = {
+  serve: (placement: string, country?: string) =>
+    api.get<import('../types').PublicAd[]>('/ads/serve/', {
+      params: { placement, ...(country ? { country } : {}) },
+    }),
+  track: (payload: { ad_id: number; kind: 'impression' | 'click'; placement: string }) =>
+    api.post('/ads/track/', payload, {
+      headers: { 'X-Ad-Session': getAdSessionId() },
+    }),
+  adminList: () =>
+    api.get<import('../types').AdCampaign[] | import('../types').PaginatedResponse<import('../types').AdCampaign>>(
+      '/ads/admin/',
+    ).then((r) => (Array.isArray(r.data) ? r.data : r.data.results)),
+  adminStats: () => api.get<import('../types').AdAdminStats>('/ads/admin/stats/'),
+  adminCreate: (data: FormData) =>
+    api.post<import('../types').AdCampaign>('/ads/admin/', data),
+  adminUpdate: (id: number, data: FormData) =>
+    api.patch<import('../types').AdCampaign>(`/ads/admin/${id}/`, data),
+  adminDelete: (id: number) => api.delete(`/ads/admin/${id}/`),
+}
+
+function getAdSessionId(): string {
+  const key = 'terra-ad-session'
+  try {
+    let id = sessionStorage.getItem(key)
+    if (!id) {
+      id = crypto.randomUUID()
+      sessionStorage.setItem(key, id)
+    }
+    return id
+  } catch {
+    return 'anonymous'
+  }
 }

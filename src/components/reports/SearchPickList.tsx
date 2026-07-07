@@ -14,7 +14,9 @@ interface SearchPickListProps {
   placeholder?: string
   loading?: boolean
   emptyLabel?: string
+  emptyHint?: string
   maxHeight?: string
+  compactWhenEmpty?: boolean
 }
 
 export default function SearchPickList({
@@ -24,7 +26,9 @@ export default function SearchPickList({
   placeholder = 'Search…',
   loading = false,
   emptyLabel = 'Nothing to show',
+  emptyHint,
   maxHeight = 'max-h-52',
+  compactWhenEmpty = false,
 }: SearchPickListProps) {
   const [query, setQuery] = useState('')
 
@@ -55,13 +59,22 @@ export default function SearchPickList({
         className="input w-full text-sm"
         autoComplete="off"
       />
-      <ul
-        className={`overflow-y-auto rounded-lg border border-app-border bg-app-surface py-1 ${maxHeight}`}
-      >
-        {filtered.length === 0 ? (
-          <li className="px-3 py-2 text-sm text-app-text-muted">{emptyLabel}</li>
-        ) : (
-          filtered.map((item) => {
+      {loading ? (
+        <div className="location-pick-list__loading" aria-hidden>
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className={`location-pick-list__empty ${compactWhenEmpty ? 'location-pick-list__empty--compact' : ''}`}>
+          <p className="location-pick-list__empty-title">{emptyLabel}</p>
+          {emptyHint && <p className="location-pick-list__empty-hint">{emptyHint}</p>}
+        </div>
+      ) : (
+        <ul
+          className={`location-pick-list overflow-y-auto rounded-lg border border-app-border bg-app-surface py-1 ${maxHeight}`}
+        >
+          {filtered.map((item) => {
             const checked = selectedIds.has(item.id)
             return (
               <li key={item.id}>
@@ -96,9 +109,9 @@ export default function SearchPickList({
                 </button>
               </li>
             )
-          })
-        )}
-      </ul>
+          })}
+        </ul>
+      )}
     </div>
   )
 }

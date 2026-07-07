@@ -6,16 +6,24 @@ import {
   type CoordinateSystemId,
   storeCoordinateSystem,
 } from './coordinateSystems'
+import type { CoordinateDisplayFormat } from './coordinateFormat'
+import CoordinateFormatToggle from './CoordinateFormatToggle'
 
 interface CoordinateSystemPickerProps {
   value: CoordinateSystemId
   onChange: (id: CoordinateSystemId) => void
+  countryCode?: string
+  coordinateFormat?: CoordinateDisplayFormat
+  onCoordinateFormatChange?: (format: CoordinateDisplayFormat) => void
   embedded?: boolean
 }
 
 export default function CoordinateSystemPicker({
   value,
   onChange,
+  countryCode = 'TZ',
+  coordinateFormat = 'decimal',
+  onCoordinateFormatChange,
   embedded = true,
 }: CoordinateSystemPickerProps) {
   const { m } = useTranslation()
@@ -35,7 +43,7 @@ export default function CoordinateSystemPicker({
 
   const select = (id: CoordinateSystemId) => {
     onChange(id)
-    storeCoordinateSystem(id)
+    storeCoordinateSystem(id, countryCode)
     setOpen(false)
   }
 
@@ -58,26 +66,40 @@ export default function CoordinateSystemPicker({
         <span className="map-text-muted shrink-0 text-xs">{open ? '−' : '+'}</span>
       </button>
       {open && (
-        <ul className="max-h-44 overflow-y-auto border-t app-divider p-1">
-          {COORDINATE_SYSTEMS.map((crs) => (
-            <li key={crs.id}>
-              <button
-                type="button"
-                onClick={() => select(crs.id)}
-                className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs ${
-                  crs.id === value
-                    ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300 font-medium'
-                    : 'hover:bg-app-subtle map-text-secondary'
-                }`}
-              >
-                <span className="w-4 shrink-0 text-center text-xs">
-                  {crs.id === value ? '✓' : ''}
-                </span>
-                <span className="min-w-0">{crs.label}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="max-h-44 overflow-y-auto border-t app-divider p-1">
+            {COORDINATE_SYSTEMS.map((crs) => (
+              <li key={crs.id}>
+                <button
+                  type="button"
+                  onClick={() => select(crs.id)}
+                  className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs ${
+                    crs.id === value
+                      ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300 font-medium'
+                      : 'hover:bg-app-subtle map-text-secondary'
+                  }`}
+                >
+                  <span className="w-4 shrink-0 text-center text-xs">
+                    {crs.id === value ? '✓' : ''}
+                  </span>
+                  <span className="min-w-0">{crs.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {onCoordinateFormatChange && current.kind === 'geographic' && (
+            <div className="border-t app-divider px-2.5 py-2 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide map-text-muted">
+                {m.map.coordinateFormatLabel}
+              </span>
+              <CoordinateFormatToggle
+                value={coordinateFormat}
+                onChange={onCoordinateFormatChange}
+                compact
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   )

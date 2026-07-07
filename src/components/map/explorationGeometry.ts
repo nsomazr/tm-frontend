@@ -39,6 +39,41 @@ export function explorationBounds(points: [number, number][]): Bounds | null {
   return { west, south, east, north }
 }
 
+export function paddedExplorationFitBounds(
+  points: [number, number][],
+  mode: ExplorationMode,
+): Bounds | null {
+  if (mode === 'point') return null
+  const bounds = explorationBounds(points)
+  if (!bounds) return null
+  if (bounds.east <= bounds.west && bounds.north <= bounds.south) return null
+  const padLng = Math.max((bounds.east - bounds.west) * 0.15, 0.02)
+  const padLat = Math.max((bounds.north - bounds.south) * 0.15, 0.02)
+  return {
+    west: bounds.west - padLng,
+    south: bounds.south - padLat,
+    east: bounds.east + padLng,
+    north: bounds.north + padLat,
+  }
+}
+
+/** WGS84 bounds for a GeoJSON draw geometry (export / snapshot fitting). */
+export function boundsFromDrawGeometry(geometry: DrawGeometry): Bounds | null {
+  if (geometry.type === 'Point') {
+    const [lng, lat] = geometry.coordinates as number[]
+    const pad = 0.025
+    return { west: lng - pad, east: lng + pad, south: lat - pad, north: lat + pad }
+  }
+  if (geometry.type === 'LineString') {
+    return paddedExplorationFitBounds(geometry.coordinates as [number, number][], 'line')
+  }
+  if (geometry.type === 'Polygon') {
+    const ring = (geometry.coordinates as number[][][])[0] as [number, number][]
+    return paddedExplorationFitBounds(ring, 'polygon')
+  }
+  return null
+}
+
 const EARTH_RADIUS_M = 6378137
 
 /** Approximate planar area (km²) of a closed ring using the spherical excess / shoelace on projected metres. */

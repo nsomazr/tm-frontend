@@ -5,8 +5,9 @@ import MarketingHero from '../components/marketing/MarketingHero'
 import MarketingCta, { MarketingCtaLink } from '../components/marketing/MarketingCta'
 import MineralPeriodicTable from '../components/map/MineralPeriodicTable'
 import CommodityInsightPanel from '../components/map/CommodityInsightPanel'
+import AdPlacementSlot from '../components/ads/AdPlacementSlot'
 import { analyticsApi } from '../api'
-import { useAuth } from '../auth/AuthContext'
+import { useMapEntitlements } from '../hooks/useMapEntitlements'
 import { canExploreMineral } from '../lib/mineralExploration'
 import { useTranslation } from '../i18n/LocaleContext'
 import type { MineralCatalogEntry } from '../types'
@@ -22,7 +23,7 @@ export default function AboutPage() {
   const { m } = useTranslation()
   const a = m.about
   const navigate = useNavigate()
-  const { hasPaidAccess, mineralExploration } = useAuth()
+  const { hasFullMapAccess, mineralExploration } = useMapEntitlements()
   const [selectedCommodity, setSelectedCommodity] = useState<MineralCatalogEntry | null>(null)
 
   const { data: catalogData } = useQuery({
@@ -63,6 +64,10 @@ export default function AboutPage() {
         <MarketingCtaLink to="/subscriptions">{a.seePlans}</MarketingCtaLink>
       </MarketingHero>
 
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-6 mb-8">
+        <AdPlacementSlot placement="about_banner" />
+      </div>
+
       <section className="border-b border-slate-200 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 grid grid-cols-2 sm:grid-cols-4 gap-6">
           {stats.map((s) => (
@@ -99,7 +104,7 @@ export default function AboutPage() {
       {selectedCommodity && (
         <CommodityInsightPanel
           entry={selectedCommodity}
-          hasPaidAccess={hasPaidAccess}
+          hasPaidAccess={hasFullMapAccess}
           onClose={() => setSelectedCommodity(null)}
           onShowOnMap={handleShowOnMap}
         />

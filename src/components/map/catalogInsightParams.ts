@@ -2,9 +2,6 @@ import type { MineralCatalogEntry } from '../../types'
 
 /** API params for search-context insights from a periodic-table catalog row. */
 export function catalogInsightParams(entry: MineralCatalogEntry) {
-  if (entry.layer_slug) {
-    return { layer_id: entry.id }
-  }
   return { mineral_slug: entry.slug }
 }
 

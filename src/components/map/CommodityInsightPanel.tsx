@@ -75,6 +75,8 @@ export default function CommodityInsightPanel({
   })
 
   const topRegions = insight?.top_regions ?? []
+  const connectedLayers = insight?.connected_layers ?? []
+  const relatedReports = insight?.related_reports ?? []
   const totalAreaKm2 = insight?.total_area_km2
   const chatParams = catalogInsightChatParams(entry)
   const label = displayName(entry)
@@ -233,6 +235,13 @@ export default function CommodityInsightPanel({
     inputRef.current?.focus()
   }, [entry.slug, hasPaidAccess, isLoading])
 
+  function layerTypeLabel(layerType: string) {
+    if (layerType === 'polygon') return m.map.layerTypePolygon
+    if (layerType === 'point') return m.map.layerTypePoint
+    if (layerType === 'line') return m.map.layerTypeLine
+    return layerType
+  }
+
   const panelBody = (
     <>
       <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-terra-50/80 to-white shrink-0">
@@ -282,6 +291,53 @@ export default function CommodityInsightPanel({
           <>
             {entry.description?.trim() && (
               <p className="text-sm text-slate-600 leading-relaxed">{entry.description.trim()}</p>
+            )}
+
+            {connectedLayers.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                  {m.map.commodityConnectedLayers}
+                </p>
+                <ul className="space-y-1">
+                  {connectedLayers.map((layer) => (
+                    <li
+                      key={layer.id}
+                      className="flex items-center justify-between text-sm text-slate-700 rounded-lg bg-slate-50 px-3 py-2"
+                    >
+                      <span className="min-w-0 truncate">{layer.name}</span>
+                      <span className="shrink-0 text-xs text-slate-500 tabular-nums text-right ml-2">
+                        {layerTypeLabel(layer.layer_type)}
+                        {layer.feature_count > 0 && (
+                          <span className="block">{layer.feature_count}</span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {relatedReports.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-2">
+                  {m.map.commodityRelatedReports}
+                </p>
+                <ul className="space-y-1">
+                  {relatedReports.map((report) => (
+                    <li key={report.slug}>
+                      <Link
+                        to={report.has_article ? `/downloads/${report.slug}/read` : `/downloads/${report.slug}`}
+                        className="flex items-center justify-between text-sm text-slate-700 rounded-lg bg-slate-50 px-3 py-2 hover:bg-terra-50 hover:text-terra-800 transition-colors"
+                      >
+                        <span className="min-w-0 truncate font-medium">{report.title}</span>
+                        {report.region && (
+                          <span className="shrink-0 text-xs text-slate-500 ml-2">{report.region}</span>
+                        )}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {topRegions.length > 0 && (

@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
@@ -95,10 +95,29 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
   const qc = useQueryClient()
   const { isAdmin } = useAuth()
   const displayName = useDisplayName()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const focusLayerSlug = searchParams.get('layer')
   const [showHidden, setShowHidden] = useState(false)
   const [expandedLayerId, setExpandedLayerId] = useState<number | null>(null)
+  const [highlightLayerId, setHighlightLayerId] = useState<number | null>(null)
+  const highlightHandled = useRef(false)
 
   const { data: allLayers = [], isLoading } = useAdminLayers()
+
+  useEffect(() => {
+    if (!focusLayerSlug || highlightHandled.current || allLayers.length === 0) return
+    const match = allLayers.find((layer) => layer.slug === focusLayerSlug)
+    if (!match) return
+    highlightHandled.current = true
+    setExpandedLayerId(match.id)
+    setHighlightLayerId(match.id)
+    if (!match.is_active) setShowHidden(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete('layer')
+    setSearchParams(next, { replace: true })
+    const timer = window.setTimeout(() => setHighlightLayerId(null), 4000)
+    return () => window.clearTimeout(timer)
+  }, [allLayers, focusLayerSlug, searchParams, setSearchParams])
 
   const visibleLayers = showHidden ? allLayers : allLayers.filter((l) => l.is_active)
   const stackableLayers = allLayers.filter((l) => l.is_active)
@@ -180,6 +199,13 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
     })
   }
 
+  const handleBufferChange = (layer: MapLayer, bufferKm: number | null) => {
+    updateLayer.mutate({
+      layer,
+      data: { buffer_km: bufferKm },
+    })
+  }
+
   const handleToggleActive = (layer: MapLayer) => {
     const nextActive = !layer.is_active
     toast.confirm(`${nextActive ? 'Show' : 'Hide'} "${displayName(layer)}" on the map?`, {
@@ -233,6 +259,7 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
       showHidden={showHidden}
       onShowHiddenChange={setShowHidden}
       expandedLayerId={expandedLayerId}
+      highlightLayerId={highlightLayerId}
       onToggleExpanded={(layerId) =>
         setExpandedLayerId((current) => (current === layerId ? null : layerId))
       }
@@ -240,6 +267,7 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
       onResetDefault={handleDefaultStack}
       onColorChange={handleLayerColorChange}
       onStructureRankChange={handleStructureRankChange}
+      onBufferChange={handleBufferChange}
       onToggleActive={handleToggleActive}
       onTogglePreview={handleTogglePreview}
       onDelete={handleDelete}

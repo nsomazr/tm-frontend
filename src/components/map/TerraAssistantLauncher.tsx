@@ -6,15 +6,22 @@ import { useTranslation } from '../../i18n/LocaleContext'
 import type { AreaInsight } from '../../types'
 import TerraAssistantButton from './TerraAssistantButton'
 
+import type { InsightSnapshotContext } from './insightSnapshot'
+
 interface TerraAssistantLauncherProps {
   open: boolean
   onToggle: () => void
   onClose: () => void
   areaInsight: AreaInsight | null
   insightLoading: boolean
+  insightLoadingTerrainView?: boolean
   hasPaidAccess: boolean
   mapContext: TerraAssistantMapContext | null
-  getMapSnapshot?: () => Promise<string | null>
+  mapSnapshot?: string | null
+  getMapSnapshot?: (ctx: InsightSnapshotContext) => Promise<string | null>
+  onRefreshInsight?: () => void
+  refreshInsightPending?: boolean
+  onExploreSimilarArea?: (lat: number, lng: number, boundaryId?: number) => void
   className?: string
   /** Render the launcher button full-width (mobile dock). */
   fullWidthButton?: boolean
@@ -30,7 +37,12 @@ export default function TerraAssistantLauncher({
   insightLoading,
   hasPaidAccess,
   mapContext,
+  mapSnapshot = null,
   getMapSnapshot,
+  onRefreshInsight,
+  refreshInsightPending = false,
+  onExploreSimilarArea,
+  insightLoadingTerrainView = false,
   className = '',
   fullWidthButton = false,
 }: TerraAssistantLauncherProps) {
@@ -82,7 +94,12 @@ export default function TerraAssistantLauncher({
                 layout="compact"
                 mobileSheet
                 insightExport
+                mapSnapshot={mapSnapshot}
                 getMapSnapshot={getMapSnapshot}
+                onRefreshInsight={onRefreshInsight}
+                refreshInsightPending={refreshInsightPending}
+                onExploreSimilarArea={onExploreSimilarArea}
+                loadingTerrainView={insightLoadingTerrainView}
               />
             </div>
           </div>
@@ -126,7 +143,12 @@ export default function TerraAssistantLauncher({
               layout="compact"
               mobileSheet
               insightExport
+              mapSnapshot={mapSnapshot}
               getMapSnapshot={getMapSnapshot}
+              onRefreshInsight={onRefreshInsight}
+              refreshInsightPending={refreshInsightPending}
+              onExploreSimilarArea={onExploreSimilarArea}
+              loadingTerrainView={insightLoadingTerrainView}
             />
           </div>
         </div>
