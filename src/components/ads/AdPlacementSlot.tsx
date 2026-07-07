@@ -14,6 +14,11 @@ interface AdPlacementSlotProps {
 
 function AdSlideContent({ ad, compact }: { ad: PublicAd; compact: boolean }) {
   const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    setImageFailed(false)
+  }, [ad.id, ad.image_url])
+
   const showImage = Boolean(ad.image_url) && !imageFailed
 
   return (

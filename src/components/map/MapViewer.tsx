@@ -1741,32 +1741,44 @@ export default function MapViewer({
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
-      {!minimalChrome && (
+      {!minimalChrome && !isMobile && (
         <MapCompass
           rotationRad={mapRotation}
-          className={
-            isMobile
-              ? 'absolute z-20 left-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
-              : `map-compass${
-                  showCoordinateReadout && hasPaidAccess && pointerCoordinate
-                    ? ' map-compass--above-readout'
-                    : ''
-                }`
-          }
+          className={`map-compass${
+            showCoordinateReadout && hasPaidAccess && pointerCoordinate
+              ? ' map-compass--above-readout'
+              : ''
+          }`}
         />
       )}
-      {!minimalChrome && showCoordinateReadout && hasPaidAccess && (
+      {!minimalChrome && !isMobile && showCoordinateReadout && hasPaidAccess && (
         <MapCoordinateReadout
           mapCoordinate={pointerCoordinate}
           coordinateSystem={coordinateSystem}
           coordinateFormat={coordinateFormat}
           onCoordinateFormatChange={setCoordinateFormat}
-          className={
-            isMobile
-              ? 'absolute z-20 left-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]'
-              : ''
-          }
         />
+      )}
+      {isMobile && !minimalChrome && (
+        <div className="map-mobile-left-stack pointer-events-none absolute z-20 left-3 flex max-w-[min(18rem,calc(100vw-1.5rem))] flex-col gap-2">
+          {showMapAds && (
+            <AdPlacementSlot
+              placement="map_overlay"
+              compact
+              className="pointer-events-auto w-full shrink-0"
+            />
+          )}
+          {showCoordinateReadout && hasPaidAccess && (
+            <MapCoordinateReadout
+              mapCoordinate={pointerCoordinate}
+              coordinateSystem={coordinateSystem}
+              coordinateFormat={coordinateFormat}
+              onCoordinateFormatChange={setCoordinateFormat}
+              className="pointer-events-auto w-full shrink-0"
+            />
+          )}
+          <MapCompass rotationRad={mapRotation} className="pointer-events-none shrink-0 self-start" />
+        </div>
       )}
       {minimalChrome && (
         <div className="map-minimal-dock pointer-events-none">
@@ -1797,7 +1809,7 @@ export default function MapViewer({
         </div>
       )}
       {hasPaidAccess && !minimalChrome && !isMobile && (showLayerPanel && layers.length > 0 || mineralHeatmap?.points?.length || mineralHeatmapLoading) && (
-        <div className="map-left-dock absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] max-h-[min(calc(100%-6rem),85vh)] hidden md:flex flex-col gap-2 pointer-events-none">
+        <div className="map-left-dock absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex min-h-0 flex-col gap-2 pointer-events-none overflow-hidden">
           {showLayerPanel && layers.length > 0 && (
             <LayerPanel
               embedded
@@ -1808,7 +1820,7 @@ export default function MapViewer({
               onReorder={reorderLayers}
               allowReorder={allowReorder || editable}
               layersLocked={staticMap}
-              className="pointer-events-auto min-h-0 max-h-[min(22vh,13.5rem)] shrink-0"
+              className="pointer-events-auto min-h-0 flex-1 overflow-hidden"
             />
           )}
           <MineralHeatmapColorbar
@@ -1827,12 +1839,7 @@ export default function MapViewer({
         </div>
       )}
       {!minimalChrome && !isMobile && showMapAds && !(showLayerPanel && layers.length > 0) && !mineralHeatmap?.points?.length && (
-        <div className="map-left-dock map-left-dock--ads-only absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex flex-col pointer-events-none">
-          <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
-        </div>
-      )}
-      {isMobile && showMapAds && !minimalChrome && (
-        <div className="map-left-dock absolute z-20 bottom-[calc(9rem+env(safe-area-inset-bottom,0px))] pointer-events-none md:hidden">
+        <div className="map-left-dock map-left-dock--ads-only absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex flex-col pointer-events-none overflow-hidden">
           <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
         </div>
       )}

@@ -1667,6 +1667,18 @@
     width: var(--map-left-dock-width, min(18rem, calc(100vw - 1.5rem)));
   }
 
+  .map-viewer:not(.map-viewer--mobile) .map-left-dock {
+    bottom: calc(
+      var(--map-scale-stack-inset) + var(--map-scale-stack-height) + var(--map-scale-stack-gap) +
+        var(--map-readout-stack-height) + var(--map-scale-stack-gap) + var(--map-compass-stack-height) +
+        var(--map-scale-stack-gap)
+    );
+  }
+
+  .map-viewer--mobile .map-mobile-left-stack {
+    bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
   .map-viewer:not(.map-viewer--mobile) .ol-scale-line {
     left: var(--map-scale-stack-left);
     bottom: var(--map-scale-stack-inset);
