@@ -8,7 +8,6 @@ import MapViewer, {
   type MapControls,
   type MapFocusTarget,
 } from '../components/map/MapViewer'
-import MapZoomControls from '../components/map/MapZoomControls'
 import {
   DEFAULT_BOUNDARY_VISIBILITY,
   UNPAID_BOUNDARY_VISIBILITY,
@@ -1357,14 +1356,7 @@ export default function FullMapPage() {
           )}
         </MapCaptureGuard>
 
-        <div className="pointer-events-none fixed right-3 z-50 flex flex-col items-end gap-2 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
-          {!isMobile && mapControls && (
-            <MapZoomControls
-              onZoomIn={mapControls.zoomIn}
-              onZoomOut={mapControls.zoomOut}
-              onResetView={mapControls.resetView}
-            />
-          )}
+        <div className="pointer-events-none fixed right-3 z-50 flex flex-col items-end max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
           {!isMobile && (
             <TerraAssistantLauncher
               open={showAssistantPanel}
@@ -1379,6 +1371,15 @@ export default function FullMapPage() {
               refreshInsightPending={insightLoading}
               onExploreSimilarArea={handleExploreSimilarArea}
               getMapSnapshot={(ctx) => mapControlsRef.current?.captureInsightSnapshot(ctx) ?? Promise.resolve(null)}
+              zoomControls={
+                mapControls
+                  ? {
+                      onZoomIn: mapControls.zoomIn,
+                      onZoomOut: mapControls.zoomOut,
+                      onResetView: mapControls.resetView,
+                    }
+                  : null
+              }
             />
           )}
         </div>

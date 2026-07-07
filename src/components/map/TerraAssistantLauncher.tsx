@@ -4,9 +4,16 @@ import TerraAssistantPanel, {
 import { TerraAssistantAvatar } from '../assistant/AssistantIcons'
 import { useTranslation } from '../../i18n/LocaleContext'
 import type { AreaInsight } from '../../types'
+import MapZoomControls from './MapZoomControls'
 import TerraAssistantButton from './TerraAssistantButton'
 
 import type { InsightSnapshotContext } from './insightSnapshot'
+
+interface MapZoomHandlers {
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onResetView?: () => void
+}
 
 interface TerraAssistantLauncherProps {
   open: boolean
@@ -29,6 +36,8 @@ interface TerraAssistantLauncherProps {
   centerOnMobile?: boolean
   /** Extra bottom offset when another dock panel (e.g. country) is expanded on mobile. */
   countryPanelOpen?: boolean
+  /** Desktop map zoom controls — shown to the left of the panel when chat is open. */
+  zoomControls?: MapZoomHandlers | null
 }
 
 export default function TerraAssistantLauncher({
@@ -48,6 +57,7 @@ export default function TerraAssistantLauncher({
   className = '',
   fullWidthButton = false,
   countryPanelOpen = false,
+  zoomControls = null,
 }: TerraAssistantLauncherProps) {
   const { m } = useTranslation()
 
@@ -73,53 +83,74 @@ export default function TerraAssistantLauncher({
         />
       )}
 
-      <div className={`pointer-events-auto flex flex-col items-end gap-3 ${fullWidthButton ? 'w-full' : 'inline-flex'} ${className}`}>
+      <div
+        className={`pointer-events-none flex flex-col items-end gap-3 ${fullWidthButton ? 'w-full' : ''} ${className}`}
+      >
         {open && !fullWidthButton && (
-          <div
-            className="z-50 flex w-60 flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in max-md:hidden md:fixed md:right-3 md:top-3 md:bottom-28"
-            role="dialog"
-            aria-label={m.assistant.chatTitle}
-          >
-            <div className="shrink-0 flex items-center justify-between gap-2 border-b app-divider px-3 py-2.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <TerraAssistantAvatar className="h-6 w-6" />
-                <span className="truncate text-sm font-semibold map-text">{m.assistant.chatTitle}</span>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                className="shrink-0 rounded p-1 text-xl leading-none map-text-muted hover:bg-app-subtle hover:text-app-secondary"
-                aria-label={m.map.closePanel}
-              >
-                ×
-              </button>
-            </div>
-            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-              <TerraAssistantPanel
-                insight={areaInsight}
-                loading={insightLoading}
-                hasPaidAccess={hasPaidAccess}
-                mapContext={mapContext}
-                mode="map"
-                layout="compact"
-                mobileSheet
-                insightExport
-                mapSnapshot={mapSnapshot}
-                getMapSnapshot={getMapSnapshot}
-                onRefreshInsight={onRefreshInsight}
-                refreshInsightPending={refreshInsightPending}
-                onExploreSimilarArea={onExploreSimilarArea}
-                loadingTerrainView={insightLoadingTerrainView}
+          <div className="pointer-events-auto map-assistant-desktop-row hidden items-end gap-2 md:flex">
+            {zoomControls ? (
+              <MapZoomControls
+                onZoomIn={zoomControls.onZoomIn}
+                onZoomOut={zoomControls.onZoomOut}
+                onResetView={zoomControls.onResetView}
+                className="shrink-0 self-end"
               />
+            ) : null}
+            <div
+              className="map-assistant-desktop flex min-h-0 w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in"
+              role="dialog"
+              aria-label={m.assistant.chatTitle}
+            >
+              <div className="shrink-0 flex items-center justify-between gap-2 border-b app-divider px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <TerraAssistantAvatar className="h-6 w-6" />
+                  <span className="truncate text-sm font-semibold map-text">{m.assistant.chatTitle}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="shrink-0 rounded p-1 text-xl leading-none map-text-muted hover:bg-app-subtle hover:text-app-secondary"
+                  aria-label={m.map.closePanel}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+                <TerraAssistantPanel
+                  insight={areaInsight}
+                  loading={insightLoading}
+                  hasPaidAccess={hasPaidAccess}
+                  mapContext={mapContext}
+                  mode="map"
+                  layout="compact"
+                  mobileSheet
+                  insightExport
+                  mapSnapshot={mapSnapshot}
+                  getMapSnapshot={getMapSnapshot}
+                  onRefreshInsight={onRefreshInsight}
+                  refreshInsightPending={refreshInsightPending}
+                  onExploreSimilarArea={onExploreSimilarArea}
+                  loadingTerrainView={insightLoadingTerrainView}
+                />
+              </div>
             </div>
           </div>
         )}
+
+        {!open && !fullWidthButton && zoomControls ? (
+          <MapZoomControls
+            onZoomIn={zoomControls.onZoomIn}
+            onZoomOut={zoomControls.onZoomOut}
+            onResetView={zoomControls.onResetView}
+            className="pointer-events-auto hidden shrink-0 md:flex"
+          />
+        ) : null}
 
         <TerraAssistantButton
           active={open}
           onClick={onToggle}
           compact={fullWidthButton}
-          className={fullWidthButton ? 'w-full' : ''}
+          className={`${fullWidthButton ? 'w-full' : ''} pointer-events-auto`}
         />
       </div>
 

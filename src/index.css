@@ -221,6 +221,22 @@
 
   .map-page-header {
     @apply z-50;
+    --map-page-header-height: 3rem;
+  }
+
+  @media (min-width: 768px) {
+    .map-page-header {
+      --map-page-header-height: 4rem;
+    }
+  }
+
+  .map-assistant-desktop {
+    height: calc(100dvh - var(--map-page-header-height, 4rem) - 9.25rem);
+    max-height: calc(100dvh - var(--map-page-header-height, 4rem) - 9.25rem);
+  }
+
+  .map-assistant-desktop-row {
+    max-height: calc(100dvh - var(--map-page-header-height, 4rem) - 9.25rem);
   }
 
   .app-divider {
