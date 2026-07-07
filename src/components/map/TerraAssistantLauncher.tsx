@@ -27,6 +27,8 @@ interface TerraAssistantLauncherProps {
   fullWidthButton?: boolean
   /** On mobile with fullWidthButton, open as a bottom sheet above the dock. */
   centerOnMobile?: boolean
+  /** Extra bottom offset when another dock panel (e.g. country) is expanded on mobile. */
+  countryPanelOpen?: boolean
 }
 
 export default function TerraAssistantLauncher({
@@ -45,11 +47,19 @@ export default function TerraAssistantLauncher({
   insightLoadingTerrainView = false,
   className = '',
   fullWidthButton = false,
+  countryPanelOpen = false,
 }: TerraAssistantLauncherProps) {
   const { m } = useTranslation()
 
+  const mobileBottomClass = countryPanelOpen
+    ? 'max-md:bottom-[calc(15.5rem+env(safe-area-inset-bottom))]'
+    : 'max-md:bottom-[calc(7.5rem+env(safe-area-inset-bottom))]'
+  const mobileHeightClass = countryPanelOpen
+    ? 'max-md:h-[min(calc(100dvh-20rem),520px)]'
+    : 'max-md:h-[min(calc(100dvh-12rem),560px)]'
+
   const mobileSheetClass = fullWidthButton
-    ? 'max-md:fixed max-md:inset-x-0 max-md:bottom-[calc(7.5rem+env(safe-area-inset-bottom))] max-md:z-50 max-md:w-full max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl max-md:h-[min(52vh,420px)]'
+    ? `max-md:fixed max-md:inset-x-0 ${mobileBottomClass} max-md:z-50 max-md:w-full max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl ${mobileHeightClass}`
     : ''
 
   return (
@@ -66,7 +76,7 @@ export default function TerraAssistantLauncher({
       <div className={`pointer-events-auto flex flex-col items-end gap-3 ${fullWidthButton ? 'w-full' : 'inline-flex'} ${className}`}>
         {open && !fullWidthButton && (
           <div
-            className="z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in h-[min(32rem,58vh)]"
+            className="z-50 flex w-60 flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in max-md:hidden md:fixed md:right-3 md:top-3 md:bottom-28"
             role="dialog"
             aria-label={m.assistant.chatTitle}
           >

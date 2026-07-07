@@ -481,6 +481,7 @@ export default function MapBottomControls({
                 insightLoadingTerrainView={insightLoadingTerrainView}
                 className="min-w-0"
                 fullWidthButton
+                countryPanelOpen={countryPanelOpen}
               />
             </div>
             {countryPanelOpen && (
