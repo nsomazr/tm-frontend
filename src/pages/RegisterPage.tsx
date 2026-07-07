@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { safeReturnPath } from '../utils/safeRedirect'
 import { useAuth } from '../auth/AuthContext'
 import SimpleAuthForm from '../components/auth/SimpleAuthForm'
 import CompanyCredit from '../components/brand/CompanyCredit'
@@ -18,7 +19,7 @@ export default function RegisterPage() {
   const { registerWithOtp, registerWithPassword, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as { from?: string })?.from || '/'
+  const from = safeReturnPath((location.state as { from?: string })?.from, '/')
 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)

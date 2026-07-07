@@ -127,7 +127,7 @@ export const sw: Messages = {
     screenshotProtected: 'Mwonekano wa ramani umelindwa',
     clickOutsideBoundaries: 'Nje ya mipaka iliyopangwa',
     clickOutsideBoundariesDescription:
-      'Bofya ndani ya mipaka iliyopangwa ili kuchambua eneo hilo na Msaidizi wa Terra.',
+      'Bofya ndani ya Tanzania au eneo la rangi la madini ili kulichambua na Msaidizi wa Terra.',
     heatmapTitle: 'Mkusanyiko',
     heatmapLoading: 'Inapakia ramani ya joto…',
     heatmapLow: 'Chini',

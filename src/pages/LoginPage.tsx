@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { safeReturnPath } from '../utils/safeRedirect'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import SimpleAuthForm from '../components/auth/SimpleAuthForm'
@@ -18,7 +19,11 @@ export default function LoginPage() {
   const { loginWithOtp, login, user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as { from?: string })?.from || '/dashboard'
+  const nextParam = new URLSearchParams(location.search).get('next')
+  const from = safeReturnPath(
+    (location.state as { from?: string })?.from ?? nextParam,
+    '/dashboard'
+  )
 
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)

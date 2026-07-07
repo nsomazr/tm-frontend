@@ -111,7 +111,7 @@ export const en = {
     screenshotProtected: 'Map view protected',
     clickOutsideBoundaries: 'Outside mapped boundaries',
     clickOutsideBoundariesDescription:
-      'Click inside mapped boundaries to analyze that area with Terra Assistant.',
+      'Click inside Tanzania or on a colored mineral area to analyze it with Terra Assistant.',
     heatmapTitle: 'Concentration',
     heatmapLoading: 'Loading heatmap…',
     heatmapLow: 'Low',

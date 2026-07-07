@@ -18,7 +18,7 @@ import {
 import {
   boundaryFocusFromAt,
   boundaryVisibilityForFocus,
-  hasAdminBoundaryAt,
+  isInspectableMapClick,
   resolveBoundaryFocus,
   type BoundaryFocus,
 } from '../components/map/boundaryFocus'
@@ -889,7 +889,7 @@ export default function FullMapPage() {
 
       try {
         const { data: at } = await geographyApi.boundariesAt(DEFAULT_COUNTRY_CODE, lat, lng)
-        insideAdminBoundaries = hasAdminBoundaryAt(at)
+        insideAdminBoundaries = isInspectableMapClick(at, featureIds)
         if (!insideAdminBoundaries) {
           toast.info(m.map.clickOutsideBoundaries, {
             description: m.map.clickOutsideBoundariesDescription,
@@ -1357,7 +1357,7 @@ export default function FullMapPage() {
         </MapCaptureGuard>
 
         <div
-          className={`pointer-events-none fixed right-3 z-50 flex min-h-0 flex-col items-end gap-3 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+          className={`pointer-events-none fixed right-3 z-50 flex min-h-0 max-h-full flex-col items-end gap-3 overflow-hidden max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
             showAssistantPanel
               ? 'map-assistant-desktop-anchor md:bottom-6'
               : 'md:bottom-6'

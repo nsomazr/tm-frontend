@@ -7,7 +7,11 @@ export interface BoundaryFocus {
 }
 
 export function hasAdminBoundaryAt(at: AdminBoundaryAtResponse): boolean {
-  return !!(at.region || at.district || at.ward || at.village)
+  return !!(at.country || at.region || at.district || at.ward || at.village)
+}
+
+export function isInspectableMapClick(at: AdminBoundaryAtResponse, featureIds?: number[]): boolean {
+  return hasAdminBoundaryAt(at) || (featureIds?.length ?? 0) > 0
 }
 
 export function boundaryFocusFromAt(at: AdminBoundaryAtResponse): BoundaryFocus | null {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
+import { safeExternalHref } from '../../utils/safeRedirect'
 import { adsApi } from '../../api'
 import { usePlacementAds } from '../../hooks/usePlacementAds'
 import type { AdPlacement, PublicAd } from '../../types'
@@ -97,6 +98,8 @@ export default function AdPlacementSlot({
 
   if (!ad) return null
 
+  const safeHref = safeExternalHref(ad.link_url)
+
   const handleClick = () => {
     adsApi.track({ ad_id: ad.id, kind: 'click', placement }).catch(() => {})
   }
@@ -107,17 +110,30 @@ export default function AdPlacementSlot({
     setActiveIndex(index)
   }
 
+  const card = (
+    <div
+      className={`flex w-full gap-3 rounded-xl border border-app-border bg-app-surface/95 p-3 shadow-sm transition-colors ${
+        safeHref ? 'hover:border-terra-500/35 hover:bg-terra-500/5' : ''
+      } map-chrome`}
+    >
+      <AdSlideContent ad={ad} compact={compact} />
+    </div>
+  )
+
   return (
     <div className={`relative ${className}`}>
-      <a
-        href={ad.link_url}
-        target={ad.open_in_new_tab ? '_blank' : undefined}
-        rel={ad.open_in_new_tab ? 'noopener noreferrer sponsored' : 'sponsored'}
-        onClick={handleClick}
-        className="flex w-full gap-3 rounded-xl border border-app-border bg-app-surface/95 p-3 shadow-sm transition-colors hover:border-terra-500/35 hover:bg-terra-500/5 map-chrome"
-      >
-        <AdSlideContent ad={ad} compact={compact} />
-      </a>
+      {safeHref ? (
+        <a
+          href={safeHref}
+          target={ad.open_in_new_tab ? '_blank' : undefined}
+          rel={ad.open_in_new_tab ? 'noopener noreferrer sponsored' : 'sponsored'}
+          onClick={handleClick}
+        >
+          {card}
+        </a>
+      ) : (
+        card
+      )}
 
       {slideCount > 1 && (
         <div className="mt-2 flex items-center justify-center gap-1.5" aria-label="Campaign slides">

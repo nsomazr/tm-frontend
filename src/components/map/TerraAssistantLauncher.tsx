@@ -78,12 +78,12 @@ export default function TerraAssistantLauncher({
       )}
 
       <div
-        className={`pointer-events-none flex flex-col ${
+        className={`pointer-events-none flex min-h-0 flex-col overflow-hidden ${
           fullWidthButton ? 'h-full w-full justify-stretch' : 'items-end gap-3'
-        } ${open && !fullWidthButton ? 'md:flex-1' : ''} ${className}`}
+        } ${open && !fullWidthButton ? 'md:h-full md:min-h-0 md:flex-1' : ''} ${className}`}
       >
         {open && !fullWidthButton && (
-          <div className="pointer-events-auto map-assistant-desktop-row hidden min-h-0 flex-1 items-end gap-2 md:flex">
+          <div className="pointer-events-auto map-assistant-desktop-row hidden min-h-0 max-h-full flex-1 items-stretch gap-2 overflow-hidden md:flex">
             {zoomControls ? (
               <MapZoomControls
                 onZoomIn={zoomControls.onZoomIn}
@@ -93,7 +93,7 @@ export default function TerraAssistantLauncher({
               />
             ) : null}
             <div
-              className="map-assistant-desktop flex h-full min-h-0 w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in"
+              className="map-assistant-desktop flex min-h-0 max-h-full w-[min(22rem,calc(100vw-2rem))] flex-1 flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in"
               role="dialog"
               aria-label={m.assistant.chatTitle}
             >
@@ -142,12 +142,14 @@ export default function TerraAssistantLauncher({
           />
         ) : null}
 
-        <TerraAssistantButton
-          active={open}
-          onClick={onToggle}
-          compact={fullWidthButton}
-          className={`${fullWidthButton ? 'w-full' : ''} pointer-events-auto`}
-        />
+        {(!open || fullWidthButton) && (
+          <TerraAssistantButton
+            active={open}
+            onClick={onToggle}
+            compact={fullWidthButton}
+            className={`${fullWidthButton ? 'w-full' : ''} pointer-events-auto`}
+          />
+        )}
       </div>
 
       {open && fullWidthButton && (

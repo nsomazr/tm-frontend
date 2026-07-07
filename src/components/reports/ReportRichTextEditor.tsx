@@ -20,7 +20,7 @@ import {
   Undo,
 } from 'ckeditor5'
 import 'ckeditor5/ckeditor5.css'
-import { htmlToFindingsText, plainTextToHtml, findingsTextToHtml, looksLikeHtml, normalizeMarkdownInHtml } from './reportEditorText'
+import { htmlToFindingsText, plainTextToHtml, findingsTextToHtml, looksLikeHtml, normalizeMarkdownInHtml, sanitizeReportHtml } from './reportEditorText'
 
 type EditorVariant = 'body' | 'findings'
 type EditorLayout = 'default' | 'document-body' | 'document-inline' | 'canvas'
@@ -68,7 +68,7 @@ function fromEditorHtml(variant: EditorVariant, html: string) {
   if (variant === 'findings') {
     return htmlToFindingsText(html)
   }
-  return html
+  return sanitizeReportHtml(html)
 }
 
 function syncEditorContent(

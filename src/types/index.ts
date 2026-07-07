@@ -511,6 +511,7 @@ export interface AdminBoundaryRef {
 }
 
 export interface AdminBoundaryAtResponse {
+  country?: AdminBoundaryRef | null
   region: AdminBoundaryRef | null
   district: AdminBoundaryRef | null
   ward: AdminBoundaryRef | null

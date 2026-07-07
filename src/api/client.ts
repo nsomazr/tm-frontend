@@ -13,6 +13,13 @@ function clearAuthTokens() {
   localStorage.removeItem('refresh_token')
 }
 
+function redirectToLogin() {
+  if (typeof window === 'undefined') return
+  const path = window.location.pathname + window.location.search
+  if (path.startsWith('/login') || path.startsWith('/register')) return
+  window.location.assign(`/login?next=${encodeURIComponent(path)}`)
+}
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
@@ -52,16 +59,16 @@ api.interceptors.response.use(
         return api(original)
       } catch {
         clearAuthTokens()
+        redirectToLogin()
+        return Promise.reject(error)
       }
     }
 
     if (localStorage.getItem('access_token')) {
       clearAuthTokens()
     }
-
-    original._authRetry = true
-    delete original.headers.Authorization
-    return api(original)
+    redirectToLogin()
+    return Promise.reject(error)
   }
 )
 
