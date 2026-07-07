@@ -336,8 +336,16 @@ export default function TerraAssistantPanel({
   ])
 
   useEffect(() => {
-    threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, sending, loading])
+    const el = threadRef.current
+    if (!el) return
+    const isInitialInsight =
+      messages.length === 1 && messages[0]?.role === 'assistant' && hasInsightContext
+    if (isInitialInsight) {
+      el.scrollTo({ top: 0, behavior: 'auto' })
+      return
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }, [messages, sending, loading, hasInsightContext])
 
   useEffect(() => {
     if (loading || !historyReady) return
@@ -677,7 +685,7 @@ export default function TerraAssistantPanel({
       )}
 
       {mode === 'map' && mapContext && (
-        <div className="px-3 sm:px-4">
+        <div className="shrink-0 max-h-28 overflow-y-auto overscroll-y-contain px-3 sm:px-4">
           <RelatedReportsPanel
             compact
             lat={mapContext.lat}
@@ -861,7 +869,7 @@ export default function TerraAssistantPanel({
       </div>
 
       <div
-        className={`shrink-0 z-10 flex flex-col gap-3 bg-gradient-to-t from-app-surface via-app-surface/90 to-transparent ${
+        className={`sticky bottom-0 shrink-0 z-10 flex flex-col gap-3 border-t border-app-border/50 bg-app-surface shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] ${
           mobileSheet
             ? 'px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]'
             : 'px-3 sm:px-4 pt-2 pb-3 sm:pb-4'

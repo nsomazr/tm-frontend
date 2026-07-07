@@ -64,21 +64,7 @@ export default function TerraAssistantLauncher({
 }: TerraAssistantLauncherProps) {
   const { m } = useTranslation()
 
-  const mobileBottomClass =
-    countryPanelOpen && mobileDockAdVisible
-      ? 'max-md:bottom-[calc(22rem+env(safe-area-inset-bottom))]'
-      : countryPanelOpen
-        ? 'max-md:bottom-[calc(18rem+env(safe-area-inset-bottom))]'
-        : mobileDockAdVisible
-          ? 'max-md:bottom-[calc(12.5rem+env(safe-area-inset-bottom))]'
-          : 'max-md:bottom-[calc(8.5rem+env(safe-area-inset-bottom))]'
-  const mobileHeightClass = countryPanelOpen
-    ? 'max-md:h-[min(calc(100dvh-20rem),520px)]'
-    : 'max-md:h-[min(calc(100dvh-12rem),560px)]'
-
-  const mobileSheetClass = fullWidthButton
-    ? `max-md:fixed max-md:left-3 max-md:right-3 max-md:mx-auto ${mobileBottomClass} max-md:z-50 max-md:w-auto max-md:max-w-md max-md:rounded-2xl max-md:border max-md:border-app-border-strong max-md:shadow-2xl ${mobileHeightClass}`
-    : ''
+  const mobileSheetClass = fullWidthButton ? 'map-assistant-sheet md:hidden' : ''
 
   return (
     <>
@@ -166,7 +152,7 @@ export default function TerraAssistantLauncher({
 
       {open && fullWidthButton && (
         <div
-          className={`md:hidden z-50 flex flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in ${mobileSheetClass}`}
+          className={`animate-fade-in ${mobileSheetClass}`}
           role="dialog"
           aria-label={m.assistant.chatTitle}
         >
@@ -184,7 +170,7 @@ export default function TerraAssistantLauncher({
               ×
             </button>
           </div>
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="map-assistant-sheet__body">
             <TerraAssistantPanel
               insight={areaInsight}
               loading={insightLoading}

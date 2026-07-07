@@ -518,6 +518,8 @@ export default function MapViewer({
   onFeatureClickRef.current = onFeatureClick
   const onMapControlsReadyRef = useRef(onMapControlsReady)
   onMapControlsReadyRef.current = onMapControlsReady
+  const assistantOpenRef = useRef(assistantOpen)
+  assistantOpenRef.current = assistantOpen
   const countryLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const regionLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const districtLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
@@ -1291,7 +1293,14 @@ export default function MapViewer({
     view.cancelAnimations()
 
     const currentZoom = view.getZoom() ?? 6
-    const padding = mobile ? [72, 28, 176, 28] : [48, 56, 152, 56]
+    const mobileAssistantOpen = mobile && assistantOpenRef.current
+    const padding = mobile
+      ? mobileAssistantOpen
+        ? [56, 16, Math.round(Math.min(window.innerHeight * 0.52, 420)), 16]
+        : [72, 28, 176, 28]
+      : assistantOpenRef.current
+        ? [48, 56, 152, 392]
+        : [48, 56, 152, 56]
 
     // Already close enough: pan only (no second zoom pass).
     if (currentZoom >= targetZoom - 0.15) {
@@ -1312,7 +1321,7 @@ export default function MapViewer({
         programmaticMoveRef.current = false
       },
     })
-  }, [analysisZone, adminFitBounds])
+  }, [analysisZone, adminFitBounds, assistantOpen])
 
   // Render the user's exploration draw (point / line / polygon + vertices).
   useEffect(() => {
@@ -1742,22 +1751,18 @@ export default function MapViewer({
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
       {showWatermark && <WatermarkOverlay />}
       {!minimalChrome && !isMobile && (
-        <MapCompass
-          rotationRad={mapRotation}
-          className={`map-compass${
-            showCoordinateReadout && hasPaidAccess && pointerCoordinate
-              ? ' map-compass--above-readout'
-              : ''
-          }`}
-        />
-      )}
-      {!minimalChrome && !isMobile && showCoordinateReadout && hasPaidAccess && (
-        <MapCoordinateReadout
-          mapCoordinate={pointerCoordinate}
-          coordinateSystem={coordinateSystem}
-          coordinateFormat={coordinateFormat}
-          onCoordinateFormatChange={setCoordinateFormat}
-        />
+        <div className="map-scale-stack-tools pointer-events-none">
+          <MapCompass rotationRad={mapRotation} className="map-scale-stack-tools__compass shrink-0" />
+          {showCoordinateReadout && hasPaidAccess && (
+            <MapCoordinateReadout
+              mapCoordinate={pointerCoordinate}
+              coordinateSystem={coordinateSystem}
+              coordinateFormat={coordinateFormat}
+              onCoordinateFormatChange={setCoordinateFormat}
+              className="map-scale-stack-tools__readout min-w-0"
+            />
+          )}
+        </div>
       )}
       {isMobile && !minimalChrome && showCoordinateReadout && hasPaidAccess && (
         <div className="map-mobile-left-stack pointer-events-none absolute z-20 left-3 flex max-w-[min(18rem,calc(100vw-1.5rem))]">
