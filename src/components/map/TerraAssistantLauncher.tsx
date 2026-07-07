@@ -36,6 +36,8 @@ interface TerraAssistantLauncherProps {
   centerOnMobile?: boolean
   /** Extra bottom offset when another dock panel (e.g. country) is expanded on mobile. */
   countryPanelOpen?: boolean
+  /** Mobile dock shows a sponsored card above the country row. */
+  mobileDockAdVisible?: boolean
   /** Desktop map zoom controls — shown to the left of the panel when chat is open. */
   zoomControls?: MapZoomHandlers | null
 }
@@ -57,19 +59,25 @@ export default function TerraAssistantLauncher({
   className = '',
   fullWidthButton = false,
   countryPanelOpen = false,
+  mobileDockAdVisible = false,
   zoomControls = null,
 }: TerraAssistantLauncherProps) {
   const { m } = useTranslation()
 
-  const mobileBottomClass = countryPanelOpen
-    ? 'max-md:bottom-[calc(15.5rem+env(safe-area-inset-bottom))]'
-    : 'max-md:bottom-[calc(7.5rem+env(safe-area-inset-bottom))]'
+  const mobileBottomClass =
+    countryPanelOpen && mobileDockAdVisible
+      ? 'max-md:bottom-[calc(22rem+env(safe-area-inset-bottom))]'
+      : countryPanelOpen
+        ? 'max-md:bottom-[calc(18rem+env(safe-area-inset-bottom))]'
+        : mobileDockAdVisible
+          ? 'max-md:bottom-[calc(12.5rem+env(safe-area-inset-bottom))]'
+          : 'max-md:bottom-[calc(8.5rem+env(safe-area-inset-bottom))]'
   const mobileHeightClass = countryPanelOpen
     ? 'max-md:h-[min(calc(100dvh-20rem),520px)]'
     : 'max-md:h-[min(calc(100dvh-12rem),560px)]'
 
   const mobileSheetClass = fullWidthButton
-    ? `max-md:fixed max-md:inset-x-0 ${mobileBottomClass} max-md:z-50 max-md:w-full max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-2xl ${mobileHeightClass}`
+    ? `max-md:fixed max-md:left-3 max-md:right-3 max-md:mx-auto ${mobileBottomClass} max-md:z-50 max-md:w-auto max-md:max-w-md max-md:rounded-2xl max-md:border max-md:border-app-border-strong max-md:shadow-2xl ${mobileHeightClass}`
     : ''
 
   return (
@@ -84,7 +92,9 @@ export default function TerraAssistantLauncher({
       )}
 
       <div
-        className={`pointer-events-none flex min-h-0 flex-col items-end gap-3 ${open && !fullWidthButton ? 'md:flex-1' : ''} ${fullWidthButton ? 'w-full' : ''} ${className}`}
+        className={`pointer-events-none flex flex-col ${
+          fullWidthButton ? 'h-full w-full justify-stretch' : 'items-end gap-3'
+        } ${open && !fullWidthButton ? 'md:flex-1' : ''} ${className}`}
       >
         {open && !fullWidthButton && (
           <div className="pointer-events-auto map-assistant-desktop-row hidden min-h-0 flex-1 items-end gap-2 md:flex">
@@ -97,7 +107,7 @@ export default function TerraAssistantLauncher({
               />
             ) : null}
             <div
-              className="map-assistant-desktop flex h-full min-h-0 w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in"
+              className="map-assistant-desktop flex h-full min-h-0 w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-app-border-strong bg-app-surface shadow-2xl animate-fade-in"
               role="dialog"
               aria-label={m.assistant.chatTitle}
             >

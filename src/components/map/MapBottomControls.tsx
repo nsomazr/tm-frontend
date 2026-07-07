@@ -7,6 +7,7 @@ import { BASEMAPS, saveBasemapPreference } from './basemaps'
 import LegendPanel from './LegendPanel'
 import LayerTypeSymbol from './LayerTypeSymbol'
 import MapZoomControls from './MapZoomControls'
+import MapCompass from './MapCompass'
 import TerraAssistantLauncher from './TerraAssistantLauncher'
 import MineralHeatmapColorbar from './MineralHeatmapColorbar'
 import type { MineralHeatmapSpec } from './mineralHeatmapLayer'
@@ -71,6 +72,7 @@ interface MapBottomControlsProps {
   mineralHeatmap?: MineralHeatmapSpec | null
   mineralHeatmapLoading?: boolean
   showMapAds?: boolean
+  mapRotation?: number
   /** When false, hide the layers toggle/sheet (e.g. top-nav mineral focus mode). */
   showLayersPanel?: boolean
 }
@@ -240,6 +242,7 @@ export default function MapBottomControls({
   mineralHeatmap = null,
   mineralHeatmapLoading = false,
   showMapAds = true,
+  mapRotation = 0,
   showLayersPanel = true,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
@@ -310,6 +313,14 @@ export default function MapBottomControls({
   const showLayersBtn = hasPaidAccess && layers.length > 0 && showLayersPanel
   const showLegendBtn = !hasPaidAccess && legendLayers.length > 0
 
+  const mobileDockClass = [
+    'map-mobile-bottom-dock',
+    showMapAds && !assistantOpen ? 'map-mobile-bottom-dock--with-ad' : '',
+    countryPanelOpen ? 'map-mobile-bottom-dock--expanded' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   const sheetClass =
     'pointer-events-auto mb-2 overflow-hidden rounded-2xl map-chrome bg-app-surface/95 backdrop-blur-sm'
 
@@ -332,7 +343,9 @@ export default function MapBottomControls({
         />
       )}
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-40 flex max-h-[min(55vh,calc(100vh-5rem))] flex-col overflow-y-auto px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+      <div
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-40 flex max-h-[min(58vh,calc(100dvh-5rem))] flex-col overflow-y-auto overscroll-y-contain px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden ${mobileDockClass}`}
+      >
         {panel === 'layers' &&
           renderSheet(
             <>
@@ -449,16 +462,22 @@ export default function MapBottomControls({
             </>
           )}
 
+        {showMapAds && !assistantOpen && (
+          <div className="pointer-events-auto mb-2 shrink-0">
+            <AdPlacementSlot placement="map_overlay" compact className="w-full" />
+          </div>
+        )}
+
         {hasPaidAccess && countries.length > 0 ? (
-          <div className="pointer-events-auto mb-1.5 flex flex-col gap-1.5">
-            <div className="grid grid-cols-2 gap-1">
+          <div className="pointer-events-auto mb-2 flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2 items-stretch">
               <div
-                className={`${DOCK_CARD} ${countryPanelOpen ? 'ring-2 ring-terra-500/35 border-terra-500/40' : ''}`}
+                className={`${DOCK_CARD} flex h-11 items-stretch ${countryPanelOpen ? 'ring-2 ring-terra-500/35 border-terra-500/40' : ''}`}
               >
                 <button
                   type="button"
                   aria-expanded={countryPanelOpen}
-                  className="flex h-9 w-full items-center justify-between gap-1.5 px-2.5 text-left text-xs font-semibold map-text"
+                  className="flex h-full w-full items-center justify-between gap-1.5 px-2.5 text-left text-xs font-semibold map-text"
                   onClick={toggleCountryPanel}
                 >
                   <span className="truncate">{m.map.boundaryCountryLabel}</span>
@@ -479,9 +498,10 @@ export default function MapBottomControls({
                 refreshInsightPending={refreshInsightPending}
                 onExploreSimilarArea={onExploreSimilarArea}
                 insightLoadingTerrainView={insightLoadingTerrainView}
-                className="min-w-0"
+                className="min-w-0 h-full w-full"
                 fullWidthButton
                 countryPanelOpen={countryPanelOpen}
+                mobileDockAdVisible={showMapAds && !assistantOpen}
               />
             </div>
             {countryPanelOpen && (
@@ -587,7 +607,7 @@ export default function MapBottomControls({
           </div>
         )}
 
-        <div className="pointer-events-auto">
+        <div className="pointer-events-auto sticky bottom-0 z-10 shrink-0 bg-gradient-to-t from-app-bg/95 via-app-bg/80 to-transparent pt-1">
           <div className={`${DOCK_CARD} flex h-11 w-full items-center gap-1 p-1`}>
           <MapZoomControls
             onZoomIn={onZoomIn}
@@ -595,7 +615,8 @@ export default function MapBottomControls({
             onResetView={onResetView}
             compact
           />
-          <nav className="flex min-w-0 flex-1 gap-0.5">
+          <MapCompass rotationRad={mapRotation} compact className="pointer-events-auto shrink-0" />
+          <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {showLayersBtn && (
             <ToolbarButton
               active={panel === 'layers'}

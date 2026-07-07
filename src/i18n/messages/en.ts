@@ -39,6 +39,7 @@ export const en = {
   },
   map: {
     searchPlaceholder: 'Search minerals, regions, or coordinates…',
+    searchPlaceholderShort: 'Search minerals or regions…',
     layersTitle: 'Map layers',
     periodicTableTitle: 'Commodity table',
     periodicTableHint: 'Mapped commodities in full color. Tap one to see Terra insights.',

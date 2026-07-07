@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from '../../i18n/LocaleContext'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 
 interface MapSearchBarProps {
   search: string
@@ -31,28 +32,30 @@ export default function MapSearchBar({
 }: MapSearchBarProps) {
   const { m } = useTranslation()
   const [searchFocused, setSearchFocused] = useState(false)
+  const isCompact = useMediaQuery('(max-width: 639px)')
 
   if (!searchEnabled && !exploreEnabled) return null
 
   const barActive = searchFocused || exploreOpen
   const showExpandedChrome = exploreEnabled && (searchEnabled || exploreOpen)
+  const placeholder = isCompact ? m.map.searchPlaceholderShort : m.map.searchPlaceholder
 
   return (
     <div
-      className={`absolute top-[max(1.5rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))] z-40 mx-auto w-full pointer-events-none ${
-        showExpandedChrome ? 'max-w-lg' : 'max-w-md'
+      className={`absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))] z-40 mx-auto w-full pointer-events-none ${
+        showExpandedChrome ? 'max-w-xl sm:max-w-2xl' : 'max-w-md sm:max-w-lg'
       }`}
     >
       <div
         className={`map-search-unified pointer-events-auto map-chrome overflow-hidden ${
-          showExpandedChrome ? (exploreOpen ? 'rounded-2xl' : 'rounded-[1.75rem]') : 'rounded-full'
+          showExpandedChrome ? (exploreOpen ? 'rounded-2xl' : 'rounded-2xl sm:rounded-[1.75rem]') : 'rounded-full'
         } ${barActive ? 'map-search-unified--active' : ''} ${exploreOpen ? 'map-search-unified--expanded' : ''}`}
       >
-        <div className="flex h-11 sm:h-12 items-stretch">
+        <div className="flex h-11 items-center sm:h-12">
           {searchEnabled && (
-            <label className="relative flex min-w-0 flex-1 items-center">
+            <label className="relative flex h-full min-w-0 flex-1 items-center">
               <svg
-                className="pointer-events-none absolute left-3.5 sm:left-4 h-4 w-4 sm:h-[1.125rem] sm:w-[1.125rem] map-text-muted"
+                className="pointer-events-none absolute left-3 h-4 w-4 map-text-muted sm:left-3.5 sm:h-[1.125rem] sm:w-[1.125rem]"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -66,28 +69,42 @@ export default function MapSearchBar({
                 onChange={(e) => onSearchChange(e.target.value)}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
-                placeholder={m.map.searchPlaceholder}
-                className="h-full w-full border-0 bg-transparent pl-10 sm:pl-11 pr-3 text-sm font-medium map-text placeholder:font-normal placeholder:map-text-muted focus:outline-none focus:ring-0"
+                placeholder={placeholder}
+                className="h-full w-full min-w-0 border-0 bg-transparent pl-9 pr-2 text-sm font-medium map-text placeholder:font-normal placeholder:map-text-muted focus:outline-none focus:ring-0 sm:pl-10 sm:pr-3"
               />
             </label>
           )}
 
           {exploreEnabled && (
             <>
-              {searchEnabled && <div className="my-2.5 w-px shrink-0 bg-app-border/80" aria-hidden />}
+              {searchEnabled && (
+                <div className="mx-1 h-6 w-px shrink-0 self-center bg-app-border/80 sm:mx-1.5" aria-hidden />
+              )}
               <button
                 type="button"
                 onClick={() => onExploreOpenChange?.(!exploreOpen)}
                 aria-expanded={exploreOpen}
                 aria-label={m.map.exploreArea}
-                className={`group flex shrink-0 items-center gap-1.5 px-3 sm:px-4 text-sm font-semibold transition-colors duration-300 ease-out ${
-                  exploreOpen
-                    ? 'bg-terra-500/12 text-terra-700 dark:text-terra-300'
-                    : 'map-text-secondary hover:bg-app-subtle/70 hover:map-text'
+                className={`group flex shrink-0 items-center justify-center transition-colors duration-300 ease-out ${
+                  isCompact
+                    ? `mx-1 h-9 w-9 rounded-xl ${
+                        exploreOpen
+                          ? 'bg-terra-500/12 text-terra-700 dark:text-terra-300'
+                          : 'text-terra-600 hover:bg-app-subtle/70 dark:text-terra-400'
+                      }`
+                    : `gap-1.5 px-3 sm:px-4 ${
+                        exploreOpen
+                          ? 'bg-terra-500/12 text-terra-700 dark:text-terra-300'
+                          : 'map-text-secondary hover:bg-app-subtle/70 hover:map-text'
+                      }`
                 }`}
               >
                 <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-300 ease-out ${
+                  className={`flex items-center justify-center rounded-lg transition-all duration-300 ease-out ${
+                    isCompact
+                      ? 'h-7 w-7'
+                      : 'h-7 w-7'
+                  } ${
                     exploreOpen
                       ? 'bg-terra-600 text-white shadow-sm'
                       : 'bg-terra-500/10 text-terra-600 group-hover:bg-terra-500/15 dark:text-terra-400'
@@ -95,7 +112,7 @@ export default function MapSearchBar({
                 >
                   <ExploreIcon className="h-3.5 w-3.5" />
                 </span>
-                <span className="hidden min-[400px]:inline">{m.map.exploreArea}</span>
+                {!isCompact && <span className="text-sm font-semibold">{m.map.exploreArea}</span>}
               </button>
             </>
           )}

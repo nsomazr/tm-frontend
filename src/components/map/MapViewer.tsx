@@ -218,7 +218,7 @@ function fitAdminBounds(
   map.getView().fit(extent, {
     // Extra bottom padding on mobile clears the stacked bottom controls
     // (Country panel + Ask Terra + dock) so the target isn't hidden behind them.
-    padding: mobile ? [96, 16, 184, 16] : [116, 48, 120, 48],
+    padding: mobile ? [96, 16, 220, 16] : [116, 48, 120, 48],
     maxZoom: 12,
     duration: duration ?? (mobile ? 500 : 700),
   })
@@ -1759,25 +1759,15 @@ export default function MapViewer({
           onCoordinateFormatChange={setCoordinateFormat}
         />
       )}
-      {isMobile && !minimalChrome && (
-        <div className="map-mobile-left-stack pointer-events-none absolute z-20 left-3 flex max-w-[min(18rem,calc(100vw-1.5rem))] flex-col gap-2">
-          {showMapAds && (
-            <AdPlacementSlot
-              placement="map_overlay"
-              compact
-              className="pointer-events-auto w-full shrink-0"
-            />
-          )}
-          {showCoordinateReadout && hasPaidAccess && (
-            <MapCoordinateReadout
-              mapCoordinate={pointerCoordinate}
-              coordinateSystem={coordinateSystem}
-              coordinateFormat={coordinateFormat}
-              onCoordinateFormatChange={setCoordinateFormat}
-              className="pointer-events-auto w-full shrink-0"
-            />
-          )}
-          <MapCompass rotationRad={mapRotation} className="pointer-events-none shrink-0 self-start" />
+      {isMobile && !minimalChrome && showCoordinateReadout && hasPaidAccess && (
+        <div className="map-mobile-left-stack pointer-events-none absolute z-20 left-3 flex max-w-[min(18rem,calc(100vw-1.5rem))]">
+          <MapCoordinateReadout
+            mapCoordinate={pointerCoordinate}
+            coordinateSystem={coordinateSystem}
+            coordinateFormat={coordinateFormat}
+            onCoordinateFormatChange={setCoordinateFormat}
+            className="pointer-events-auto w-full shrink-0"
+          />
         </div>
       )}
       {minimalChrome && (
@@ -1922,6 +1912,7 @@ export default function MapViewer({
           mineralHeatmap={mineralHeatmap?.points?.length ? mineralHeatmap : null}
           mineralHeatmapLoading={mineralHeatmapLoading}
           showMapAds={showMapAds}
+          mapRotation={mapRotation}
         />
       )}
     </div>

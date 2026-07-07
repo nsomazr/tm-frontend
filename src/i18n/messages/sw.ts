@@ -41,6 +41,7 @@ export const sw: Messages = {
   },
   map: {
     searchPlaceholder: 'Tafuta madini, mikoa, au kuratibu…',
+    searchPlaceholderShort: 'Tafuta madini au mikoa…',
     layersTitle: 'Tabaka za ramani',
     periodicTableTitle: 'Jedwali la bidhaa',
     periodicTableHint: 'Bidhaa zilizopangwa zina rangi kamili. Gusa moja kuona maarifa ya Terra.',

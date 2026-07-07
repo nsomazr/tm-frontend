@@ -1704,7 +1704,23 @@
   }
 
   .map-viewer--mobile .map-mobile-left-stack {
-    bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(13rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .map-mobile-bottom-dock {
+    --map-mobile-dock-reserve: 8.5rem;
+  }
+
+  .map-mobile-bottom-dock--with-ad {
+    --map-mobile-dock-reserve: 12.5rem;
+  }
+
+  .map-mobile-bottom-dock--expanded {
+    --map-mobile-dock-reserve: 18rem;
+  }
+
+  .map-mobile-bottom-dock--with-ad.map-mobile-bottom-dock--expanded {
+    --map-mobile-dock-reserve: 22rem;
   }
 
   .map-viewer:not(.map-viewer--mobile) .ol-scale-line {

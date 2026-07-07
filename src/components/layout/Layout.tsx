@@ -103,7 +103,7 @@ export default function Layout() {
     return (
       <div className="h-[100dvh] w-full max-w-[100vw] flex flex-col overflow-hidden bg-app-bg">
         {header}
-        <main className="flex-1 min-h-0 min-w-0 w-full overflow-hidden">
+        <main className="flex-1 min-h-0 min-w-0 w-full overflow-x-hidden overflow-y-hidden">
           <Outlet />
         </main>
       </div>

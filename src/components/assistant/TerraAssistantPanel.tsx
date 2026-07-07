@@ -535,7 +535,9 @@ export default function TerraAssistantPanel({
   const composerForm = (
     <form
       onSubmit={handleSubmit}
-      className="min-w-0 max-w-full rounded-2xl bg-app-surface shadow-[0_4px_24px_-4px_rgba(15,23,42,0.15)] dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] px-2.5 py-2 sm:px-3 sm:py-2.5"
+      className={`min-w-0 max-w-full rounded-2xl bg-app-surface shadow-[0_4px_24px_-4px_rgba(15,23,42,0.15)] dark:shadow-[0_8px_32px_-4px_rgba(0,0,0,0.5)] px-2.5 py-2 sm:px-3 sm:py-2.5 ${
+        mobileSheet ? 'mx-auto w-full max-w-[min(100%,18rem)]' : isFillLayout ? 'mx-auto w-full max-w-xl' : ''
+      }`}
     >
       <label className="sr-only" htmlFor="terra-assistant-input">
         {ta.askLabel}
@@ -688,9 +690,9 @@ export default function TerraAssistantPanel({
 
       <div
         ref={threadRef}
-        className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y px-3 sm:px-4 py-2 sm:py-3 space-y-2.5 sm:space-y-3 scrollbar-pane ${
-          isFillLayout ? 'bg-gradient-to-b from-app-subtle/30 to-transparent' : ''
-        }`}
+        className={`flex-1 min-h-0 overflow-y-auto overscroll-y-contain touch-pan-y py-2 sm:py-3 space-y-2.5 sm:space-y-3 scrollbar-pane ${
+          mobileSheet ? 'px-2.5' : 'px-3 sm:px-4'
+        } ${isFillLayout ? 'bg-gradient-to-b from-app-subtle/30 to-transparent max-w-2xl mx-auto w-full' : ''}`}
       >
         {loading ? (
           <div className={`flex items-center gap-2 text-sm map-text-muted justify-center ${isCompact ? 'py-4' : 'py-8'}`}>
@@ -720,7 +722,15 @@ export default function TerraAssistantPanel({
                       <TerraAssistantAvatar className={`shrink-0 mt-0.5 ${mobileSheet ? 'h-6 w-6' : 'h-7 w-7'}`} />
                     )}
                     <div
-                      className={`${mobileSheet ? 'max-w-[88%]' : 'max-w-[85%]'} rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                      className={`rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                        mobileSheet
+                          ? msg.role === 'user'
+                            ? 'max-w-[min(80%,16rem)]'
+                            : 'max-w-[min(85%,18rem)]'
+                          : msg.role === 'user'
+                            ? 'max-w-[min(82%,20rem)]'
+                            : 'max-w-[85%]'
+                      } ${
                         msg.role === 'user'
                           ? 'bg-terra-600 text-white rounded-br-md'
                           : 'bg-app-surface map-text shadow-sm rounded-bl-md'
@@ -852,8 +862,10 @@ export default function TerraAssistantPanel({
 
       <div
         className={`shrink-0 z-10 flex flex-col gap-3 bg-gradient-to-t from-app-surface via-app-surface/90 to-transparent ${
-          mobileSheet ? 'px-2.5 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]' : 'px-3 sm:px-4 pt-2 pb-3 sm:pb-4'
-        }`}
+          mobileSheet
+            ? 'px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]'
+            : 'px-3 sm:px-4 pt-2 pb-3 sm:pb-4'
+        } ${isFillLayout ? 'max-w-2xl mx-auto w-full' : ''}`}
       >
         {!loading && historyReady && !chatHistoryEnabled && messages.length > 1 && !mobileSheet && (
           <p className="px-0.5 text-[11px] leading-snug map-text-muted">{ta.chatHistorySessionHint}</p>

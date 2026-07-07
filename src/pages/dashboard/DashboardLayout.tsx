@@ -46,7 +46,7 @@ export default function DashboardLayout() {
       />
 
       <div
-        className={`flex-1 min-w-0 pb-16 md:pb-0 ${
+        className={`flex-1 min-w-0 overflow-x-hidden pb-16 md:pb-0 ${
           isAssistantPage ? 'flex flex-col min-h-0 overflow-hidden' : 'overflow-auto'
         }`}
       >

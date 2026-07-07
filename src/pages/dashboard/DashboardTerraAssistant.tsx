@@ -34,7 +34,7 @@ export default function DashboardTerraAssistant() {
   const ta = m.assistant
 
   return (
-    <div className="animate-fade-in flex flex-col flex-1 min-h-0 max-w-3xl w-full">
+    <div className="animate-fade-in flex flex-col flex-1 min-h-0 max-w-2xl w-full mx-auto">
       <header className="shrink-0 mb-4 sm:mb-5">
         <div className="flex items-start gap-3">
           <TerraAssistantAvatar className="h-10 w-10 shrink-0 shadow-sm shadow-terra-600/15" />
