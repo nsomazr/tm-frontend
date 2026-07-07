@@ -1356,7 +1356,13 @@ export default function FullMapPage() {
           )}
         </MapCaptureGuard>
 
-        <div className="pointer-events-none fixed right-3 z-50 flex flex-col items-end max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
+        <div
+          className={`pointer-events-none fixed right-3 z-50 flex min-h-0 flex-col items-end gap-3 max-md:bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] ${
+            showAssistantPanel
+              ? 'map-assistant-desktop-anchor md:bottom-6'
+              : 'md:bottom-6'
+          }`}
+        >
           {!isMobile && (
             <TerraAssistantLauncher
               open={showAssistantPanel}
