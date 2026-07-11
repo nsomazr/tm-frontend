@@ -3,6 +3,7 @@ import OlMap from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
 import VectorLayer from 'ol/layer/Vector'
+import Layer from 'ol/layer/Layer'
 import VectorSource from 'ol/source/Vector'
 import GeoJSON from 'ol/format/GeoJSON'
 import Feature from 'ol/Feature'
@@ -1576,8 +1577,9 @@ export default function MapViewer({
     map.updateSize()
     // Only nudge tile/image sources — VectorSource.refresh() clears loaded features
     // (minerals + analysis circle) and they will not reload until deps change again.
-    map.getLayers().forEach((layer) => {
-      const source = typeof layer.getSource === 'function' ? layer.getSource() : null
+    map.getLayers().forEach((baseLayer) => {
+      if (!(baseLayer instanceof Layer)) return
+      const source = baseLayer.getSource()
       if (!source || typeof (source as { refresh?: () => void }).refresh !== 'function') return
       if (source instanceof VectorSource) return
       ;(source as { refresh: () => void }).refresh()
