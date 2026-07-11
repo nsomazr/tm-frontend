@@ -107,6 +107,7 @@ export default function DashboardAnalytics() {
     feature_count: number
     layer_type: string
     area_km2?: number
+    mineral_slug?: string
   }[]
 
   const sortedLayers = useMemo(
@@ -156,7 +157,7 @@ export default function DashboardAnalytics() {
   }
 
   return (
-    <div className="max-w-4xl animate-fade-in">
+    <div className="animate-fade-in">
       <PageHeader
         title="Analytics"
         description="Mapped area concentration on the map: where uploaded layers and regions stand out."
@@ -260,6 +261,7 @@ export default function DashboardAnalytics() {
                       <th className="px-3 py-2.5 font-medium text-xs uppercase tracking-wide">Geometry</th>
                       <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Coverage</th>
                       <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Areas</th>
+                      <th className="px-4 sm:px-5 py-2.5 font-medium text-xs uppercase tracking-wide text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -283,6 +285,14 @@ export default function DashboardAnalytics() {
                           </td>
                           <td className="px-4 sm:px-5 py-2.5 text-right tabular-nums font-semibold text-app-text">
                             {layer.feature_count}
+                          </td>
+                          <td className="px-4 sm:px-5 py-2.5 text-right">
+                            <Link
+                              to={`/?mineral=${encodeURIComponent(layer.mineral_slug || layer.slug)}`}
+                              className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                            >
+                              View map
+                            </Link>
                           </td>
                         </tr>
                       ))}

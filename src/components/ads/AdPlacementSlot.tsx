@@ -29,25 +29,29 @@ function AdSlideContent({ ad, compact }: { ad: PublicAd; compact: boolean }) {
           src={ad.image_url}
           alt=""
           onError={() => setImageFailed(true)}
-          className={`rounded-lg object-cover shrink-0 ${compact ? 'h-12 w-12' : 'h-16 w-16'}`}
+          className={`rounded-lg object-cover shrink-0 ${compact ? 'h-20 w-20' : 'h-16 w-16'}`}
         />
       ) : (
         <div
           className={`rounded-lg bg-terra-500/12 text-terra-700 dark:text-terra-300 flex items-center justify-center font-semibold shrink-0 ${
-            compact ? 'h-12 w-12 text-xs' : 'h-16 w-16 text-sm'
+            compact ? 'h-20 w-20 text-sm' : 'h-16 w-16 text-sm'
           }`}
         >
           {ad.company_name.slice(0, 2).toUpperCase()}
         </div>
       )}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 self-center">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-app-text-muted">
           Sponsored · {ad.company_name}
         </p>
-        <p className={`font-semibold text-app-text ${compact ? 'text-sm' : 'text-base'} truncate`}>
+        <p
+          className={`font-semibold text-app-text leading-snug ${
+            compact ? 'text-sm line-clamp-2' : 'text-base truncate'
+          }`}
+        >
           {ad.headline || ad.title}
         </p>
-        {!compact && ad.body_text && (
+        {ad.body_text && (
           <p className="text-xs text-app-text-muted mt-1 line-clamp-2 leading-relaxed">{ad.body_text}</p>
         )}
         <span className="inline-flex mt-2 text-xs font-semibold text-terra-700 dark:text-terra-300">
@@ -112,9 +116,9 @@ export default function AdPlacementSlot({
 
   const card = (
     <div
-      className={`flex w-full gap-3 rounded-xl border border-app-border bg-app-surface/95 p-3 shadow-sm transition-colors ${
-        safeHref ? 'hover:border-terra-500/35 hover:bg-terra-500/5' : ''
-      } map-chrome`}
+      className={`flex w-full gap-3 rounded-xl border border-app-border bg-app-surface/95 shadow-sm transition-colors ${
+        compact ? 'min-h-[7.25rem] items-stretch p-3.5' : 'p-3'
+      } ${safeHref ? 'hover:border-terra-500/35 hover:bg-terra-500/5' : ''} map-chrome`}
     >
       <AdSlideContent ad={ad} compact={compact} />
     </div>

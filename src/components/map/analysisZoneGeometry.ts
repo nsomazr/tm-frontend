@@ -5,6 +5,11 @@ export interface AnalysisZoneSpec {
   lng: number
   areaKm2: number
   extended?: boolean
+  /**
+   * `point` — center tightly on the click (feature hit).
+   * `zone` — frame the full analysis circle (empty-map click / extended area).
+   */
+  focusMode?: 'point' | 'zone'
 }
 
 /** Radius (km) of a circular zone with the given ground area. */

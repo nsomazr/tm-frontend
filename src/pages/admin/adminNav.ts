@@ -41,10 +41,11 @@ export const adminNavGroups: AdminNavGroup[] = [
     ],
   },
   {
-    title: 'Map admin',
+    title: 'Geo information',
     roles: ['admin'],
     items: [
       { to: '/admin/boundaries', label: 'Boundaries', roles: ['admin'] },
+      { to: '/admin/geological-reference', label: 'Geo reference', roles: ['admin'] },
       { to: '/admin/map-settings', label: 'Map settings', roles: ['admin'] },
       { to: '/admin/layer-activity', label: 'Layer activity', roles: ['admin'] },
     ],

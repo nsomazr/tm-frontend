@@ -235,21 +235,11 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-app-text mb-2">Reports</h1>
-      <p className="text-sm text-app-muted mb-6">
-        Draft reports in the editor, then publish. You can also upload a PDF or Word file from the row menu.
-      </p>
-
-      <div className="card !p-0 overflow-hidden mb-8">
-        <div className="px-5 py-4 border-b app-divider flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-app-text">Add report</h2>
-            <p className="text-sm text-app-muted mt-1">Set up a layer, draft in the editor, then publish.</p>
-          </div>
-          <Link to="/admin/reports/new" className="btn-primary text-sm py-2 px-3 shrink-0">
-            New report
-          </Link>
-        </div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-2xl font-bold text-app-text">Reports</h1>
+        <Link to="/admin/reports/new" className="btn-primary text-sm py-2 px-3 shrink-0">
+          New report
+        </Link>
       </div>
 
       {isLoading ? (

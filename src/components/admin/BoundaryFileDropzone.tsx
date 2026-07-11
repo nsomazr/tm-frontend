@@ -76,7 +76,7 @@ export default function BoundaryFileDropzone({
         }}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
-        className={`w-full rounded-lg border border-dashed px-4 py-5 text-left transition-colors ${
+        className={`w-full rounded-lg border border-dashed px-3 py-3 text-left transition-colors ${
           dragOver
             ? 'border-terra-600 bg-terra-500/5'
             : file
@@ -111,11 +111,10 @@ export default function BoundaryFileDropzone({
         ) : (
           <>
             <p className="text-sm font-medium text-app-text">{m.adminBoundaries.dropzoneTitle}</p>
-            <p className="text-xs text-app-muted mt-1">{m.adminBoundaries.dropzoneHint}</p>
+            <p className="text-xs text-app-muted mt-0.5">{m.adminBoundaries.dropzoneHint}</p>
           </>
         )}
       </button>
-      <p className="text-[11px] text-app-muted">{m.adminBoundaries.supportedFormats}</p>
     </div>
   )
 }

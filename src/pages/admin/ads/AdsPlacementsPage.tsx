@@ -30,7 +30,7 @@ const PLACEMENT_DETAILS: Record<string, { summary: string; surfaces: string[] }>
 
 export default function AdsPlacementsPage() {
   return (
-    <div className="max-w-3xl">
+    <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-app-text">Ad placements</h1>
         <p className="text-sm text-app-text-muted mt-1">

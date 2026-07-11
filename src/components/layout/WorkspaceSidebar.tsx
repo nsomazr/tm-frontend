@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../../auth/AuthContext'
 import { useTranslation } from '../../i18n/LocaleContext'
+import WorkspaceTabs from './WorkspaceTabs'
 
 export interface SidebarLink {
   to: string
@@ -274,23 +275,147 @@ export default function WorkspaceSidebar({
   )
 }
 
-export function WorkspaceMobileNav({ links }: { links: SidebarLink[] }) {
+export function WorkspaceMobileNav({
+  groups,
+  primaryTos = ['/admin', '/admin/layers', '/admin/minerals', '/admin/reports'],
+  footerLinks = [],
+}: {
+  groups: SidebarGroup[]
+  primaryTos?: string[]
+  footerLinks?: SidebarLink[]
+}) {
+  const [moreOpen, setMoreOpen] = useState(false)
+  const location = useLocation()
+  const allLinks = groups.flatMap((group) => group.links)
+  const primaryLinks = primaryTos
+    .map((to) => allLinks.find((link) => link.to === to))
+    .filter((link): link is SidebarLink => Boolean(link))
+  const linkMatches = (link: SidebarLink) => {
+    if (link.end) return location.pathname === link.to
+    return location.pathname === link.to || location.pathname.startsWith(`${link.to}/`)
+  }
+  const onPrimary = primaryLinks.some(linkMatches)
+  const moreActive =
+    !onPrimary &&
+    (location.pathname.startsWith('/admin') ||
+      location.pathname.startsWith('/dashboard') ||
+      location.pathname.startsWith('/downloads'))
+
+  useEffect(() => {
+    setMoreOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMoreOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [moreOpen])
+
   return (
-    <div className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-app-surface/95 backdrop-blur-xl border-t app-divider px-2 py-2 flex gap-1 overflow-x-auto scrollbar-hide transition-colors duration-300">
-      {links.map((link) => (
-        <NavLink
-          key={link.to}
-          to={link.to}
-          end={link.end}
-          className={({ isActive }) =>
-            `shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ease-in-out ${
-              isActive ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300' : 'text-app-secondary'
-            }`
-          }
+    <>
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t app-divider bg-app-surface/95 backdrop-blur-xl px-1.5 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-stretch gap-0.5 transition-colors duration-300"
+        aria-label="Admin"
+      >
+        {primaryLinks.map((link) => (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            end={link.end}
+            className={({ isActive }) =>
+              `min-w-0 flex-1 px-1.5 py-2 rounded-lg text-[11px] font-medium text-center truncate transition-all duration-300 ease-in-out ${
+                isActive
+                  ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300'
+                  : 'text-app-secondary'
+              }`
+            }
+          >
+            {link.label}
+          </NavLink>
+        ))}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          className={`min-w-0 flex-1 px-1.5 py-2 rounded-lg text-[11px] font-medium text-center transition-all duration-300 ease-in-out ${
+            moreActive || moreOpen
+              ? 'bg-app-accent-soft text-terra-800 dark:text-terra-300'
+              : 'text-app-secondary'
+          }`}
+          aria-expanded={moreOpen}
+          aria-haspopup="dialog"
         >
-          {link.label}
-        </NavLink>
-      ))}
-    </div>
+          More
+        </button>
+      </nav>
+
+      {moreOpen && (
+        <div className="md:hidden fixed inset-0 z-40 flex items-end justify-center bg-black/40">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            aria-label="Close menu"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="More admin pages"
+            className="relative z-10 w-full max-h-[min(78vh,36rem)] overflow-hidden rounded-t-2xl border border-app-border bg-app-surface shadow-xl flex flex-col"
+          >
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b app-divider">
+              <p className="text-sm font-semibold text-app-text">More</p>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                className="rounded-lg px-2 py-1 text-sm text-app-text-muted hover:bg-app-subtle hover:text-app-text"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 space-y-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <WorkspaceTabs sidebar />
+              {groups.map((group) => (
+                <div key={group.id}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-app-text-muted px-1 mb-1">
+                    {group.title}
+                  </p>
+                  <div className="space-y-0.5">
+                    {group.links.map((link) => (
+                      <NavLink
+                        key={link.to}
+                        to={link.to}
+                        end={link.end}
+                        onClick={() => setMoreOpen(false)}
+                        className={navClass}
+                      >
+                        {link.label}
+                        {link.badge}
+                      </NavLink>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {footerLinks.length > 0 && (
+                <div className="border-t app-divider pt-3 space-y-0.5">
+                  {footerLinks.map((link) => (
+                    <Link
+                      key={link.to}
+                      to={link.to}
+                      onClick={() => setMoreOpen(false)}
+                      className={footerClass()}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }

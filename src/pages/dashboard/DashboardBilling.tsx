@@ -20,16 +20,30 @@ export default function DashboardBilling() {
         <ul className="card !p-0 overflow-hidden app-divide-y">
           {invoices.map((inv) => (
             <li key={inv.id} className="flex items-center justify-between gap-4 px-5 py-4 text-sm">
-              <div>
+              <div className="min-w-0">
                 <p className="font-mono text-xs text-app-muted">{inv.invoice_number}</p>
                 <p className="text-app-text-secondary mt-0.5">{inv.description || 'Terra Meta payment'}</p>
                 <p className="text-xs text-app-text-muted mt-0.5">
                   {new Date(inv.issued_at).toLocaleDateString()}
                 </p>
               </div>
-              <p className="font-semibold text-app-text shrink-0">
-                {Number(inv.amount).toLocaleString()} {inv.currency}
-              </p>
+              <div className="flex items-center gap-4 shrink-0">
+                <p className="font-semibold text-app-text">
+                  {Number(inv.amount).toLocaleString()} {inv.currency}
+                </p>
+                {inv.pdf_file ? (
+                  <a
+                    href={inv.pdf_file}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                  >
+                    Download PDF
+                  </a>
+                ) : (
+                  <span className="text-xs text-app-text-muted">No PDF</span>
+                )}
+              </div>
             </li>
           ))}
         </ul>

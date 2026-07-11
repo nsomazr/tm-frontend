@@ -714,7 +714,6 @@ export default function ReportEditorPage() {
   const selectedLayersForReview = form.layer_ids
     .map((id) => availableLayers.find((layer) => layer.id === id))
     .filter(Boolean)
-  const activeStepMeta = REPORT_STEPS.find((s) => s.id === currentStep)!
 
   if (!isNew && loadingReport) {
     return <p className="text-sm text-app-muted">Loading report…</p>
@@ -753,19 +752,16 @@ export default function ReportEditorPage() {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <Link to="/admin/reports" className="text-sm text-terra-600 dark:text-terra-400 hover:underline">
-            ← Back to reports
+            ← Reports
           </Link>
-          <h1 className="text-2xl font-bold text-app-text mt-2">{isNew ? 'New report' : 'Edit report'}</h1>
-          <p className="text-sm text-app-muted mt-1">
-            Step {currentStep} of 3: {activeStepMeta.hint}
-          </p>
+          <h1 className="text-2xl font-bold text-app-text mt-1">{isNew ? 'New report' : 'Edit report'}</h1>
         </div>
         {!isNew && report && (
           <Link to={`/downloads/${report.slug}`} className="btn-secondary text-sm shrink-0">
-            Preview catalog page
+            Preview
           </Link>
         )}
       </div>

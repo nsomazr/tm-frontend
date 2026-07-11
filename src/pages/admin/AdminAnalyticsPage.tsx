@@ -221,12 +221,20 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
               <p className="text-xs font-medium text-app-muted mb-3 uppercase tracking-wide">Recent signups</p>
               <ul className="space-y-2">
                 {data.users.recent.map((u) => (
-                  <li key={u.username} className="flex justify-between text-sm gap-2">
-                    <span className="truncate">
+                  <li key={u.username} className="flex justify-between text-sm gap-2 items-center">
+                    <span className="truncate min-w-0">
                       <span className="font-medium text-app-text">{u.username}</span>
                       {u.organization && <span className="text-app-text-muted ml-1">· {u.organization}</span>}
                     </span>
-                    <span className="text-app-text-muted shrink-0 capitalize">{u.role.replace(/_/g, ' ')}</span>
+                    <span className="flex items-center gap-3 shrink-0">
+                      <span className="text-app-text-muted capitalize">{u.role.replace(/_/g, ' ')}</span>
+                      <Link
+                        to={`/admin/users?q=${encodeURIComponent(u.username)}`}
+                        className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                      >
+                        Open
+                      </Link>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -302,7 +310,7 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
             <p className="text-sm text-app-muted">No active plan mix yet.</p>
           )}
         </div>
-        <div className="grid sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <StatusChip label="Active" value={data.subscriptions.active} tone="emerald" />
           <StatusChip label="Pending" value={data.subscriptions.pending} tone="amber" />
           <StatusChip label="Expired" value={data.subscriptions.expired} tone="slate" />
@@ -312,7 +320,7 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Section title="Report sales" description="Pay-per-download prospectivity reports.">
-          <div className="grid grid-cols-3 gap-3 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
             <KpiCard compact label="Catalog" value={fmt(data.reports.catalog_size)} />
             <KpiCard compact label="Downloads sold" value={fmt(data.reports.total_downloads)} />
             <KpiCard compact label="Download revenue" value={`${fmt(data.reports.download_revenue)} TZS`} />
@@ -341,7 +349,7 @@ function PlatformAnalytics({ data }: { data: AdminPlatformAnalytics }) {
         </Section>
 
         <Section title="B2B licenses" description="Enterprise license agreements and pipeline.">
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <KpiCard compact label="Total agreements" value={fmt(data.licenses.total)} />
             <KpiCard compact label="Active licenses" value={fmt(data.licenses.active)} />
           </div>
@@ -376,25 +384,10 @@ export default function AdminAnalyticsPage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="mb-4">
         <h1 className="text-2xl font-bold text-app-text">Business analytics</h1>
-        <p className="text-app-muted text-sm mt-1">
-          Users, conversions, revenue, subscriptions, and commercial performance.
-        </p>
-        <p className="text-app-text-muted text-xs mt-2">
-          For map coverage see{' '}
-          <Link to="/admin/coverage" className="text-terra-600 dark:text-terra-400 hover:underline">
-            Coverage
-          </Link>
-          , for mineral trends{' '}
-          <Link to="/admin/mineral-analytics" className="text-terra-600 dark:text-terra-400 hover:underline">
-            Mineral analytics
-          </Link>
-          , and for user behaviour{' '}
-          <Link to="/admin/user-activity" className="text-terra-600 dark:text-terra-400 hover:underline">
-            User activity
-          </Link>
-          .
+        <p className="text-app-muted text-sm mt-0.5">
+          Users, conversions, revenue, and subscriptions.
         </p>
       </div>
 

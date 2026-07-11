@@ -36,10 +36,9 @@ const ADD_LABELS: Record<ExplorationMode, string> = {
 }
 
 const ADD_HINTS: Record<ExplorationMode, string> = {
-  point: 'Click the map or enter WGS84 latitude/longitude, then save.',
-  line: 'Add connected vertices in order. Each point links to the previous one (minimum 2).',
-  polygon:
-    'Add connected vertices in order around the boundary. Each point links to the previous; the ring closes back to vertex 1 (minimum 3).',
+  point: 'Click map or enter lat/lng, then save.',
+  line: 'Add vertices in order (min 2).',
+  polygon: 'Add boundary vertices in order (min 3).',
 }
 
 function MapPlaceholderIcon() {
@@ -277,20 +276,14 @@ export default function CoordinatesEditor() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-app-text">Coordinate editor</h1>
-        <p className="text-app-muted text-sm mt-1 max-w-2xl">
-          Pick a map layer, preview it on the map, then draw coordinates one at a time or import
-          points, polygons, and structures in bulk from ZIP, GeoJSON, or CSV.
+        <p className="text-app-muted text-sm mt-0.5">
+          Draw features or bulk-import from ZIP, GeoJSON, or CSV.
         </p>
       </div>
 
       <div className="card !p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b app-divider flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="font-bold text-app-text">Map layer</h2>
-            <p className="text-sm text-app-muted mt-1">
-              Choose a layer to preview geometry and add points, lines, or polygons.
-            </p>
-          </div>
+        <div className="px-5 py-3 border-b app-divider flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          <h2 className="font-bold text-app-text shrink-0">Map layer</h2>
           <label className="block w-full lg:max-w-md shrink-0">
             <span className="sr-only">Layer</span>
             <select
@@ -342,15 +335,15 @@ export default function CoordinatesEditor() {
         )}
 
         {!selectedLayer ? (
-          <div className="px-6 py-16 sm:py-20 flex flex-col items-center justify-center text-center min-h-[min(42vh,320px)] bg-app-subtle/30">
+          <div className="px-6 py-12 flex flex-col items-center justify-center text-center min-h-[min(36vh,280px)] bg-app-subtle/30">
             <MapPlaceholderIcon />
-            <h3 className="font-semibold text-app-text mt-4">No layer selected</h3>
-            <p className="text-sm text-app-muted mt-2 max-w-md">
-              Select a layer from the dropdown above to preview the map and add features.
+            <h3 className="font-semibold text-app-text mt-3">Select a layer</h3>
+            <p className="text-sm text-app-muted mt-1">
+              Choose a layer above to preview and edit.
             </p>
             {!layersLoading && sortedLayerList.length === 0 && (
-              <p className="text-xs text-amber-700 dark:text-amber-300 mt-4">
-                No layers available yet. Create one in Layers first.
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-3">
+                No layers yet — create one in Layers first.
               </p>
             )}
           </div>

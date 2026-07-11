@@ -5,9 +5,9 @@ import { DonutChart, VerticalBarChart } from '../../components/analytics/Charts'
 import { LayerTypeGrid } from '../../components/analytics/AnalyticsViz'
 import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
-import { useAuth } from '../../auth/AuthContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import { formatAreaKm2 } from '../../components/map/mapFormat'
+import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 
 const LAYER_TYPE_LABELS: Record<string, string> = {
   polygon: 'Polygon',
@@ -27,7 +27,6 @@ type LayerHotspotRow = {
 }
 
 export default function AdminCoveragePage() {
-  const { isAdmin } = useAuth()
   const displayName = useDisplayName()
   const { data: hotspots, isLoading: hotspotsLoading } = useQuery({
     queryKey: ['hotspots'],
@@ -50,6 +49,7 @@ export default function AdminCoveragePage() {
     layer_type: string
     area_km2?: number
     mineral_name?: string
+    mineral_slug?: string
   }[]
   const layerStats = (hotspots?.layer_stats ?? []) as { layer_type: string; count: number }[]
 
@@ -88,23 +88,11 @@ export default function AdminCoveragePage() {
 
   return (
     <div>
-      <div className="mb-8">
+      <div className="mb-4">
         <h1 className="text-2xl font-bold text-app-text">Map coverage</h1>
-        <p className="text-sm text-app-muted mt-1">
-          Prospect zones, uploaded layers, and regional distribution on the map.
+        <p className="text-sm text-app-muted mt-0.5">
+          Prospect zones, layers, and regional distribution.
         </p>
-        {isAdmin && (
-          <p className="text-xs text-app-text-muted mt-2">
-            Related:{' '}
-            <Link to="/admin/mineral-analytics" className="text-terra-600 dark:text-terra-400 hover:underline">
-              Mineral analytics
-            </Link>
-            {' · '}
-            <Link to="/admin/user-activity" className="text-terra-600 dark:text-terra-400 hover:underline">
-              User activity
-            </Link>
-          </p>
-        )}
       </div>
 
       {isLoading ? (
@@ -142,12 +130,12 @@ export default function AdminCoveragePage() {
                   </p>
                 </div>
                 {mineralHotspots.length > 0 && (
-                  <label className="shrink-0 min-w-[12rem]">
+                  <label className="w-full sm:w-auto sm:shrink-0 min-w-0 sm:min-w-[12rem]">
                     <span className="sr-only">Layer</span>
                     <select
                       value={selectedLayerSlug}
                       onChange={(e) => setSelectedLayerSlug(e.target.value)}
-                      className="input text-sm w-full"
+                      className="input text-sm w-full min-w-0"
                     >
                       {mineralHotspots.map((layer) => (
                         <option key={layer.slug} value={layer.slug}>
@@ -192,7 +180,7 @@ export default function AdminCoveragePage() {
           <section className="rounded-xl bg-app-surface overflow-hidden">
             <div className="px-5 py-4 border-b app-divider">
               <h2 className="font-semibold text-app-text">Layer inventory</h2>
-              <p className="text-sm text-app-muted mt-0.5">Each uploaded layer, its zone count, and geometry type.</p>
+              <p className="text-sm text-app-muted mt-0.5">Layers by zone count and geometry.</p>
             </div>
             {layers.length === 0 ? (
               <p className="px-5 py-6 text-sm text-app-muted">No shapefiles uploaded yet.</p>
@@ -206,17 +194,28 @@ export default function AdminCoveragePage() {
                     <th className="px-5 py-3 font-medium text-right">Coverage</th>
                     <th className="px-5 py-3 font-medium text-right">Zones</th>
                     <th className="px-5 py-3 font-medium text-right">Top region</th>
+                    <th className="px-5 py-3 font-medium text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {layers.map((layer) => {
                     const layerRegions = layerHotspots.find((row) => row.slug === layer.slug)?.hotspots ?? []
                     const topRegion = layerRegions[0]
+                    const mapMineral = layer.mineral_slug || layer.slug
+                    const isSelected = selectedLayerSlug === layer.slug
                     return (
-                      <tr key={layer.slug} className="border-b app-divider last:border-0">
+                      <tr
+                        key={layer.slug}
+                        className={`border-b app-divider last:border-0 ${
+                          isSelected ? 'bg-terra-500/[0.04]' : ''
+                        }`}
+                      >
                         <td className="px-5 py-3 text-app-text">
                           <span className="inline-flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: layer.color }} />
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: layer.color }}
+                            />
                             {displayName(layer)}
                           </span>
                         </td>
@@ -228,11 +227,34 @@ export default function AdminCoveragePage() {
                             ? formatAreaKm2(layer.area_km2)
                             : '-'}
                         </td>
-                        <td className="px-5 py-3 text-right tabular-nums font-medium text-app-text">{fmt(layer.feature_count)}</td>
+                        <td className="px-5 py-3 text-right tabular-nums font-medium text-app-text">
+                          {fmt(layer.feature_count)}
+                        </td>
                         <td className="px-5 py-3 text-right text-app-text-secondary">
                           {topRegion
-                            ? `${topRegion.region} (${fmt(topRegion.feature_count)}${topRegion.area_km2 ? ` · ${formatAreaKm2(topRegion.area_km2)}` : ''})`
+                            ? `${topRegion.region} (${fmt(topRegion.feature_count)}${
+                                topRegion.area_km2 ? ` · ${formatAreaKm2(topRegion.area_km2)}` : ''
+                              })`
                             : '-'}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="inline-flex justify-end">
+                            <ActionMenu label={`Actions for ${displayName(layer)}`} minWidth="11.5rem">
+                              <ActionMenuItem
+                                onClick={() => setSelectedLayerSlug(layer.slug)}
+                                disabled={isSelected}
+                              >
+                                {isSelected ? 'Showing regions' : 'Show region chart'}
+                              </ActionMenuItem>
+                              <ActionMenuItem to={`/admin/minerals?layer=${encodeURIComponent(layer.slug)}`}>
+                                Open layer
+                              </ActionMenuItem>
+                              <ActionMenuItem to="/admin/coordinates">Edit coordinates</ActionMenuItem>
+                              <ActionMenuItem to={`/?mineral=${encodeURIComponent(mapMineral)}`}>
+                                View on map
+                              </ActionMenuItem>
+                            </ActionMenu>
+                          </div>
                         </td>
                       </tr>
                     )

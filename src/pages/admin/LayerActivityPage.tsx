@@ -10,20 +10,72 @@ function formatWhen(iso?: string | null) {
   return new Date(iso).toLocaleString()
 }
 
+function actionVerb(action: string) {
+  switch (action) {
+    case 'layer_upload':
+      return 'Upload'
+    case 'layer_create':
+      return 'Create'
+    case 'layer_update':
+      return 'Update'
+    case 'layer_delete':
+      return 'Delete'
+    default:
+      return action.replace(/^layer_/, '').replace(/_/g, ' ')
+  }
+}
+
+function actionBadgeClass(action: string) {
+  switch (action) {
+    case 'layer_create':
+      return 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
+    case 'layer_upload':
+      return 'bg-sky-500/12 text-sky-700 dark:text-sky-300'
+    case 'layer_update':
+      return 'bg-amber-500/12 text-amber-800 dark:text-amber-300'
+    case 'layer_delete':
+      return 'bg-red-500/12 text-red-700 dark:text-red-300'
+    default:
+      return 'bg-app-subtle text-app-text-muted'
+  }
+}
+
+function changedFieldSummary(changes: unknown): string | null {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) return null
+  const keys = Object.keys(changes as Record<string, unknown>)
+  if (!keys.length) return null
+  return keys
+    .map((key) => key.replace(/_/g, ' '))
+    .slice(0, 6)
+    .join(', ')
+}
+
 function describeLayerAction(log: AuditLog) {
   const details = log.details ?? {}
   switch (log.action) {
     case 'layer_upload':
       return `Uploaded ${String(details.filename ?? 'file')} to ${String(details.layer_name ?? 'layer')}`
     case 'layer_create':
-      return `Created layer ${String(details.name ?? '')}`
-    case 'layer_update':
-      return `Updated ${String(details.name ?? 'layer')}`
+      return `Created layer ${String(details.name ?? '')}`.trim()
+    case 'layer_update': {
+      const name = String(details.name ?? 'layer')
+      const fields = changedFieldSummary(details.changes)
+      return fields ? `Updated ${name} (${fields})` : `Updated ${name}`
+    }
     case 'layer_delete':
       return `Deleted ${String(details.name ?? 'layer')}`
     default:
       return log.action
   }
+}
+
+function layerHref(log: AuditLog): string | null {
+  if (log.action === 'layer_delete') return null
+  const details = log.details ?? {}
+  const slug = String(details.slug ?? details.layer_slug ?? '').trim()
+  if (slug) return `/admin/minerals?layer=${encodeURIComponent(slug)}`
+  if (log.resource_id) return '/admin/layers'
+  return null
 }
 
 function uploadStatusClass(status: LayerUpload['status']) {
@@ -60,8 +112,8 @@ export default function LayerActivityPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-app-text">Activity & logs</h1>
-          <p className="text-sm text-app-muted mt-1 max-w-2xl">
-            Track manager file imports and layer changes: creates, uploads, updates, and deletes.
+          <p className="text-sm text-app-muted mt-0.5">
+            Manager imports and layer create/update/delete events.
           </p>
         </div>
         <Link to="/admin/layers" className="btn-secondary text-sm shrink-0">
@@ -70,11 +122,8 @@ export default function LayerActivityPage() {
       </div>
 
       <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
-        <div className="px-5 py-4 border-b app-divider">
+        <div className="px-5 py-3 border-b app-divider">
           <h2 className="font-semibold text-app-text">Manager uploads</h2>
-          <p className="text-sm text-app-text-muted mt-1">
-            Recent file imports by mineral managers across all layers.
-          </p>
         </div>
 
         {uploadsLoading ? (
@@ -92,6 +141,7 @@ export default function LayerActivityPage() {
                     <th>Layer</th>
                     <th>File</th>
                     <th>Status</th>
+                    <th className="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -111,6 +161,18 @@ export default function LayerActivityPage() {
                       <td className={`capitalize ${uploadStatusClass(upload.status)}`}>
                         {upload.status}
                       </td>
+                      <td className="text-right whitespace-nowrap">
+                        {upload.layer_slug ? (
+                          <Link
+                            to={`/admin/minerals?layer=${encodeURIComponent(upload.layer_slug)}`}
+                            className="text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                          >
+                            Open layer
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-app-text-muted">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -129,11 +191,8 @@ export default function LayerActivityPage() {
       </section>
 
       <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
-        <div className="px-5 py-4 border-b app-divider">
+        <div className="px-5 py-3 border-b app-divider">
           <h2 className="font-semibold text-app-text">Layer activity log</h2>
-          <p className="text-sm text-app-text-muted mt-1">
-            Creates, uploads, updates, and deletes recorded for map layers.
-          </p>
         </div>
 
         {auditLoading ? (
@@ -149,18 +208,44 @@ export default function LayerActivityPage() {
                     <th>When</th>
                     <th>Actor</th>
                     <th>Action</th>
+                    <th>Details</th>
+                    <th className="text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {auditPagination.pageItems.map((log) => (
-                    <tr key={log.id}>
-                      <td className="text-app-text-muted whitespace-nowrap">
-                        {formatWhen(log.created_at)}
-                      </td>
-                      <td>{log.actor_name || 'System'}</td>
-                      <td>{describeLayerAction(log)}</td>
-                    </tr>
-                  ))}
+                  {auditPagination.pageItems.map((log) => {
+                    const href = layerHref(log)
+                    return (
+                      <tr key={log.id}>
+                        <td className="text-app-text-muted whitespace-nowrap">
+                          {formatWhen(log.created_at)}
+                        </td>
+                        <td>{log.actor_name || 'System'}</td>
+                        <td>
+                          <span
+                            className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold capitalize ${actionBadgeClass(log.action)}`}
+                          >
+                            {actionVerb(log.action)}
+                          </span>
+                        </td>
+                        <td className="max-w-[28rem]">
+                          <span className="line-clamp-2">{describeLayerAction(log)}</span>
+                        </td>
+                        <td className="text-right whitespace-nowrap">
+                          {href ? (
+                            <Link
+                              to={href}
+                              className="text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                            >
+                              Open layer
+                            </Link>
+                          ) : (
+                            <span className="text-sm text-app-text-muted">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

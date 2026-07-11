@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { clearLayerGeojsonCache } from '../../components/map/mapGeojsonCache'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchAllMapLayers, mapsApi } from '../../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchAllMapLayers, fetchAllMinerals, mapsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
+import {
+  SPECIAL_COMMODITY_FALLBACKS,
+  TRACKED_ELEMENT_COMMODITIES,
+} from '../../constants/periodicCommodities'
 import FileUploadField from '../../components/ui/FileUploadField'
+import UploadProgressBar from '../../components/ui/UploadProgressBar'
 import {
   detectLayerImportFileType,
   LAYER_IMPORT_ACCEPT,
@@ -14,12 +19,8 @@ import {
 import { toast } from '../../components/ui/toast'
 import { ADMIN_LAYERS_KEY, useAdminLayers } from '../../hooks/useAdminLayers'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import { layerDisplayColor } from '../../components/admin/layerColors'
-import {
-  layerFillColor,
-  layerStyleWithColor,
-  suggestLayerStyle,
-} from '../../components/admin/layerColors'
+import { layerFillColor, layerStyleWithColor, suggestLayerStyle } from '../../components/admin/layerColors'
+import MineralColorPickerModal from '../../components/admin/MineralColorPickerModal'
 import {
   STRUCTURE_RANK_OPTIONS,
   layerStyleWithStructureRank,
@@ -32,6 +33,12 @@ import {
   LAYER_BUFFER_KM_MAX,
   LAYER_BUFFER_KM_MIN,
 } from '../../constants/layerBufferZone'
+import {
+  clampHeatmapWeight,
+  LAYER_HEATMAP_WEIGHT_DEFAULT,
+  LAYER_HEATMAP_WEIGHT_MAX,
+  LAYER_HEATMAP_WEIGHT_MIN,
+} from '../../constants/layerHeatmapWeight'
 import type { MapLayer } from '../../types'
 
 const LAYER_TYPES = [
@@ -40,11 +47,10 @@ const LAYER_TYPES = [
   { value: 'line' as const, label: 'Line' },
 ] as const
 
-const STEPS = [
-  { id: 'create', label: 'Create layer' },
-  { id: 'import', label: 'Import data' },
-  { id: 'manage', label: 'Commodities' },
-] as const
+const NAV_COMMODITY_SLUGS = new Set([
+  ...TRACKED_ELEMENT_COMMODITIES.map((c) => c.slug),
+  ...SPECIAL_COMMODITY_FALLBACKS.map((c) => c.slug),
+])
 
 function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
@@ -60,65 +66,6 @@ type ImportOutcome = {
   featureCount: number
 }
 
-function StepIndicator({
-  activeStep,
-  importComplete,
-}: {
-  activeStep: 'create' | 'import'
-  importComplete?: boolean
-}) {
-  return (
-    <ol className="flex flex-wrap items-center gap-2 text-xs">
-      {STEPS.map((step, index) => {
-        const isActive =
-          step.id === activeStep ||
-          (step.id === 'manage' && false)
-        const isDone =
-          (step.id === 'create' && activeStep === 'import') ||
-          (step.id === 'import' && importComplete)
-        const isManage = step.id === 'manage'
-
-        return (
-          <li key={step.id} className="flex items-center gap-2">
-            {index > 0 && <span className="text-app-text-muted">→</span>}
-            {isManage ? (
-              <Link
-                to="/admin/minerals"
-                className="inline-flex items-center gap-1.5 rounded-full border border-app-border px-2.5 py-1 text-app-text-secondary hover:border-terra-500/40 hover:text-terra-600 dark:hover:text-terra-400 transition-colors"
-              >
-                <span className="font-medium">{step.label}</span>
-              </Link>
-            ) : (
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ${
-                  isActive
-                    ? 'bg-terra-500/10 text-terra-700 dark:text-terra-300 border border-terra-500/25'
-                    : isDone
-                      ? 'bg-app-subtle text-app-text-secondary border border-app-border'
-                      : 'text-app-text-muted border border-transparent'
-                }`}
-              >
-                <span
-                  className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
-                    isActive
-                      ? 'bg-terra-600 text-white'
-                      : isDone
-                        ? 'bg-app-text-muted/20 text-app-text-secondary'
-                        : 'bg-app-subtle text-app-text-muted'
-                  }`}
-                >
-                  {index + 1}
-                </span>
-                {step.label}
-              </span>
-            )}
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
-
 export default function LayersPage() {
   const qc = useQueryClient()
   const { isAdmin } = useAuth()
@@ -129,8 +76,8 @@ export default function LayersPage() {
 
   const [newName, setNewName] = useState('')
   const [newNameSw, setNewNameSw] = useState('')
-  const [showSwahili, setShowSwahili] = useState(false)
   const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>('polygon')
+  const [newMineralId, setNewMineralId] = useState('')
   const [newPreview, setNewPreview] = useState(false)
   const [newColor, setNewColor] = useState('#0D9488')
   const [colorTouched, setColorTouched] = useState(false)
@@ -138,15 +85,33 @@ export default function LayersPage() {
   const [structureRankTouched, setStructureRankTouched] = useState(false)
   const [useBufferZone, setUseBufferZone] = useState(false)
   const [newBufferKm, setNewBufferKm] = useState(10)
+  const [newHeatmapWeight, setNewHeatmapWeight] = useState(LAYER_HEATMAP_WEIGHT_DEFAULT)
   const [layerMode, setLayerMode] = useState<'create' | 'import'>('create')
+  const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [importMode, setImportMode] = useState<'replace' | 'append'>('replace')
   const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null)
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const { data: allLayers = [] } = useAdminLayers()
+  const { data: mineralsList = [] } = useQuery({
+    queryKey: ['minerals', 'all'],
+    queryFn: fetchAllMinerals,
+  })
 
   const importableLayers = allLayers.filter((l) => l.is_active)
   const stackableLayers = allLayers.filter((l) => l.is_active)
-  const selectedImportLayer = importableLayers.find((l) => String(l.id) === selectedLayerId)
+
+  const commodityOptions = useMemo(() => {
+    const list = mineralsList.filter((m) => m.is_active)
+    return [...list].sort((a, b) => {
+      const aNav = NAV_COMMODITY_SLUGS.has(a.slug) ? 0 : a.slug === 'general' ? 2 : 1
+      const bNav = NAV_COMMODITY_SLUGS.has(b.slug) ? 0 : b.slug === 'general' ? 2 : 1
+      if (aNav !== bNav) return aNav - bNav
+      return a.name.localeCompare(b.name)
+    })
+  }, [mineralsList])
+
+  const selectedCommodity = commodityOptions.find((m) => String(m.id) === newMineralId)
 
   const usedLayerColors = useMemo(
     () => allLayers.map((layer) => layerFillColor(layer.style)).filter(Boolean),
@@ -155,9 +120,13 @@ export default function LayersPage() {
 
   useEffect(() => {
     if (colorTouched) return
+    if (selectedCommodity?.color) {
+      setNewColor(selectedCommodity.color)
+      return
+    }
     const suggested = suggestLayerStyle(newName, usedLayerColors, newLayerType)
     setNewColor(suggested.fill)
-  }, [newName, usedLayerColors, newLayerType, colorTouched])
+  }, [newName, usedLayerColors, newLayerType, colorTouched, selectedCommodity?.color])
 
   useEffect(() => {
     if (structureRankTouched || newLayerType !== 'line') return
@@ -167,8 +136,13 @@ export default function LayersPage() {
   const createLayer = useMutation({
     mutationFn: () => {
       if (!newName.trim()) throw new Error('Layer name is required')
+      if (!newMineralId) throw new Error('Choose which commodity this layer belongs to')
+      const mineralId = Number(newMineralId)
+      if (!Number.isFinite(mineralId)) throw new Error('Invalid commodity')
       const style = suggestLayerStyle(newName, usedLayerColors, newLayerType)
-      const fill = colorTouched ? newColor : style.fill
+      const fill = colorTouched
+        ? newColor
+        : selectedCommodity?.color || style.fill
       const baseStyle = layerStyleWithColor(
         { fill, stroke: fill, strokeWidth: style.strokeWidth },
         newLayerType,
@@ -178,6 +152,7 @@ export default function LayersPage() {
         name: newName.trim(),
         name_sw: newNameSw.trim(),
         layer_type: newLayerType,
+        mineral: mineralId,
         z_index: stackableLayers.length,
         is_preview: newPreview,
         is_active: true,
@@ -186,6 +161,7 @@ export default function LayersPage() {
             ? layerStyleWithStructureRank(baseStyle, newStructureRank)
             : baseStyle,
         ...(useBufferZone ? { buffer_km: clampBufferKm(newBufferKm) } : { buffer_km: null }),
+        heatmap_weight: clampHeatmapWeight(newHeatmapWeight),
       }
       return mapsApi.createLayer(payload)
     },
@@ -198,13 +174,14 @@ export default function LayersPage() {
       })
       setNewName('')
       setNewNameSw('')
-      setShowSwahili(false)
+      setNewMineralId('')
       setNewPreview(false)
       setColorTouched(false)
       setStructureRankTouched(false)
       setNewStructureRank(2)
       setUseBufferZone(false)
       setNewBufferKm(10)
+      setNewHeatmapWeight(LAYER_HEATMAP_WEIGHT_DEFAULT)
     },
     onError: (err: Error) => {
       toast.error('Could not create layer', { description: err.message })
@@ -217,9 +194,18 @@ export default function LayersPage() {
       if (!layer || !uploadFile) throw new Error('Missing layer or file')
       const name = uploadFile.name.toLowerCase()
       const fileType = detectLayerImportFileType(name)
-      return mapsApi.bulkImport(layer.slug, uploadFile, fileType, layer.mineral_slug, importMode)
+      setUploadProgress(0)
+      return mapsApi.bulkImport(
+        layer.slug,
+        uploadFile,
+        fileType,
+        layer.mineral_slug,
+        importMode,
+        (percent) => setUploadProgress(percent),
+      )
     },
     onSuccess: async (res) => {
+      setUploadProgress(null)
       const layerId = selectedLayerId
       const layerSlug =
         res.data?.layer_slug ||
@@ -280,6 +266,7 @@ export default function LayersPage() {
       })
     },
     onError: (err: Error) => {
+      setUploadProgress(null)
       setImportOutcome(null)
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail
       toast.error('Import failed', { description: detail || err.message })
@@ -290,48 +277,48 @@ export default function LayersPage() {
     ? `/admin/minerals?layer=${encodeURIComponent(importOutcome.layerSlug)}`
     : '/admin/minerals'
 
-  const canCreate = newName.trim().length > 0
+  const canCreate = newName.trim().length > 0 && !!newMineralId
   const canImport = !!selectedLayerId && !!uploadFile
 
   return (
-    <div className="max-w-5xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-app-text">Layers</h1>
-        <p className="text-sm text-app-muted mt-1 max-w-2xl">
-          Create a layer, upload your data, then manage colors and draw order in{' '}
-          <Link to="/admin/minerals" className="text-terra-600 dark:text-terra-400 hover:underline">
-            Commodities
-          </Link>
-          .
-        </p>
+    <div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-app-text">Layers</h1>
+          <p className="text-sm text-app-muted mt-0.5">
+            Create, import, then style in{' '}
+            <Link to="/admin/minerals" className="text-terra-600 dark:text-terra-400 hover:underline">
+              Commodities
+            </Link>
+            .
+          </p>
+        </div>
         {isAdmin && (
-          <p className="text-xs text-app-text-muted mt-2">
-            Boundaries:{' '}
+          <p className="text-xs text-app-text-muted">
             <Link to="/admin/boundaries?level=4" className="text-terra-600 dark:text-terra-400 hover:underline">
-              Boundary layers
+              Boundaries
             </Link>
             {' · '}
             <Link to="/admin/layer-activity" className="text-terra-600 dark:text-terra-400 hover:underline">
-              Activity & logs
+              Activity
             </Link>
           </p>
         )}
       </div>
 
       <div className="card !p-0 overflow-hidden">
-        <div className="px-5 py-4 border-b app-divider space-y-4">
-          <StepIndicator activeStep={layerMode} importComplete={!!importOutcome} />
+        <div className="px-4 py-3 border-b app-divider">
           <div className="segmented w-full sm:w-auto" role="tablist" aria-label="Layer workflow">
             <button
               type="button"
               role="tab"
               aria-selected={layerMode === 'create'}
               onClick={() => setLayerMode('create')}
-              className={`segmented-btn flex-1 sm:flex-none px-4 py-2 text-sm ${
+              className={`segmented-btn flex-1 sm:flex-none px-3 py-1.5 text-sm ${
                 layerMode === 'create' ? 'segmented-btn-active' : ''
               }`}
             >
-              1. Create layer
+              1. Create
             </button>
             <button
               type="button"
@@ -341,107 +328,184 @@ export default function LayersPage() {
                 setLayerMode('import')
                 setImportOutcome(null)
               }}
-              className={`segmented-btn flex-1 sm:flex-none px-4 py-2 text-sm ${
+              className={`segmented-btn flex-1 sm:flex-none px-3 py-1.5 text-sm ${
                 layerMode === 'import' ? 'segmented-btn-active' : ''
               }`}
             >
-              2. Import data
+              2. Import
             </button>
+            <Link
+              to="/admin/minerals"
+              className="segmented-btn flex-1 sm:flex-none px-3 py-1.5 text-sm text-center"
+            >
+              3. Commodities
+            </Link>
           </div>
         </div>
 
         {layerMode === 'create' ? (
           <>
-            <div className="px-5 py-5">
-              <div className="max-w-xl space-y-5">
-                <label className="block">
-                  <span className="text-sm font-medium text-app-text">Layer name</span>
-                  <input
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    className="input mt-1.5 w-full text-base"
-                    placeholder="e.g. Nickel areas, Lithium points"
-                    autoFocus
-                  />
-                </label>
-
-                <div>
-                  <span className="text-sm font-medium text-app-text">Geometry type</span>
-                  <div className="segmented mt-1.5 w-full sm:w-auto" role="radiogroup" aria-label="Geometry type">
-                    {LAYER_TYPES.map((type) => (
-                      <button
-                        key={type.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={newLayerType === type.value}
-                        onClick={() => setNewLayerType(type.value)}
-                        className={`segmented-btn flex-1 sm:flex-none px-4 py-2 text-sm ${
-                          newLayerType === type.value ? 'segmented-btn-active' : ''
-                        }`}
-                      >
-                        {type.label}
-                      </button>
-                    ))}
-                  </div>
+            <div className="px-4 py-4">
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="block sm:col-span-2">
+                    <span className="text-sm font-medium text-app-text">Name</span>
+                    <input
+                      type="text"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="input mt-1 w-full"
+                      placeholder="e.g. Lithium points"
+                      autoFocus
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-medium text-app-text-secondary">Swahili</span>
+                    <input
+                      type="text"
+                      value={newNameSw}
+                      onChange={(e) => setNewNameSw(e.target.value)}
+                      className="input mt-1 w-full"
+                      placeholder="Optional"
+                    />
+                  </label>
                 </div>
 
-                <label className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={newColor}
-                    onChange={(e) => {
-                      setColorTouched(true)
-                      setNewColor(e.target.value)
-                    }}
-                    className="h-10 w-10 cursor-pointer rounded-lg border border-app-border bg-transparent p-0.5 shrink-0"
-                    aria-label="Map color"
-                  />
-                  <span className="text-sm font-medium text-app-text">Map color</span>
-                  {colorTouched && (
-                    <button
-                      type="button"
-                      onClick={() => setColorTouched(false)}
-                      className="text-xs text-terra-600 hover:underline"
-                    >
-                      Reset
-                    </button>
-                  )}
-                </label>
-
-                {newLayerType === 'line' && (
-                  <label className="block max-w-xs">
-                    <span className="text-sm font-medium text-app-text">Line weight</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block min-w-0">
+                    <span className="text-sm font-medium text-app-text">Commodity</span>
                     <select
-                      value={newStructureRank}
+                      value={newMineralId}
                       onChange={(e) => {
-                        setStructureRankTouched(true)
-                        setNewStructureRank(Number(e.target.value) as StructureLineRank)
+                        setNewMineralId(e.target.value)
+                        setColorTouched(false)
                       }}
-                      className="input mt-1.5 w-full"
+                      className="input mt-1 w-full"
+                      required
                     >
-                      {STRUCTURE_RANK_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
+                      <option value="">Select…</option>
+                      {commodityOptions.map((mineral) => (
+                        <option key={mineral.id} value={mineral.id}>
+                          {mineral.name}
+                          {NAV_COMMODITY_SLUGS.has(mineral.slug)
+                            ? ''
+                            : mineral.slug === 'general'
+                              ? ' (shared)'
+                              : ''}
                         </option>
                       ))}
                     </select>
                   </label>
-                )}
+                  <div className="min-w-0">
+                    <span className="text-sm font-medium text-app-text">Type</span>
+                    <div
+                      className="segmented mt-1 w-full"
+                      role="radiogroup"
+                      aria-label="Geometry type"
+                    >
+                      {LAYER_TYPES.map((type) => (
+                        <button
+                          key={type.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={newLayerType === type.value}
+                          onClick={() => setNewLayerType(type.value)}
+                          className={`segmented-btn flex-1 px-2 py-1.5 text-sm ${
+                            newLayerType === type.value ? 'segmented-btn-active' : ''
+                          }`}
+                        >
+                          {type.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
 
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="checkbox-label">
+                <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-x-4 sm:gap-y-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm font-medium text-app-text shrink-0">Color</span>
                     <input
-                      type="checkbox"
-                      checked={useBufferZone}
-                      onChange={(e) => setUseBufferZone(e.target.checked)}
-                      className="checkbox"
+                      type="color"
+                      value={newColor}
+                      onChange={(e) => {
+                        setColorTouched(true)
+                        setNewColor(e.target.value)
+                      }}
+                      className="h-8 w-8 cursor-pointer rounded-md border border-app-border bg-transparent p-0.5 shrink-0"
+                      aria-label="Map color"
                     />
-                    <span>Insight buffer</span>
+                    <button
+                      type="button"
+                      onClick={() => setColorPickerOpen(true)}
+                      className="text-xs text-terra-600 dark:text-terra-400 hover:underline"
+                    >
+                      Palette
+                    </button>
+                    {colorTouched && (
+                      <button
+                        type="button"
+                        onClick={() => setColorTouched(false)}
+                        className="text-xs text-app-text-muted hover:underline"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+
+                  {newLayerType === 'line' && (
+                    <label className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium text-app-text shrink-0">Line</span>
+                      <select
+                        value={newStructureRank}
+                        onChange={(e) => {
+                          setStructureRankTouched(true)
+                          setNewStructureRank(Number(e.target.value) as StructureLineRank)
+                        }}
+                        className="input input-compact min-w-0 flex-1 sm:w-32 sm:flex-none"
+                      >
+                        {STRUCTURE_RANK_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  <label className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-app-text shrink-0">Heatmap</span>
+                    <input
+                      type="number"
+                      min={LAYER_HEATMAP_WEIGHT_MIN}
+                      max={LAYER_HEATMAP_WEIGHT_MAX}
+                      step={1}
+                      value={newHeatmapWeight}
+                      onChange={(e) => {
+                        const n = Number(e.target.value)
+                        if (Number.isFinite(n)) setNewHeatmapWeight(n)
+                      }}
+                      onBlur={(e) => {
+                        const n = Number(e.target.value)
+                        if (Number.isFinite(n)) setNewHeatmapWeight(clampHeatmapWeight(n))
+                      }}
+                      className="input input-compact w-14 tabular-nums"
+                      aria-label="Heatmap weight"
+                      title={`0–${LAYER_HEATMAP_WEIGHT_MAX}`}
+                    />
                   </label>
-                  {useBufferZone && (
-                    <>
-                      <div className="relative w-[4.5rem]">
+
+                  <div className="inline-flex items-center gap-2 flex-wrap">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={useBufferZone}
+                        onChange={(e) => setUseBufferZone(e.target.checked)}
+                        className="checkbox"
+                      />
+                      <span>Buffer</span>
+                    </label>
+                    {useBufferZone && (
+                      <>
                         <input
                           type="number"
                           min={LAYER_BUFFER_KM_MIN}
@@ -456,58 +520,29 @@ export default function LayersPage() {
                             const n = Number(e.target.value)
                             if (Number.isFinite(n)) setNewBufferKm(clampBufferKm(n))
                           }}
-                          className="input input-compact w-full pr-7 tabular-nums"
+                          className="input input-compact w-14 tabular-nums"
                           aria-label="Buffer radius in kilometers"
+                          title={formatBufferKmRange()}
                         />
-                        <span
-                          className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-xs text-app-text-muted"
-                          aria-hidden
-                        >
-                          km
-                        </span>
-                      </div>
-                      <span className="text-xs text-app-text-muted">({formatBufferKmRange()})</span>
-                    </>
-                  )}
-                </div>
+                        <span className="text-xs text-app-text-muted">km</span>
+                      </>
+                    )}
+                  </div>
 
-                <div className="space-y-3 border-t app-divider pt-4">
-                  {!showSwahili ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowSwahili(true)}
-                      className="text-xs text-terra-600 dark:text-terra-400 hover:underline"
-                    >
-                      + Add Swahili name (optional)
-                    </button>
-                  ) : (
-                    <label className="block">
-                      <span className="text-sm font-medium text-app-text-secondary">Name (Swahili)</span>
-                      <input
-                        type="text"
-                        value={newNameSw}
-                        onChange={(e) => setNewNameSw(e.target.value)}
-                        className="input mt-1.5 w-full"
-                      />
-                    </label>
-                  )}
-                  <label className="checkbox-label checkbox-label--muted">
+                  <label className="checkbox-label">
                     <input
                       type="checkbox"
                       checked={newPreview}
                       onChange={(e) => setNewPreview(e.target.checked)}
                       className="checkbox"
                     />
-                    <span>Free-tier preview layer</span>
+                    <span>Free map</span>
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className="px-5 py-4 border-t app-divider flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p className="text-xs text-app-text-muted">
-                Next: switch to Import data and upload your file.
-              </p>
+            <div className="px-4 py-3 border-t app-divider flex justify-end">
               <button
                 type="button"
                 onClick={() => createLayer.mutate()}
@@ -520,182 +555,156 @@ export default function LayersPage() {
           </>
         ) : (
           <>
-            <div className="px-5 py-5 space-y-5">
+            <div className="px-4 py-4 space-y-3">
               {importableLayers.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-app-border px-6 py-10 text-center">
-                  <p className="text-sm text-app-text-secondary">No layers to import into yet.</p>
+                <div className="rounded-xl border border-dashed border-app-border px-4 py-8 text-center">
+                  <p className="text-sm text-app-text-secondary">No layers yet.</p>
                   <button
                     type="button"
                     onClick={() => setLayerMode('create')}
-                    className="mt-3 text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                    className="mt-2 text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline"
                   >
-                    Create a layer first
+                    Create one
                   </button>
                 </div>
               ) : (
                 <>
-                  <label className="block">
-                    <span className="text-sm font-medium text-app-text">Target layer</span>
-                    <select
-                      value={selectedLayerId}
-                      onChange={(e) => {
-                        setSelectedLayerId(e.target.value)
-                        setImportOutcome(null)
-                      }}
-                      className="input mt-1.5 w-full"
-                    >
-                      <option value="">Choose a layer…</option>
-                      {importableLayers.map((layer) => (
-                        <option key={layer.id} value={String(layer.id)}>
-                          {displayName(layer)} · {layer.layer_type} · {layer.feature_count} features
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  {selectedImportLayer && (
-                    <div className="flex items-center gap-3 rounded-xl border border-app-border bg-app-subtle/40 px-4 py-3">
-                      <span
-                        className="h-9 w-9 rounded-lg border border-app-border shrink-0"
-                        style={{ backgroundColor: layerDisplayColor(selectedImportLayer) }}
-                      />
-                      <div className="min-w-0">
-                        <p className="font-medium text-app-text">{displayName(selectedImportLayer)}</p>
-                        <p className="text-xs text-app-text-muted capitalize">
-                          {selectedImportLayer.layer_type}
-                          {' · '}
-                          {selectedImportLayer.feature_count} existing features
-                          {importMode === 'replace' ? ' will be replaced' : ' will be kept'}
-                        </p>
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <label className="block min-w-0">
+                      <span className="text-sm font-medium text-app-text">Layer</span>
+                      <select
+                        value={selectedLayerId}
+                        onChange={(e) => {
+                          setSelectedLayerId(e.target.value)
+                          setImportOutcome(null)
+                        }}
+                        className="input mt-1 w-full"
+                      >
+                        <option value="">Select…</option>
+                        {importableLayers.map((layer) => (
+                          <option key={layer.id} value={String(layer.id)}>
+                            {displayName(layer)} · {layer.layer_type} · {layer.feature_count}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div>
+                      <span className="text-sm font-medium text-app-text">Mode</span>
+                      <div className="segmented mt-1" role="group" aria-label="Import mode">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImportMode('replace')
+                            setImportOutcome(null)
+                          }}
+                          className={`segmented-btn px-3 py-1.5 text-sm ${
+                            importMode === 'replace' ? 'segmented-btn-active' : ''
+                          }`}
+                        >
+                          Replace
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImportMode('append')
+                            setImportOutcome(null)
+                          }}
+                          className={`segmented-btn px-3 py-1.5 text-sm ${
+                            importMode === 'append' ? 'segmented-btn-active' : ''
+                          }`}
+                        >
+                          Append
+                        </button>
                       </div>
                     </div>
-                  )}
-
-                  <div>
-                    <span className="text-sm font-medium text-app-text">Import mode</span>
-                    <div className="mt-1.5 inline-flex rounded-lg border border-app-border p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImportMode('replace')
-                          setImportOutcome(null)
-                        }}
-                        className={`segmented-btn px-3 py-1.5 text-sm ${
-                          importMode === 'replace' ? 'segmented-btn-active' : ''
-                        }`}
-                      >
-                        Replace existing
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImportMode('append')
-                          setImportOutcome(null)
-                        }}
-                        className={`segmented-btn px-3 py-1.5 text-sm ${
-                          importMode === 'append' ? 'segmented-btn-active' : ''
-                        }`}
-                      >
-                        Add to existing
-                      </button>
-                    </div>
-                    <p className="mt-1.5 text-xs text-app-text-muted">
-                      {importMode === 'replace'
-                        ? 'All current features in this layer are removed before the upload is applied.'
-                        : 'New features from the file are added alongside the current features.'}
-                    </p>
                   </div>
 
                   <FileUploadField
-                    label="Data file"
+                    label="File"
                     accept={LAYER_IMPORT_ACCEPT}
                     value={uploadFile}
                     onChange={(file) => {
                       setUploadFile(file)
                       setImportOutcome(null)
+                      setUploadProgress(null)
                     }}
-                    placeholder="ZIP, GeoJSON, JSON, or CSV"
-                    hint={`${LAYER_IMPORT_HINT} ${LAYER_IMPORT_CSV_HINT}`}
+                    placeholder="ZIP, GeoJSON, or CSV"
+                    hint={`${LAYER_IMPORT_HINT} · ${LAYER_IMPORT_CSV_HINT}`}
                   />
 
+                  {importLayer.isPending && uploadProgress != null && (
+                    <UploadProgressBar
+                      progress={uploadProgress}
+                      label={
+                        uploadProgress >= 100
+                          ? 'Processing…'
+                          : 'Uploading…'
+                      }
+                    />
+                  )}
+
                   {importOutcome && (
-                    <section className="rounded-xl border border-terra-500/30 bg-terra-500/8 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-terra-500/20">
-                        <p className="text-sm font-semibold text-app-text">Import complete</p>
-                        <p className="text-xs text-app-text-muted mt-1">
-                          {importOutcome.featureCount.toLocaleString()} features in{' '}
-                          <span className="font-medium text-app-text">{importOutcome.layerName}</span>
-                          . What would you like to do next?
-                        </p>
-                      </div>
-                      <div className="p-4 space-y-3">
-                        <div className="rounded-lg border border-app-border bg-app-surface px-3 py-3">
-                          <p className="text-sm font-medium text-app-text">
-                            1. Configure in Commodities
-                          </p>
-                          <p className="text-xs text-app-text-muted mt-1 leading-relaxed">
-                            Set draw order, map color, line weight, and insight buffer before the
-                            layer goes live for users.
-                          </p>
-                          <Link to={commoditiesPath} className="btn-primary text-sm mt-3 inline-flex">
-                            Open Commodities
-                          </Link>
-                        </div>
-                        <div className="rounded-lg border border-app-border bg-app-surface px-3 py-3">
-                          <p className="text-sm font-medium text-app-text">2. Preview on map</p>
-                          <p className="text-xs text-app-text-muted mt-1 leading-relaxed">
-                            Turn on the layer from the map sidebar to verify geometry and coverage.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => navigate('/')}
-                            className="btn-secondary text-sm mt-3"
-                          >
-                            View on map
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setImportOutcome(null)}
-                          className="text-xs text-terra-600 dark:text-terra-400 hover:underline"
-                        >
-                          Import another file to this layer
-                        </button>
-                      </div>
-                    </section>
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-terra-500/30 bg-terra-500/8 px-3 py-2.5">
+                      <p className="text-sm text-app-text min-w-0 flex-1">
+                        <span className="font-medium">{importOutcome.featureCount.toLocaleString()}</span>
+                        {' '}features in {importOutcome.layerName}
+                      </p>
+                      <Link to={commoditiesPath} className="btn-primary text-sm py-1.5">
+                        Commodities
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/')}
+                        className="btn-secondary text-sm py-1.5"
+                      >
+                        Map
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setImportOutcome(null)}
+                        className="text-xs text-terra-600 dark:text-terra-400 hover:underline px-1"
+                      >
+                        Import more
+                      </button>
+                    </div>
                   )}
                 </>
               )}
             </div>
 
-            {importableLayers.length > 0 && (
-              <div className="px-5 py-4 border-t app-divider flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-xs text-app-text-muted">
-                  {importOutcome
-                    ? 'Step 3: arrange and style this layer in Commodities.'
+            {importableLayers.length > 0 && !importOutcome && (
+              <div className="px-4 py-3 border-t app-divider flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => importLayer.mutate()}
+                  disabled={!canImport || importLayer.isPending}
+                  className="btn-primary shrink-0"
+                >
+                  {importLayer.isPending
+                    ? uploadProgress != null && uploadProgress < 100
+                      ? `Uploading ${uploadProgress}%…`
+                      : 'Processing…'
                     : importMode === 'replace'
-                      ? 'Upload replaces all features in the selected layer.'
-                      : 'Upload adds features to the selected layer.'}
-                </p>
-                {!importOutcome && (
-                  <button
-                    type="button"
-                    onClick={() => importLayer.mutate()}
-                    disabled={!canImport || importLayer.isPending}
-                    className="btn-primary shrink-0"
-                  >
-                    {importLayer.isPending
-                      ? 'Importing…'
-                      : importMode === 'replace'
-                        ? 'Upload & replace'
-                        : 'Upload & add'}
-                  </button>
-                )}
+                      ? 'Upload & replace'
+                      : 'Upload & add'}
+                </button>
               </div>
             )}
           </>
         )}
       </div>
+
+      <MineralColorPickerModal
+        open={colorPickerOpen}
+        onClose={() => setColorPickerOpen(false)}
+        layerName={newName}
+        usedColors={usedLayerColors}
+        selectedColor={newColor}
+        onSelect={(hex) => {
+          setColorTouched(true)
+          setNewColor(hex)
+        }}
+      />
     </div>
   )
 }

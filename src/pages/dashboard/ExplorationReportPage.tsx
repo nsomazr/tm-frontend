@@ -85,7 +85,7 @@ export default function ExplorationReportPage() {
 
   if (!hasFullMapAccess) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-10">
+      <div>
         <PageHeader
           title="Exploration reports"
           description="Generate professional geological reports from your map explorations."
@@ -103,7 +103,7 @@ export default function ExplorationReportPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div>
       <PageHeader
         title="Exploration reports"
         description="Describe what you explored, preview the narrative, refine with instructions, then export a professional PDF."

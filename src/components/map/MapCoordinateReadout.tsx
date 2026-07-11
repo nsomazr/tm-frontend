@@ -1,6 +1,7 @@
 import {
   coordinateSystemById,
   formatCoordinate,
+  formatCoordinateParts,
   type CoordinateSystemId,
   transformMapCoordinate,
 } from './coordinateSystems'
@@ -26,7 +27,11 @@ export default function MapCoordinateReadout({
 
   const system = coordinateSystemById(coordinateSystem)
   const transformed = transformMapCoordinate(mapCoordinate, coordinateSystem)
+  const useStackedDms = system.kind === 'geographic' && coordinateFormat === 'dms'
   const text = formatCoordinate(transformed, system.kind, coordinateFormat)
+  const parts = useStackedDms
+    ? formatCoordinateParts(transformed, system.kind, coordinateFormat)
+    : null
 
   return (
     <div
@@ -35,16 +40,21 @@ export default function MapCoordinateReadout({
       <p className="mb-1.5 truncate text-[10px] font-sans font-semibold uppercase leading-none tracking-wide map-text-muted">
         {system.label}
       </p>
-      <div className="flex min-h-[1.25rem] items-center gap-2">
-        <span className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-[11px] leading-tight [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {text}
-        </span>
+      <div className="flex min-h-[1.25rem] items-start gap-2">
+        {parts ? (
+          <div className="min-w-0 flex-1 space-y-0.5 text-[11px] leading-snug">
+            <div className="whitespace-nowrap">{parts.primary}</div>
+            <div className="whitespace-nowrap">{parts.secondary}</div>
+          </div>
+        ) : (
+          <span className="min-w-0 flex-1 break-all text-[11px] leading-tight">{text}</span>
+        )}
         {system.kind === 'geographic' && (
           <CoordinateFormatToggle
             value={coordinateFormat}
             onChange={onCoordinateFormatChange}
             compact
-            className="shrink-0"
+            className="shrink-0 mt-0.5"
           />
         )}
       </div>

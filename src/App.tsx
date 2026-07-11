@@ -25,6 +25,7 @@ import AdminDashboard from './pages/admin/AdminDashboard'
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 import AdminCoveragePage from './pages/admin/AdminCoveragePage'
 import AdminBoundariesPage from './pages/admin/AdminBoundariesPage'
+import AdminGeologicalReferencePage from './pages/admin/AdminGeologicalReferencePage'
 import { AdminOnly } from './pages/admin/AdminGuard'
 import UsersPage from './pages/admin/UsersPage'
 import MineralsPage from './pages/admin/MineralsPage'
@@ -98,6 +99,14 @@ export default function App() {
             element={
               <AdminOnly>
                 <AdminBoundariesPage />
+              </AdminOnly>
+            }
+          />
+          <Route
+            path="geological-reference"
+            element={
+              <AdminOnly>
+                <AdminGeologicalReferencePage />
               </AdminOnly>
             }
           />

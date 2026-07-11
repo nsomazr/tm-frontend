@@ -19,7 +19,7 @@ export default function AdsPerformancePage() {
   )
 
   return (
-    <div className="max-w-5xl">
+    <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-app-text">Ad performance</h1>
         <p className="text-sm text-app-text-muted mt-1">
@@ -87,18 +87,19 @@ export default function AdsPerformancePage() {
                 <th className="px-4 py-3 font-medium">Impressions</th>
                 <th className="px-4 py-3 font-medium">Clicks</th>
                 <th className="px-4 py-3 font-medium">CTR</th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {campaignsLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-app-text-muted">
+                  <td colSpan={6} className="px-4 py-8 text-center text-app-text-muted">
                     Loading…
                   </td>
                 </tr>
               ) : sortedCampaigns.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-app-text-muted">
+                  <td colSpan={6} className="px-4 py-8 text-center text-app-text-muted">
                     No campaigns yet.{' '}
                     <Link to="/admin/ads/campaigns" className="text-terra-600 hover:underline">
                       Create one
@@ -124,6 +125,14 @@ export default function AdsPerformancePage() {
                     </td>
                     <td className="px-4 py-3 tabular-nums">{campaign.click_count.toLocaleString()}</td>
                     <td className="px-4 py-3 tabular-nums">{campaign.click_through_rate}%</td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        to="/admin/ads/campaigns"
+                        className="text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline"
+                      >
+                        Manage
+                      </Link>
+                    </td>
                   </tr>
                 ))
               )}

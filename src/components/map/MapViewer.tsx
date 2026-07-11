@@ -85,6 +85,10 @@ export interface MapControls {
   zoomIn: () => void
   zoomOut: () => void
   resetView: () => void
+  /** Zoom to country overview without clearing the analysis-zone circle. */
+  zoomToCountry: () => void
+  /** Recalculate map size after chrome (assistant sheet, docks) opens/closes. */
+  refreshLayout: () => void
   captureSnapshot: () => Promise<string | null>
   captureMapFrame: () => Promise<string | null>
   captureInsightSnapshot: (ctx: InsightSnapshotContext) => Promise<string | null>
@@ -263,19 +267,18 @@ function countryFitPadding(mobile: boolean, chrome: CountryFitChrome = {}): [num
   return [top, right, bottom, left]
 }
 
-function lockMinZoomToCurrentView(map: OlMap, duration: number) {
+const BASE_MIN_ZOOM_MOBILE = 4
+const BASE_MIN_ZOOM_DESKTOP = 5
+
+function lockMinZoomToCurrentView(map: OlMap) {
   const view = map.getView()
-  const apply = () => {
-    const zoom = view.getZoom()
-    if (zoom != null && Number.isFinite(zoom)) {
-      view.setMinZoom(zoom)
-    }
+  const zoom = view.getZoom()
+  if (zoom != null && Number.isFinite(zoom)) {
+    // Never lock above a country overview — protects against premature moveend
+    // while still zoomed into an inspection (would trap the camera on a polygon fill).
+    const ceiling = map.getSize()?.[0] && map.getSize()![0] < 768 ? 6.5 : 7.5
+    view.setMinZoom(Math.min(zoom, ceiling))
   }
-  if (duration <= 0) {
-    apply()
-    return
-  }
-  map.once('moveend', apply)
 }
 
 function fitCountryView(
@@ -296,13 +299,22 @@ function fitCountryView(
   const extent = boundsToExtent(focus.bounds)
   const duration = animated ? (mobile ? 500 : 800) : 0
   const padding = countryFitPadding(mobile, chrome)
+  // Allow zoom-out before fitting — a prior inspection can leave minZoom stuck high.
+  view.setMinZoom(mobile ? BASE_MIN_ZOOM_MOBILE : BASE_MIN_ZOOM_DESKTOP)
   view.set('extent', extent)
+  view.setRotation(0)
+  view.cancelAnimations()
   view.fit(extent, {
     padding,
     maxZoom: mobile ? 6 : Math.min(focus.default_zoom + 1.5, 7),
     duration,
+    callback: () => {
+      lockMinZoomToCurrentView(map)
+    },
   })
-  lockMinZoomToCurrentView(map, duration)
+  if (duration <= 0) {
+    lockMinZoomToCurrentView(map)
+  }
 }
 
 function layerOlZIndex(layer: MapLayer) {
@@ -520,6 +532,7 @@ export default function MapViewer({
   onMapControlsReadyRef.current = onMapControlsReady
   const assistantOpenRef = useRef(assistantOpen)
   assistantOpenRef.current = assistantOpen
+  const prevAssistantOpenRef = useRef(assistantOpen)
   const countryLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const regionLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
   const districtLayerRef = useRef<VectorLayer<VectorSource> | null>(null)
@@ -866,7 +879,7 @@ export default function MapViewer({
       view: new View({
         center: TANZANIA_CENTER,
         zoom: mobile ? 5 : 6.5,
-        minZoom: mobile ? 4 : 5,
+        minZoom: mobile ? BASE_MIN_ZOOM_MOBILE : BASE_MIN_ZOOM_DESKTOP,
         maxZoom: 18,
         extent: TANZANIA_EXTENT,
         constrainOnlyCenter: true,
@@ -874,7 +887,11 @@ export default function MapViewer({
       controls: defaultControls({ zoom: false, attribution: false }).extend([
         new ScaleLine({ units: 'metric', bar: true, text: true, minWidth: 120 }),
       ]),
-      interactions: defaultInteractions({ doubleClickZoom: !mobile }),
+      interactions: defaultInteractions({
+        doubleClickZoom: !mobile,
+        pinchRotate: false,
+        altShiftDragRotate: false,
+      }),
     })
 
     fitCountryView(map, countryFocusRef.current, mobile, false, countryFitChromeRef.current)
@@ -1268,8 +1285,20 @@ export default function MapViewer({
       analysisZone.lng,
       analysisZone.areaKm2,
       analysisZone.extended === true,
+      analysisZone.focusMode ?? 'zone',
     ].join('|')
-    if (analysisFitKeyRef.current === fitKey) return
+
+    const assistantJustOpened = assistantOpen && !prevAssistantOpenRef.current
+    prevAssistantOpenRef.current = assistantOpen
+
+    // Closing Ask Terra: keep the circle drawn, but do not pull the camera back in —
+    // the page zooms out to country while the zone stays visible.
+    if (!assistantOpen) {
+      analysisFitKeyRef.current = fitKey
+      return
+    }
+
+    if (analysisFitKeyRef.current === fitKey && !assistantJustOpened) return
     analysisFitKeyRef.current = fitKey
 
     const geometry = feature.getGeometry()
@@ -1277,7 +1306,7 @@ export default function MapViewer({
     if (!extent || !extent.every((value) => Number.isFinite(value))) return
 
     const size = map.getSize()
-    const targetZoom = size
+    const zoneZoom = size
       ? recommendedZoomForAnalysisZone(
           analysisZone.lat,
           analysisZone.areaKm2,
@@ -1285,6 +1314,9 @@ export default function MapViewer({
           size[1]
         )
       : 12
+    // Point/feature hits: stay tight on the click instead of framing the whole circle.
+    const targetZoom =
+      analysisZone.focusMode === 'point' ? Math.max(zoneZoom, 13.5) : zoneZoom
     const center = fromLonLat([analysisZone.lng, analysisZone.lat])
 
     programmaticMoveRef.current = true
@@ -1301,6 +1333,20 @@ export default function MapViewer({
       : assistantOpenRef.current
         ? [48, 56, 152, 392]
         : [48, 56, 152, 56]
+
+    if (analysisZone.focusMode === 'point') {
+      view.animate(
+        {
+          center,
+          zoom: Math.min(targetZoom, 15.5),
+          duration: mobile ? 400 : 500,
+        },
+        () => {
+          programmaticMoveRef.current = false
+        },
+      )
+      return
+    }
 
     // Already close enough: pan only (no second zoom pass).
     if (currentZoom >= targetZoom - 0.15) {
@@ -1502,11 +1548,41 @@ export default function MapViewer({
     const map = mapInstance.current
     if (!map) return
     programmaticMoveRef.current = true
+    map.updateSize()
+    map.getView().setRotation(0)
+    analysisFitKeyRef.current = ''
     fitCountryView(map, countryFocusRef.current, isMobileRef.current, true, countryFitChromeRef.current)
     window.setTimeout(() => {
       programmaticMoveRef.current = false
     }, isMobileRef.current ? 650 : 900)
   }, [onViewReset])
+
+  const zoomToCountryView = useCallback(() => {
+    const map = mapInstance.current
+    if (!map) return
+    programmaticMoveRef.current = true
+    map.updateSize()
+    map.getView().setRotation(0)
+    // Keep analysisFitKey so the zone circle is not re-framed after zoom-out.
+    fitCountryView(map, countryFocusRef.current, isMobileRef.current, true, countryFitChromeRef.current)
+    window.setTimeout(() => {
+      programmaticMoveRef.current = false
+    }, isMobileRef.current ? 650 : 900)
+  }, [])
+
+  const refreshMapLayout = useCallback(() => {
+    const map = mapInstance.current
+    if (!map) return
+    map.updateSize()
+    // Only nudge tile/image sources — VectorSource.refresh() clears loaded features
+    // (minerals + analysis circle) and they will not reload until deps change again.
+    map.getLayers().forEach((layer) => {
+      const source = typeof layer.getSource === 'function' ? layer.getSource() : null
+      if (!source || typeof (source as { refresh?: () => void }).refresh !== 'function') return
+      if (source instanceof VectorSource) return
+      ;(source as { refresh: () => void }).refresh()
+    })
+  }, [])
 
   const compositeMapCanvases = useCallback((map: OlMap): string | null => {
     try {
@@ -1736,11 +1812,32 @@ export default function MapViewer({
       zoomIn: () => zoomMap(1),
       zoomOut: () => zoomMap(-1),
       resetView: resetMapView,
+      zoomToCountry: zoomToCountryView,
+      refreshLayout: refreshMapLayout,
       captureSnapshot,
       captureMapFrame,
       captureInsightSnapshot,
     })
-  }, [mapEpoch, zoomMap, resetMapView, captureSnapshot, captureMapFrame, captureInsightSnapshot])
+  }, [
+    mapEpoch,
+    zoomMap,
+    resetMapView,
+    zoomToCountryView,
+    refreshMapLayout,
+    captureSnapshot,
+    captureMapFrame,
+    captureInsightSnapshot,
+  ])
+
+  // When Ask Terra opens/closes, mobile sheet chrome changes the map viewport — refresh size.
+  useEffect(() => {
+    const map = mapInstance.current
+    if (!map) return
+    const id = window.requestAnimationFrame(() => {
+      map.updateSize()
+    })
+    return () => window.cancelAnimationFrame(id)
+  }, [assistantOpen])
 
   const legendLayers = [...layers]
     .sort((a, b) => a.z_index - b.z_index)
@@ -1752,7 +1849,11 @@ export default function MapViewer({
       {showWatermark && <WatermarkOverlay />}
       {!minimalChrome && !isMobile && (
         <div className="map-scale-stack-tools pointer-events-none">
-          <MapCompass rotationRad={mapRotation} className="map-scale-stack-tools__compass shrink-0" />
+          <MapCompass
+            rotationRad={mapRotation}
+            className="map-scale-stack-tools__compass shrink-0"
+            onResetNorth={() => mapInstance.current?.getView().setRotation(0)}
+          />
           {showCoordinateReadout && hasPaidAccess && (
             <MapCoordinateReadout
               mapCoordinate={pointerCoordinate}
@@ -1765,7 +1866,7 @@ export default function MapViewer({
         </div>
       )}
       {isMobile && !minimalChrome && showCoordinateReadout && hasPaidAccess && (
-        <div className="map-mobile-left-stack pointer-events-none absolute z-20 left-3 flex max-w-[min(18rem,calc(100vw-1.5rem))]">
+        <div className="map-mobile-left-stack pointer-events-none absolute z-20 left-3 flex max-w-[min(22rem,calc(100vw-1.25rem))]">
           <MapCoordinateReadout
             mapCoordinate={pointerCoordinate}
             coordinateSystem={coordinateSystem}
@@ -1794,7 +1895,12 @@ export default function MapViewer({
               />
             </div>
           )}
-          <MapCompass rotationRad={mapRotation} compact className="map-minimal-dock__compass shrink-0 self-end" />
+          <MapCompass
+            rotationRad={mapRotation}
+            compact
+            className="map-minimal-dock__compass shrink-0 self-end"
+            onResetNorth={() => mapInstance.current?.getView().setRotation(0)}
+          />
           <MapZoomControls
             className="map-minimal-dock__zoom shrink-0"
             onZoomIn={() => zoomMap(1)}

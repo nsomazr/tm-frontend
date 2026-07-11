@@ -1714,7 +1714,7 @@
   }
 
   .map-mobile-bottom-dock--with-ad {
-    --map-mobile-dock-reserve: 12.5rem;
+    --map-mobile-dock-reserve: 15.5rem;
   }
 
   .map-mobile-bottom-dock--expanded {
@@ -1722,7 +1722,7 @@
   }
 
   .map-mobile-bottom-dock--with-ad.map-mobile-bottom-dock--expanded {
-    --map-mobile-dock-reserve: 22rem;
+    --map-mobile-dock-reserve: 25rem;
   }
 
   .map-viewer:not(.map-viewer--mobile) .ol-scale-line {

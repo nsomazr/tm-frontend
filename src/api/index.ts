@@ -54,7 +54,8 @@ export const authApi = {
 }
 
 export const mineralsApi = {
-  list: () => api.get<PaginatedResponse<Mineral>>('/minerals/'),
+  list: (params?: Record<string, string>) =>
+    api.get<PaginatedResponse<Mineral>>('/minerals/', { params }),
   get: (slug: string) => api.get<Mineral>(`/minerals/${slug}/`),
   layers: (slug: string) => api.get<MapLayer[]>(`/minerals/${slug}/layers/`),
   create: (data: Partial<Mineral>) => api.post('/minerals/', data),
@@ -84,6 +85,7 @@ export const mapsApi = {
     fileType?: string,
     mineralSlug?: string,
     importMode?: 'replace' | 'append',
+    onUploadProgress?: (percent: number) => void,
   ) => {
     const form = new FormData()
     form.append('file', file)
@@ -92,6 +94,14 @@ export const mapsApi = {
     return api.post(`/maps/layers/${slug}/bulk_import/`, form, {
       params: layerLookupParams(mineralSlug),
       headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!onUploadProgress) return
+        if (event.total && event.total > 0) {
+          onUploadProgress(Math.min(100, Math.round((event.loaded * 100) / event.total)))
+        } else if (event.loaded > 0) {
+          onUploadProgress(1)
+        }
+      },
     })
   },
   sampleShapefile: (slug: string, mineralSlug?: string) =>
@@ -132,6 +142,19 @@ export async function fetchAllMapLayers(params: Record<string, string> = {}): Pr
   let page = 1
   for (;;) {
     const { data } = await mapsApi.layers({ ...params, page: String(page) })
+    items.push(...data.results)
+    if (!data.next) break
+    page += 1
+  }
+  return items
+}
+
+/** Load every page of minerals for admin commodity pickers. */
+export async function fetchAllMinerals(): Promise<import('../types').Mineral[]> {
+  const items: import('../types').Mineral[] = []
+  let page = 1
+  for (;;) {
+    const { data } = await mineralsApi.list({ page: String(page) })
     items.push(...data.results)
     if (!data.next) break
     page += 1
@@ -353,7 +376,8 @@ export const adminApi = {
     role: 'admin' | 'super_admin'
     phone?: string
   }) => api.post<User>('/admin/users/', data),
-  updateUser: (id: number, data: Partial<User>) => api.patch(`/admin/users/${id}/`, data),
+  updateUser: (id: number, data: Partial<User>) => api.patch<User>(`/admin/users/${id}/`, data),
+  deleteUser: (id: number) => api.delete(`/admin/users/${id}/`),
   mineralManagers: () => api.get<PaginatedResponse<MineralManagerAssignment>>('/minerals/managers/'),
   assignManager: (data: { user: number; mineral: number; can_publish?: boolean }) =>
     api.post('/minerals/managers/', data),
@@ -428,6 +452,7 @@ export const analyticsApi = {
     zoom: number,
     options?: {
       featureIds?: number[]
+      visibleLayerIds?: number[]
       country?: string
       boundaryId?: number
       explorationGeometry?: import('../components/map/explorationGeometry').DrawGeometry
@@ -440,6 +465,9 @@ export const analyticsApi = {
       lng,
       zoom,
       ...(options?.featureIds?.length ? { feature_ids: options.featureIds } : {}),
+      ...(options?.visibleLayerIds?.length
+        ? { visible_layer_ids: options.visibleLayerIds }
+        : {}),
       ...(options?.country ? { country: options.country } : {}),
       ...(options?.boundaryId != null ? { boundary_id: options.boundaryId } : {}),
       ...(options?.basemap ? { basemap: options.basemap } : {}),
@@ -457,6 +485,9 @@ export const analyticsApi = {
         lng,
         zoom,
         ...(options?.featureIds?.length ? { feature_ids: options.featureIds.join(',') } : {}),
+        ...(options?.visibleLayerIds?.length
+          ? { visible_layer_ids: options.visibleLayerIds.join(',') }
+          : {}),
         ...(options?.country ? { country: options.country } : {}),
         ...(options?.boundaryId != null ? { boundary_id: options.boundaryId } : {}),
         ...(options?.basemap ? { basemap: options.basemap } : {}),
@@ -506,6 +537,7 @@ export const analyticsApi = {
     lng?: number
     zoom?: number
     featureIds?: number[]
+    visibleLayerIds?: number[]
     mineralSlug?: string
     layerId?: number
     regionId?: number
@@ -521,6 +553,9 @@ export const analyticsApi = {
       mode: payload.mode || 'map',
       ...(payload.lat != null ? { lat: payload.lat, lng: payload.lng, zoom: payload.zoom ?? 8 } : {}),
       ...(payload.featureIds?.length ? { feature_ids: payload.featureIds } : {}),
+      ...(payload.visibleLayerIds?.length
+        ? { visible_layer_ids: payload.visibleLayerIds }
+        : {}),
       ...(payload.mineralSlug ? { mineral_slug: payload.mineralSlug } : {}),
       ...(payload.layerId != null ? { layer_id: payload.layerId } : {}),
       ...(payload.regionId != null ? { region_id: payload.regionId } : {}),

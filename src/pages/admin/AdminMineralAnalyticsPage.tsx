@@ -4,6 +4,7 @@ import { DonutChart, VerticalBarChart } from '../../components/analytics/Charts'
 import { LayerTypeGrid } from '../../components/analytics/AnalyticsViz'
 import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
+import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 import type { AdminMineralAnalytics } from '../../types'
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -113,6 +114,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
                   <th className="text-right">Areas</th>
                   <th className="text-right">Reports</th>
                   <th className="text-right">Explorations</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,6 +139,18 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
                       <td className="text-right tabular-nums text-app-text-muted">
                         {interest ? fmt(interest.explorations) : '-'}
                       </td>
+                      <td className="text-right">
+                        <div className="inline-flex justify-end">
+                          <ActionMenu label={`Actions for ${mineral.name}`} minWidth="11rem">
+                            <ActionMenuItem to={`/?mineral=${encodeURIComponent(mineral.slug)}`}>
+                              View on map
+                            </ActionMenuItem>
+                            <ActionMenuItem to="/admin/minerals">Open commodities</ActionMenuItem>
+                            <ActionMenuItem to="/admin/coverage">Coverage</ActionMenuItem>
+                            <ActionMenuItem to="/admin/reports">Reports</ActionMenuItem>
+                          </ActionMenu>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
@@ -159,8 +173,8 @@ export default function AdminMineralAnalyticsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-app-text">Mineral analytics</h1>
-        <p className="text-sm text-app-muted mt-1 max-w-2xl">
-          Commodity coverage on the map, catalog depth, and which minerals users explore most.
+        <p className="text-sm text-app-muted mt-0.5">
+          Coverage, catalog depth, and explore trends.
         </p>
       </div>
 

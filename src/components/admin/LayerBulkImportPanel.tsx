@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { mapsApi } from '../../api'
 import FileUploadField from '../ui/FileUploadField'
+import UploadProgressBar from '../ui/UploadProgressBar'
 import { toast } from '../ui/toast'
 import {
   detectLayerImportFileType,
@@ -24,19 +25,23 @@ export default function LayerBulkImportPanel({
 }: LayerBulkImportPanelProps) {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [importMode, setImportMode] = useState<'replace' | 'append'>('append')
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const importMutation = useMutation({
     mutationFn: () => {
       if (!uploadFile) throw new Error('Choose a file first.')
+      setUploadProgress(0)
       return mapsApi.bulkImport(
         layer.slug,
         uploadFile,
         detectLayerImportFileType(uploadFile.name),
         layer.mineral_slug,
         importMode,
+        (percent) => setUploadProgress(percent),
       )
     },
     onSuccess: (res) => {
+      setUploadProgress(null)
       setUploadFile(null)
       if (res.data?.status === 'failed') {
         toast.error('Import failed', {
@@ -63,6 +68,7 @@ export default function LayerBulkImportPanel({
       onSuccess?.()
     },
     onError: (err: Error) => {
+      setUploadProgress(null)
       toast.error('Import failed', { description: err.message })
     },
   })
@@ -100,10 +106,24 @@ export default function LayerBulkImportPanel({
         label="Data file"
         accept={LAYER_IMPORT_ACCEPT}
         value={uploadFile}
-        onChange={setUploadFile}
+        onChange={(file) => {
+          setUploadFile(file)
+          setUploadProgress(null)
+        }}
         placeholder="ZIP, GeoJSON, JSON, or CSV"
-        hint={`${LAYER_IMPORT_HINT} ${LAYER_IMPORT_CSV_HINT}`}
+        hint={`${LAYER_IMPORT_HINT} · ${LAYER_IMPORT_CSV_HINT}`}
       />
+
+      {importMutation.isPending && uploadProgress != null && (
+        <UploadProgressBar
+          progress={uploadProgress}
+          label={
+            uploadProgress >= 100
+              ? 'Upload complete — processing on server…'
+              : 'Uploading file…'
+          }
+        />
+      )}
 
       <button
         type="button"
@@ -112,7 +132,9 @@ export default function LayerBulkImportPanel({
         className="btn-primary text-sm"
       >
         {importMutation.isPending
-          ? 'Uploading…'
+          ? uploadProgress != null && uploadProgress < 100
+            ? `Uploading ${uploadProgress}%…`
+            : 'Processing…'
           : importMode === 'replace'
             ? 'Replace layer data'
             : 'Import into layer'}

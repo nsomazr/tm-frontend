@@ -25,6 +25,7 @@ export interface TerraAssistantMapContext {
   zoom: number
   featureIds?: number[]
   mineralSlug?: string
+  layerId?: number
   regionId?: number
   searchLabel?: string
   fromMapClick?: boolean
@@ -38,6 +39,8 @@ export interface TerraAssistantMapContext {
   basemap?: BasemapId
   /** False when the map click was outside uploaded admin boundaries. */
   insideAdminBoundaries?: boolean
+  /** Currently checked map layers — scopes Ask Terra to visible data when set. */
+  visibleLayerIds?: number[]
 }
 
 interface TerraAssistantPanelProps {
@@ -72,6 +75,7 @@ export function buildAssistantThreadKey(
   mapContext?: TerraAssistantMapContext | null
 ): string {
   if (mode === 'account') return 'account'
+  if (mapContext?.layerId != null) return `search:layer:${mapContext.layerId}`
   if (mapContext?.mineralSlug) return `search:mineral:${mapContext.mineralSlug}`
   if (mapContext?.regionId != null) return `search:region:${mapContext.regionId}`
   if (mapContext) {
@@ -498,12 +502,14 @@ export default function TerraAssistantPanel({
         zoom: mapContext?.zoom,
         featureIds: mapContext?.featureIds,
         mineralSlug: mapContext?.mineralSlug,
+        layerId: mapContext?.layerId,
         regionId: mapContext?.regionId,
         boundaryId: mapContext?.boundaryId,
         countryCode: mapContext?.countryCode,
         threadKey,
         explorationGeometry: mapContext?.explorationGeometry,
         basemap: mapContext?.basemap,
+        visibleLayerIds: mapContext?.visibleLayerIds,
       })
       setMessages((prev) => [
         ...prev,

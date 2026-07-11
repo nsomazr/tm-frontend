@@ -3,13 +3,11 @@ import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { geographyApi } from '../../api'
 import BoundaryFileDropzone from '../../components/admin/BoundaryFileDropzone'
-import BoundaryGeologyEditor from '../../components/admin/BoundaryGeologyEditor'
 import BoundaryLevelPicker from '../../components/admin/BoundaryLevelPicker'
 import CountrySelect from '../../components/map/CountrySelect'
-import { BOUNDARY_LEVEL_OPTIONS, boundaryLevelByValue } from '../../components/map/boundaryLevelOptions'
+import { boundaryLevelByValue } from '../../components/map/boundaryLevelOptions'
 import { toast } from '../../components/ui/toast'
 import { useTranslation } from '../../i18n/LocaleContext'
-import { useDisplayName } from '../../i18n/useDisplayName'
 
 function formatDate(value: string | null | undefined) {
   if (!value) return '-'
@@ -30,7 +28,6 @@ function sleep(ms: number) {
 export default function AdminBoundariesPage() {
   const qc = useQueryClient()
   const { t, m } = useTranslation()
-  const displayName = useDisplayName()
   const [searchParams] = useSearchParams()
   const levelParam = Number(searchParams.get('level'))
   const initialLevel =
@@ -58,8 +55,6 @@ export default function AdminBoundariesPage() {
       : countriesData.results ?? []
     return [...list].sort((a, b) => a.name.localeCompare(b.name))
   }, [countriesData])
-
-  const selectedCountry = countries.find((c) => c.code === country)
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin-boundary-stats', country],
@@ -136,55 +131,35 @@ export default function AdminBoundariesPage() {
       : null
 
   return (
-    <div className="max-w-4xl">
-      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-app-text">{m.adminBoundaries.title}</h1>
-          <p className="text-sm text-app-muted mt-1">{m.adminBoundaries.subtitle}</p>
+          <p className="text-sm text-app-muted mt-0.5">{m.adminBoundaries.subtitle}</p>
         </div>
-        <Link
-          to="/"
-          className="text-sm font-medium text-terra-600 dark:text-terra-400 hover:underline shrink-0"
-        >
-          {m.adminBoundaries.previewOnMap} →
-        </Link>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Link
+            to="/admin/geological-reference"
+            className="font-medium text-terra-600 dark:text-terra-400 hover:underline"
+          >
+            Geo reference
+          </Link>
+          <Link to="/" className="font-medium text-terra-600 dark:text-terra-400 hover:underline">
+            {m.adminBoundaries.previewOnMap}
+          </Link>
+        </div>
       </header>
 
-      <section className="rounded-xl border border-app-border bg-app-surface p-5 mb-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-          <h2 className="font-semibold text-app-text">{m.adminBoundaries.currentCoverage}</h2>
-          {selectedCountry && (
-            <span className="text-sm text-app-muted">{displayName(selectedCountry)}</span>
-          )}
-        </div>
-        {statsLoading ? (
-          <p className="text-sm text-app-muted">{m.adminBoundaries.loading}</p>
-        ) : (
-          <>
-            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-              {BOUNDARY_LEVEL_OPTIONS.map((opt) => (
-                <div key={opt.value}>
-                  <dt className="text-app-muted text-xs">{opt.boundaryLabel}</dt>
-                  <dd className="font-semibold text-app-text tabular-nums text-lg mt-0.5">
-                    {stats?.counts[String(opt.value) as '0' | '1' | '2' | '3' | '4'] ?? 0}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+      <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
+        <div className="px-4 py-3 sm:px-5 border-b app-divider space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-medium text-app-text">{m.adminBoundaries.country}</span>
             {stats?.last_updated && (
-              <p className="text-xs text-app-muted mt-4 pt-4 border-t border-app-border">
-                {m.adminBoundaries.lastUpdated}: {formatDate(stats.last_updated)}
-              </p>
+              <span className="text-[11px] text-app-text-muted tabular-nums">
+                {m.adminBoundaries.lastUpdated} {formatDate(stats.last_updated)}
+              </span>
             )}
-          </>
-        )}
-      </section>
-
-      <section className="rounded-xl border border-app-border bg-app-surface p-5 space-y-5">
-        <h2 className="font-semibold text-app-text">{m.adminBoundaries.importTitle}</h2>
-
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-app-secondary">{m.adminBoundaries.country}</span>
+          </div>
           {countriesLoading ? (
             <p className="text-sm text-app-muted">{m.adminBoundaries.loading}</p>
           ) : (
@@ -196,69 +171,79 @@ export default function AdminBoundariesPage() {
               showCountHint={false}
             />
           )}
-        </label>
+        </div>
 
-        <BoundaryLevelPicker value={level} onChange={setLevel} stats={stats} />
+        <div className="px-4 py-3 sm:px-5 border-b app-divider">
+          {statsLoading ? (
+            <p className="text-sm text-app-muted">{m.adminBoundaries.loading}</p>
+          ) : (
+            <BoundaryLevelPicker value={level} onChange={setLevel} stats={stats} />
+          )}
+        </div>
 
-        <label className="block space-y-1.5">
-          <span className="text-sm font-medium text-app-secondary">{m.adminBoundaries.file}</span>
-          <BoundaryFileDropzone
-            file={file}
-            onFileChange={setFile}
-            disabled={importMutation.isPending}
-          />
-        </label>
-
-        <label className="checkbox-label checkbox-label--muted">
-          <input
-            type="checkbox"
-            checked={replace}
-            onChange={(e) => setReplace(e.target.checked)}
-            className="checkbox"
-            disabled={importMutation.isPending}
-          />
-          {t('adminBoundaries.replaceExisting', { layer: levelMeta.boundaryLabel.toLowerCase() })}
-        </label>
-
-        {importMutation.isPending && importProgress && (
-          <div className="rounded-lg border border-app-border bg-app-bg px-4 py-3 space-y-2">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-app-secondary">
-                {importProgress.phase === 'parsing'
-                  ? m.adminBoundaries.importParsing
-                  : m.adminBoundaries.importProcessing}
-              </span>
-              {importProgress.total > 0 && (
-                <span className="tabular-nums text-app-muted">
-                  {t('adminBoundaries.importProgress', {
-                    done: importProgress.done.toLocaleString(),
-                    total: importProgress.total.toLocaleString(),
-                  })}
-                </span>
-              )}
-            </div>
-            <div className="h-2 rounded-full bg-app-subtle overflow-hidden">
-              <div
-                className="h-full rounded-full bg-terra-600 transition-all duration-300"
-                style={{ width: `${progressPct ?? 8}%` }}
+        <div className="px-4 py-3 sm:px-5 space-y-3">
+          <div>
+            <span className="text-sm font-medium text-app-text">{m.adminBoundaries.file}</span>
+            <div className="mt-1.5">
+              <BoundaryFileDropzone
+                file={file}
+                onFileChange={setFile}
+                disabled={importMutation.isPending}
               />
             </div>
           </div>
-        )}
 
-        <button
-          type="button"
-          onClick={() => importMutation.mutate()}
-          disabled={!file || importMutation.isPending || countries.length === 0}
-          className="w-full rounded-lg bg-terra-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-terra-700 disabled:opacity-50 transition-colors"
-        >
-          {importMutation.isPending ? m.adminBoundaries.uploading : m.adminBoundaries.upload}
-        </button>
-      </section>
+          {importMutation.isPending && importProgress && (
+            <div className="rounded-lg border border-app-border bg-app-bg px-3 py-2.5 space-y-2">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="text-app-secondary">
+                  {importProgress.phase === 'parsing'
+                    ? m.adminBoundaries.importParsing
+                    : m.adminBoundaries.importProcessing}
+                </span>
+                {importProgress.total > 0 && (
+                  <span className="tabular-nums text-app-muted">
+                    {t('adminBoundaries.importProgress', {
+                      done: importProgress.done.toLocaleString(),
+                      total: importProgress.total.toLocaleString(),
+                    })}
+                  </span>
+                )}
+              </div>
+              <div className="h-1.5 rounded-full bg-app-subtle overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-terra-600 transition-all duration-300"
+                  style={{ width: `${progressPct ?? 8}%` }}
+                />
+              </div>
+            </div>
+          )}
 
-      <section className="rounded-xl border border-app-border bg-app-surface p-5 space-y-4 mt-6">
-        <h2 className="font-semibold text-app-text">{m.adminBoundaries.geology.sectionTitle}</h2>
-        <BoundaryGeologyEditor country={country} />
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={replace}
+                onChange={(e) => setReplace(e.target.checked)}
+                className="checkbox"
+                disabled={importMutation.isPending}
+              />
+              <span>
+                {t('adminBoundaries.replaceExisting', {
+                  layer: levelMeta.label.toLowerCase(),
+                })}
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => importMutation.mutate()}
+              disabled={!file || importMutation.isPending || countries.length === 0}
+              className="btn-primary w-full sm:w-auto shrink-0"
+            >
+              {importMutation.isPending ? m.adminBoundaries.uploading : m.adminBoundaries.upload}
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   )

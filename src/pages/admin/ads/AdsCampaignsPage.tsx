@@ -211,7 +211,7 @@ export default function AdsCampaignsPage() {
   const formTitle = editing ? 'Edit campaign' : 'New campaign'
 
   return (
-    <div className="max-w-3xl">
+    <div>
       <div className="mb-5">
         <h1 className="text-2xl font-bold text-app-text">Campaigns</h1>
         <p className="text-sm text-app-text-muted mt-1">

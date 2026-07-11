@@ -177,3 +177,21 @@ export function formatCoordinate(
   const northing = Math.round(coord.y).toLocaleString()
   return `E ${easting}  N ${northing}`
 }
+
+export function formatCoordinateParts(
+  coord: TransformedCoordinate,
+  kind: 'geographic' | 'projected',
+  format: CoordinateDisplayFormat = 'decimal',
+): { primary: string; secondary: string } | null {
+  if (kind !== 'geographic') return null
+  if (format === 'dms') {
+    return {
+      primary: decimalToDms(coord.y, 'lat'),
+      secondary: decimalToDms(coord.x, 'lng'),
+    }
+  }
+  return {
+    primary: `${coord.y.toFixed(6)}°`,
+    secondary: `${coord.x.toFixed(6)}°`,
+  }
+}

@@ -135,7 +135,12 @@ export default function MapRightDock({
         </div>
       )}
       {!hasPaidAccess && showMapAds && (
-        <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full shrink-0" />
+        <AdPlacementSlot
+          placement="map_overlay"
+          countryCode={countryCode}
+          compact
+          className="pointer-events-auto w-full shrink-0"
+        />
       )}
     </aside>
   )

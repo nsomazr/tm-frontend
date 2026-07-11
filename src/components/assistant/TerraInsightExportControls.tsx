@@ -178,13 +178,11 @@ export default function TerraInsightExportControls({
       toast.success(ta.exportSuccess)
       void qc.invalidateQueries({ queryKey: ['purchases'] })
       onCreditsRefresh?.()
-      setOpen(false)
     } catch (err) {
       if (isAxiosError(err)) {
         const detail = (err.response?.data as { detail?: string })?.detail
         if (typeof detail === 'string') {
           toast.error(detail)
-          setExporting(false)
           return
         }
       }
@@ -198,49 +196,51 @@ export default function TerraInsightExportControls({
     <div
       className={
         compact
-          ? 'py-1'
-          : 'shrink-0 border-b border-app-border/60 px-3 sm:px-4 py-2 bg-app-subtle/30'
+          ? 'rounded-xl border border-app-border bg-app-subtle/40 px-3 py-2.5'
+          : 'shrink-0 border border-app-border rounded-xl px-3 sm:px-4 py-2.5 bg-app-subtle/30'
       }
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium text-app-text-secondary">{ta.exportReportShort}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          {hasPaidAccess && open && (
-            <button
-              type="button"
-              onClick={() => void handleExport()}
-              disabled={exporting}
-              className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline disabled:opacity-50"
-            >
-              {exporting ? ta.exportGenerating : ta.exportDownload}
-            </button>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold map-text">{ta.exportReportShort}</p>
+          {!open && (
+            <p className="text-[10px] map-text-muted mt-0.5 leading-snug truncate">
+              {hasPaidAccess
+                ? ta.exportCreditCost.replace('{count}', String(EXPORT_CREDIT_COST))
+                : ta.exportPaidOnly}
+            </p>
           )}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={open}
-            aria-label={ta.exportReportShort}
-            onClick={() => setOpen((v) => !v)}
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-terra-500 ${
-              open ? 'bg-terra-600 dark:bg-terra-500' : 'bg-app-border-strong'
-            }`}
-          >
-            <span
-              aria-hidden
-              className={`pointer-events-none inline-block size-4 transform rounded-full bg-white shadow-sm transition duration-200 ease-in-out ${
-                open ? 'translate-x-4' : 'translate-x-0'
-              }`}
-            />
-          </button>
         </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={open}
+          aria-label={ta.exportReportShort}
+          onClick={() => setOpen((v) => !v)}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-colors duration-200 ease-in-out focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-terra-500 ${
+            open
+              ? 'border-terra-600 bg-terra-600 dark:border-terra-500 dark:bg-terra-500'
+              : 'border-app-border-strong bg-slate-300 dark:bg-slate-600'
+          }`}
+        >
+          <span
+            aria-hidden
+            className={`pointer-events-none inline-block size-5 transform rounded-full bg-white shadow ring-1 ring-black/10 transition duration-200 ease-in-out ${
+              open ? 'translate-x-[1.35rem]' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
       </div>
 
       {open && (
-        <div className={`space-y-2 ${compact ? 'mt-2 rounded-lg border border-app-border/70 bg-app-subtle/50 p-2.5' : 'mt-2'}`}>
+        <div className="mt-3 space-y-2.5 border-t border-app-border/70 pt-3">
           {!hasPaidAccess ? (
             <p className="text-[11px] text-app-text-secondary leading-snug">
               {ta.exportPaidOnly}{' '}
-              <Link to="/subscriptions" className="font-medium text-terra-600 dark:text-terra-400 hover:underline">
+              <Link
+                to="/subscriptions"
+                className="font-medium text-terra-600 dark:text-terra-400 hover:underline"
+              >
                 {ta.viewPlans}
               </Link>
             </p>
@@ -269,6 +269,14 @@ export default function TerraInsightExportControls({
               <p className="text-[10px] text-app-muted">
                 {ta.exportCreditCost.replace('{count}', String(EXPORT_CREDIT_COST))}
               </p>
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={exporting || sections.size === 0}
+                className="btn-primary w-full text-sm disabled:opacity-50"
+              >
+                {exporting ? ta.exportGenerating : ta.exportDownload}
+              </button>
             </>
           )}
         </div>

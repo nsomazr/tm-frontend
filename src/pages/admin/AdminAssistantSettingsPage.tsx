@@ -60,11 +60,11 @@ export default function AdminAssistantSettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <div className="mb-8">
         <p className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-1">Platform</p>
         <h1 className="text-2xl font-bold text-app-text">Assistant settings</h1>
-        <p className="mt-2 text-sm text-app-muted max-w-xl">
+        <p className="mt-2 text-sm text-app-muted">
           Choose which AI provider Terra uses first. If it fails, fallbacks are tried in order.
         </p>
       </div>

@@ -30,29 +30,39 @@ export default function DashboardLayout() {
       ) : undefined,
   }))
 
+  const groups = [{ id: 'account', title: 'Account', links: accountLinks }]
+
   return (
-    <div className="flex h-full bg-app-bg">
+    <div className="flex h-full min-w-0 bg-app-bg">
       <WorkspaceSidebar
         storageKey="tm-dashboard-sidebar"
         workspaceTabs={<WorkspaceTabs sidebar />}
         header={
           <div>
-            <p className="font-semibold text-app-text truncate">{user?.first_name || user?.username}</p>
+            <p className="font-semibold text-app-text truncate">
+              {user?.first_name || user?.username}
+            </p>
             <p className="text-xs text-app-muted truncate mt-0.5">{user?.email}</p>
           </div>
         }
-        groups={[{ id: 'account', title: 'Account', links: accountLinks }]}
+        groups={groups}
+        footerLinks={quickLinks}
+      />
+
+      <WorkspaceMobileNav
+        groups={groups}
+        primaryTos={['/dashboard', '/dashboard/assistant', '/dashboard/subscription', '/downloads']}
         footerLinks={quickLinks}
       />
 
       <div
-        className={`flex-1 min-w-0 overflow-x-hidden pb-16 md:pb-0 ${
-          isAssistantPage ? 'flex flex-col min-h-0 overflow-hidden' : 'overflow-auto'
+        className={`flex-1 min-w-0 overflow-x-hidden pb-[4.25rem] md:pb-0 ${
+          isAssistantPage ? 'flex flex-col min-h-0 overflow-hidden' : 'overflow-y-auto'
         }`}
       >
         <div
-          className={`max-w-3xl mx-auto px-4 sm:px-8 w-full ${
-            isAssistantPage ? 'flex flex-col flex-1 min-h-0 py-4 sm:py-6' : 'py-8'
+          className={`max-w-5xl mx-auto px-3 sm:px-8 w-full ${
+            isAssistantPage ? 'flex flex-col flex-1 min-h-0 py-4 sm:py-6' : 'py-5 sm:py-8'
           }`}
         >
           <Outlet />

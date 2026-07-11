@@ -8,6 +8,7 @@ export interface User {
   phone: string
   organization: string
   profile_complete: boolean
+  is_active?: boolean
   has_paid_access?: boolean
   can_save_explorations?: boolean
   assistant_credits?: AssistantCredits | null
@@ -38,6 +39,8 @@ export interface Mineral {
   icon: string
   description: string
   is_active: boolean
+  /** Extra structure/point (etc.) layers included in this commodity's heatmap overlay. */
+  associated_layer_ids?: number[]
 }
 
 export interface MapLayer {
@@ -58,6 +61,10 @@ export interface MapLayer {
   description: string
   /** Reference buffer radius (km) for insight influence zone; 1 to 50 when set. */
   buffer_km: number | null
+  /** Relative heatmap contribution strength (0–10). */
+  heatmap_weight?: number
+  /** Catalog mineral slugs that associate this layer for heatmap overlays. */
+  associated_catalog_slugs?: string[]
   feature_count: number
   current_version?: number
   created_by?: number | null

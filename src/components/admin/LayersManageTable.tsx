@@ -1,8 +1,9 @@
-import { Fragment, useState, useEffect, useRef, type ReactNode } from 'react'
+import { Fragment, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { MapLayer } from '../../types'
 import ActionMenu, { ActionMenuItem } from '../ui/ActionMenu'
+import MineralColorPickerModal from './MineralColorPickerModal'
 import { sortLayersTopToBottom, stackPositionLabel } from './layerOrder'
-import { layerDisplayColor } from './layerColors'
+import { layerDisplayColor, layerFillColor } from './layerColors'
 import {
   STRUCTURE_RANK_OPTIONS,
   resolveStructureRank,
@@ -16,28 +17,31 @@ import {
   LAYER_BUFFER_KM_MAX,
   LAYER_BUFFER_KM_MIN,
 } from '../../constants/layerBufferZone'
+import {
+  clampHeatmapWeight,
+  LAYER_HEATMAP_WEIGHT_DEFAULT,
+  LAYER_HEATMAP_WEIGHT_MAX,
+  LAYER_HEATMAP_WEIGHT_MIN,
+} from '../../constants/layerHeatmapWeight'
 
 export const LAYER_ARRANGE_GROUPS = [
   {
     type: 'polygon' as const,
     label: 'Polygons',
-    hint: 'Filled zones and area features',
   },
   {
     type: 'line' as const,
-    label: 'Lines / structures',
-    hint: 'Faults, belts, and linear features',
+    label: 'Lines',
   },
   {
     type: 'point' as const,
     label: 'Points',
-    hint: 'Markers and prospect sites',
   },
 ]
 
 function GripIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" className="opacity-70">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
       <circle cx="5" cy="4" r="1.25" />
       <circle cx="11" cy="4" r="1.25" />
       <circle cx="5" cy="8" r="1.25" />
@@ -46,6 +50,43 @@ function GripIcon() {
       <circle cx="11" cy="12" r="1.25" />
     </svg>
   )
+}
+
+function PolygonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <path d="M3 11.5 8 2.5l5 9H3Z" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function LineIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+      <path d="M2.5 12.5 6 7l3 3 4.5-6.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function PointIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+      <circle cx="8" cy="8" r="3.25" />
+    </svg>
+  )
+}
+
+function groupIcon(type: string) {
+  if (type === 'polygon') return <PolygonIcon />
+  if (type === 'line') return <LineIcon />
+  return <PointIcon />
+}
+
+function shortStackLabel(indexFromTop: number, total: number) {
+  if (total <= 1) return 'Solo'
+  if (indexFromTop === 0) return 'Front'
+  if (indexFromTop === total - 1) return 'Back'
+  return `${indexFromTop + 1}/${total}`
 }
 
 function LayerActionsMenu({
@@ -96,7 +137,7 @@ function LayerActionsMenu({
         {layer.is_active ? 'Hide' : 'Show'}
       </ActionMenuItem>
       <ActionMenuItem onClick={onTogglePreview} disabled={updateBusy} className="text-sm text-app-text-secondary">
-        {layer.is_preview ? 'Unpreview' : 'Preview'}
+        {layer.is_preview ? 'Free map off' : 'Free map on'}
       </ActionMenuItem>
       {isAdmin && (
         <ActionMenuItem onClick={onDelete} disabled={deleteBusy} destructive className="text-sm">
@@ -108,7 +149,7 @@ function LayerActionsMenu({
 }
 
 function formatWhenShort(iso?: string | null) {
-  if (!iso) return '-'
+  if (!iso) return null
   return new Date(iso).toLocaleDateString()
 }
 
@@ -125,6 +166,7 @@ interface LayersManageTableProps {
   onColorChange: (layer: MapLayer, color: string) => void
   onStructureRankChange: (layer: MapLayer, rank: StructureLineRank) => void
   onBufferChange: (layer: MapLayer, bufferKm: number | null) => void
+  onHeatmapWeightChange: (layer: MapLayer, weight: number) => void
   onToggleActive: (layer: MapLayer) => void
   onTogglePreview: (layer: MapLayer) => void
   onDelete: (layer: MapLayer) => void
@@ -149,6 +191,7 @@ export default function LayersManageTable({
   onColorChange,
   onStructureRankChange,
   onBufferChange,
+  onHeatmapWeightChange,
   onToggleActive,
   onTogglePreview,
   onDelete,
@@ -163,13 +206,21 @@ export default function LayersManageTable({
   const alternateName = useAlternateName()
   const [dragGroup, setDragGroup] = useState<string | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [openMenuLayerId, setOpenMenuLayerId] = useState<number | null>(null)
-  const highlightRowRef = useRef<HTMLTableRowElement | null>(null)
+  const [colorPickerLayerId, setColorPickerLayerId] = useState<number | null>(null)
+  const highlightRowRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (highlightLayerId == null) return
     highlightRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlightLayerId])
+
+  const usedColors = useMemo(
+    () => layers.map((layer) => layerFillColor(layer.style)).filter(Boolean),
+    [layers]
+  )
+  const colorPickerLayer = layers.find((layer) => layer.id === colorPickerLayerId) ?? null
 
   const canResetStack = stackableLayers.length > 1
 
@@ -183,13 +234,13 @@ export default function LayersManageTable({
 
   const handleDrop = (
     groupType: string,
-    groupLayers: MapLayer[],
     activeLayers: MapLayer[],
     targetIndex: number
   ) => {
     if (dragGroup !== groupType || dragIndex === null || dragIndex === targetIndex) {
       setDragGroup(null)
       setDragIndex(null)
+      setDropIndex(null)
       return
     }
     const next = [...activeLayers]
@@ -198,6 +249,7 @@ export default function LayersManageTable({
     onReorderGroup(groupType, next)
     setDragGroup(null)
     setDragIndex(null)
+    setDropIndex(null)
   }
 
   if (layers.length === 0) {
@@ -209,95 +261,106 @@ export default function LayersManageTable({
   }
 
   return (
-    <div className="card overflow-x-auto">
-      <div className="px-5 py-4 border-b app-divider flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-        <div>
-          <h2 className="font-bold text-app-text">Commodity layers ({layers.length})</h2>
-          <p className="text-sm text-app-muted mt-1 max-w-2xl">
-            Arrange draw order, edit colors, and control visibility. Create new layers under Layers.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 shrink-0">
-          <label className="checkbox-label checkbox-label--muted">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => onShowHiddenChange(e.target.checked)}
-              className="checkbox"
-            />
-            <span>Include hidden layers</span>
-          </label>
-          {canResetStack && (
-            <button
-              type="button"
-              onClick={onResetDefault}
-              disabled={reorderBusy}
-              className="text-sm px-3 py-2 rounded-lg border border-app-border hover:bg-app-subtle text-app-text-secondary disabled:opacity-50"
-            >
-              Reset default stack
-            </button>
-          )}
+    <div className="card-flat !p-0 overflow-hidden">
+      <div className="relative px-4 py-3 sm:px-5 border-b app-divider overflow-hidden">
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex flex-wrap items-center gap-2.5">
+            <h2 className="text-base font-semibold tracking-tight text-app-text">Layers</h2>
+            <span className="inline-flex items-center rounded-full border border-app-border bg-app-subtle/70 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-app-text-secondary">
+              {layers.length}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <label className="inline-flex items-center gap-2 rounded-full border border-app-border bg-app-surface/80 px-3 py-1.5 text-xs text-app-text-secondary cursor-pointer hover:border-app-border-strong transition-colors">
+              <input
+                type="checkbox"
+                checked={showHidden}
+                onChange={(e) => onShowHiddenChange(e.target.checked)}
+                className="checkbox"
+              />
+              <span>Hidden</span>
+            </label>
+            {canResetStack && (
+              <button
+                type="button"
+                onClick={onResetDefault}
+                disabled={reorderBusy}
+                className="text-xs font-medium px-3 py-1.5 rounded-full border border-app-border bg-app-surface/80 text-app-text-secondary hover:bg-app-subtle hover:text-app-text disabled:opacity-50 transition-colors"
+              >
+                Reset stack
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th className="w-10" aria-label="Reorder" />
-              <th>Layer</th>
-              <th>Type</th>
-              <th className="tabular-nums">Features</th>
-              <th>Stack</th>
-              <th>Last upload</th>
-              <th>Color</th>
-              <th>Line weight</th>
-              <th>Buffer</th>
-              <th className="w-12 text-right" aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
-            {groupedLayers.map((group) => {
-              const groupCanDrag = group.activeLayers.length > 1 && !reorderBusy
+      <div className="divide-y divide-[var(--color-app-border)]">
+        {groupedLayers.map((group) => {
+          const groupCanDrag = group.activeLayers.length > 1 && !reorderBusy
 
-              return (
-                <Fragment key={group.type}>
-                  <tr className="bg-app-subtle/60">
-                    <td colSpan={10} className="!py-2.5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-app-text">{group.label}</p>
-                          <p className="text-xs text-app-text-muted">{group.hint}</p>
-                        </div>
-                        {groupCanDrag && (
-                          <span className="text-[10px] font-medium uppercase tracking-wide text-app-text-muted shrink-0">
-                            Top = front
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                  {group.layers.map((layer) => {
-                    const displayColor = layerDisplayColor(layer)
-                    const activeIndex = group.activeLayers.findIndex((item) => item.id === layer.id)
-                    const stackLabel =
-                      layer.is_active && group.activeLayers.length > 0 && activeIndex >= 0
-                        ? stackPositionLabel(activeIndex, group.activeLayers.length)
-                        : '-'
-                    const canDrag = layer.is_active && groupCanDrag
-                    const isDragging =
-                      dragGroup === group.type && dragIndex === activeIndex && activeIndex >= 0
+          return (
+            <section key={group.type} className="bg-app-surface">
+              <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-3 bg-app-subtle/35">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-app-border bg-app-surface text-app-text-muted shrink-0">
+                    {groupIcon(group.type)}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-semibold text-app-text">{group.label}</h3>
+                      <span className="text-[11px] tabular-nums text-app-text-muted">
+                        {group.layers.length}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {groupCanDrag && (
+                  <span className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.08em] text-app-text-muted shrink-0">
+                    Top = front
+                  </span>
+                )}
+              </div>
 
-                    const isHighlighted = highlightLayerId === layer.id
+              <ul className="app-divide-y">
+                {group.layers.map((layer) => {
+                  const displayColor = layerDisplayColor(layer)
+                  const activeIndex = group.activeLayers.findIndex((item) => item.id === layer.id)
+                  const stackShort =
+                    layer.is_active && group.activeLayers.length > 0 && activeIndex >= 0
+                      ? shortStackLabel(activeIndex, group.activeLayers.length)
+                      : null
+                  const stackFull =
+                    layer.is_active && group.activeLayers.length > 0 && activeIndex >= 0
+                      ? stackPositionLabel(activeIndex, group.activeLayers.length)
+                      : null
+                  const canDrag = layer.is_active && groupCanDrag
+                  const isDragging =
+                    dragGroup === group.type && dragIndex === activeIndex && activeIndex >= 0
+                  const isDropTarget =
+                    dragGroup === group.type &&
+                    dropIndex === activeIndex &&
+                    activeIndex >= 0 &&
+                    dragIndex !== activeIndex
+                  const isHighlighted = highlightLayerId === layer.id
+                  const isExpanded = expandedLayerId === layer.id
+                  const uploadedAt = formatWhenShort(layer.last_uploaded_at)
+                  const alt = alternateName(layer)
 
-                    return (
-                      <Fragment key={layer.id}>
-                        <tr
+                  return (
+                    <Fragment key={layer.id}>
+                      <li>
+                        <div
                           ref={isHighlighted ? highlightRowRef : undefined}
-                          className={`${!layer.is_active ? 'opacity-70' : ''} ${
-                            canDrag ? 'hover:bg-app-subtle/40' : ''
-                          } ${isDragging ? 'opacity-50 bg-app-subtle/40' : ''} ${
-                            isHighlighted ? 'bg-terra-500/10 ring-1 ring-inset ring-terra-500/35' : ''
+                          className={`group relative flex flex-col gap-3 px-4 py-3.5 sm:px-6 sm:py-4 transition-[background-color,opacity,box-shadow] duration-200 ${
+                            !layer.is_active ? 'opacity-60' : ''
+                          } ${isDragging ? 'opacity-40' : ''} ${
+                            isDropTarget
+                              ? 'bg-terra-500/8 shadow-[inset_3px_0_0_0_var(--color-terra-500,#22c55e)]'
+                              : isHighlighted
+                                ? 'bg-terra-500/10 shadow-[inset_3px_0_0_0_var(--color-terra-500,#22c55e)]'
+                                : canDrag
+                                  ? 'hover:bg-app-subtle/50'
+                                  : 'hover:bg-app-subtle/30'
                           }`}
                           draggable={canDrag}
                           onDragStart={() => {
@@ -308,184 +371,309 @@ export default function LayersManageTable({
                           onDragEnd={() => {
                             setDragGroup(null)
                             setDragIndex(null)
+                            setDropIndex(null)
                           }}
                           onDragOver={(e) => {
                             if (!canDrag || dragGroup !== group.type || activeIndex < 0) return
                             e.preventDefault()
+                            setDropIndex(activeIndex)
+                          }}
+                          onDragLeave={() => {
+                            if (dropIndex === activeIndex) setDropIndex(null)
                           }}
                           onDrop={(e) => {
                             e.preventDefault()
                             if (activeIndex < 0) return
-                            handleDrop(group.type, group.layers, group.activeLayers, activeIndex)
+                            handleDrop(group.type, group.activeLayers, activeIndex)
                           }}
                         >
-                          <td className="w-10 text-center">
-                            {canDrag ? (
+                          <div className="flex items-start gap-3">
+                            <div className="flex items-center gap-2 pt-0.5 shrink-0">
+                              {canDrag ? (
+                                <span
+                                  className="inline-flex h-7 w-6 items-center justify-center rounded-md text-app-text-muted/70 group-hover:text-app-text-secondary select-none cursor-grab active:cursor-grabbing"
+                                  title="Drag to reorder"
+                                >
+                                  <GripIcon />
+                                </span>
+                              ) : (
+                                <span className="inline-block w-6" aria-hidden />
+                              )}
                               <span
-                                className="inline-flex text-app-text-muted select-none cursor-grab active:cursor-grabbing"
-                                title="Drag to reorder"
-                              >
-                                <GripIcon />
-                              </span>
-                            ) : (
-                              <span className="inline-block w-4" aria-hidden />
-                            )}
-                          </td>
-                          <td className="min-w-[10rem]">
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="w-3 h-3 rounded-full shrink-0 border border-app-border/50"
+                                className="relative h-9 w-9 rounded-xl border border-black/5 dark:border-white/10 shadow-sm shrink-0"
                                 style={{ backgroundColor: displayColor }}
-                              />
-                              <div className="min-w-0">
-                                <div className="font-medium text-app-text">{displayName(layer)}</div>
-                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                                  {!layer.is_active && (
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-app-subtle text-app-text-muted border border-app-border">
-                                      Hidden
+                                aria-hidden
+                              >
+                                <span className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/25 to-transparent pointer-events-none" />
+                              </span>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                <span className="font-medium text-app-text truncate">
+                                  {displayName(layer)}
+                                </span>
+                                {layer.mineral_name && (
+                                  <span
+                                    className="text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-md bg-app-subtle text-app-text-muted border border-app-border truncate max-w-[10rem]"
+                                    title={`Belongs to ${layer.mineral_name}`}
+                                  >
+                                    {layer.mineral_name}
+                                  </span>
+                                )}
+                                {!layer.is_active && (
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded-md bg-app-subtle text-app-text-muted border border-app-border">
+                                    Hidden
+                                  </span>
+                                )}
+                                {stackShort && (
+                                  <span
+                                    className="inline-flex items-center gap-1 rounded-md bg-app-subtle/90 border border-app-border px-1.5 py-px text-[10px] font-medium text-app-text-muted"
+                                    title={`${stackFull} · z${layer.z_index}`}
+                                  >
+                                    <span className="opacity-70">Stack</span>
+                                    <span className="text-app-text-secondary tabular-nums">
+                                      {stackShort}
                                     </span>
-                                  )}
-                                  {layer.is_preview && (
-                                    <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-px rounded bg-terra-500/10 text-terra-600 dark:text-terra-400 border border-terra-500/25">
-                                      Preview
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-app-text-muted">
+                                <span className="tabular-nums text-app-text-secondary">
+                                  {layer.feature_count.toLocaleString()}{' '}
+                                  <span className="text-app-text-muted">
+                                    {layer.feature_count === 1 ? 'feature' : 'features'}
+                                  </span>
+                                </span>
+                                {(layer.last_uploaded_by_name || uploadedAt) && (
+                                  <>
+                                    <span className="text-app-text-muted/50" aria-hidden>
+                                      ·
                                     </span>
-                                  )}
-                                  {alternateName(layer) && (
-                                    <span className="text-xs text-app-text-muted truncate max-w-[12rem]">
-                                      {alternateName(layer)}
+                                    <span>
+                                      {layer.last_uploaded_by_name ?? 'Upload'}
+                                      {uploadedAt ? ` · ${uploadedAt}` : ''}
                                     </span>
-                                  )}
-                                </div>
+                                  </>
+                                )}
+                                {alt && (
+                                  <>
+                                    <span className="text-app-text-muted/50" aria-hidden>
+                                      ·
+                                    </span>
+                                    <span className="truncate max-w-[12rem]">{alt}</span>
+                                  </>
+                                )}
                               </div>
                             </div>
-                          </td>
-                          <td className="text-app-text-secondary capitalize whitespace-nowrap">
-                            {layer.layer_type}
-                          </td>
-                          <td className="tabular-nums text-app-text">{layer.feature_count}</td>
-                          <td className="text-xs text-app-text-muted whitespace-nowrap">
-                            {stackLabel}
-                            <span className="block text-[11px]">z{layer.z_index}</span>
-                          </td>
-                          <td className="text-xs text-app-text-muted whitespace-nowrap">
-                            <span className="text-app-text-secondary">
-                              {layer.last_uploaded_by_name ?? '-'}
-                            </span>
-                            {layer.last_uploaded_at && (
-                              <span className="block">{formatWhenShort(layer.last_uploaded_at)}</span>
-                            )}
-                          </td>
-                          <td>
-                            <label className="inline-flex items-center gap-1.5" title="Change layer color">
-                              <input
-                                type="color"
-                                value={displayColor.startsWith('#') ? displayColor : '#0D9488'}
-                                onChange={(e) => onColorChange(layer, e.target.value)}
-                                disabled={updateBusy}
-                                className="h-7 w-8 cursor-pointer rounded border border-app-border bg-transparent p-0.5"
-                                aria-label={`Color for ${displayName(layer)}`}
+
+                            <div className="shrink-0 pt-0.5">
+                              <LayerActionsMenu
+                                layer={layer}
+                                layerLabel={displayName(layer)}
+                                isOpen={openMenuLayerId === layer.id}
+                                historyOpen={isExpanded}
+                                isAdmin={isAdmin}
+                                updateBusy={updateBusy}
+                                deleteBusy={deleteBusy}
+                                onOpenChange={(open) =>
+                                  setOpenMenuLayerId(open ? layer.id : null)
+                                }
+                                onToggleExpanded={() => onToggleExpanded(layer.id)}
+                                onToggleActive={() => onToggleActive(layer)}
+                                onTogglePreview={() => onTogglePreview(layer)}
+                                onDelete={() => onDelete(layer)}
+                                onEditDetails={
+                                  onEditDetails ? () => onEditDetails(layer) : undefined
+                                }
                               />
-                              <span className="text-[10px] font-mono text-app-text-muted hidden lg:inline">
-                                {displayColor}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-2.5 pl-0 sm:pl-[3.25rem]">
+                            <label
+                              className={`col-span-2 sm:col-auto inline-flex items-center gap-2 rounded-xl border px-2.5 py-2 sm:py-1.5 transition-colors ${
+                                layer.is_preview && layer.is_active
+                                  ? 'border-terra-500/30 bg-terra-500/8'
+                                  : 'border-app-border bg-app-subtle/40'
+                              } ${!layer.is_active || updateBusy ? 'opacity-50' : 'cursor-pointer hover:border-app-border-strong'}`}
+                              title={
+                                layer.is_preview
+                                  ? 'On free map — click to hide'
+                                  : 'Off free map — click to show'
+                              }
+                            >
+                              <input
+                                type="checkbox"
+                                checked={layer.is_preview}
+                                disabled={updateBusy || !layer.is_active}
+                                onChange={() => onTogglePreview(layer)}
+                                className="checkbox"
+                                aria-label={`Show ${displayName(layer)} on free map and legend`}
+                              />
+                              <span className="text-xs font-medium text-app-text-secondary whitespace-nowrap">
+                                Free map
                               </span>
                             </label>
-                          </td>
-                          <td>
-                            {layer.layer_type === 'line' ? (
-                              <select
-                                value={resolveStructureRank(layer)}
-                                onChange={(e) =>
-                                  onStructureRankChange(
-                                    layer,
-                                    Number(e.target.value) as StructureLineRank
-                                  )
-                                }
-                                disabled={updateBusy}
-                                className="input !py-1 !px-2 text-xs max-w-[9rem]"
-                                aria-label={`Line weight for ${displayName(layer)}`}
-                              >
-                                {STRUCTURE_RANK_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.shortLabel}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="text-app-text-muted">-</span>
-                            )}
-                          </td>
-                          <td>
-                            <input
-                              type="number"
-                              min={LAYER_BUFFER_KM_MIN}
-                              max={LAYER_BUFFER_KM_MAX}
-                              step={1}
-                              value={layer.buffer_km ?? ''}
-                              onChange={(e) => {
-                                const raw = e.target.value
-                                if (raw === '') {
-                                  onBufferChange(layer, null)
-                                  return
-                                }
-                                const n = Number(raw)
-                                if (Number.isFinite(n)) onBufferChange(layer, n)
-                              }}
-                              onBlur={(e) => {
-                                const raw = e.target.value
-                                if (raw === '') return
-                                const n = Number(raw)
-                                if (!Number.isFinite(n)) {
-                                  onBufferChange(layer, null)
-                                  return
-                                }
-                                const clamped = clampBufferKm(n)
-                                if (clamped !== layer.buffer_km) onBufferChange(layer, clamped)
-                              }}
+
+                            <button
+                              type="button"
                               disabled={updateBusy}
-                              placeholder="Off"
-                              className="input !py-1 !px-2 text-xs max-w-[6.5rem]"
-                              aria-label={`Reference buffer for ${displayName(layer)}`}
-                              title={`Insight influence radius (${formatBufferKmRange()}, leave empty to disable)`}
-                            />
-                          </td>
-                          <td className="text-right w-12">
-                            <LayerActionsMenu
-                              layer={layer}
-                              layerLabel={displayName(layer)}
-                              isOpen={openMenuLayerId === layer.id}
-                              historyOpen={expandedLayerId === layer.id}
-                              isAdmin={isAdmin}
-                              updateBusy={updateBusy}
-                              deleteBusy={deleteBusy}
-                              onOpenChange={(open) =>
-                                setOpenMenuLayerId(open ? layer.id : null)
-                              }
-                              onToggleExpanded={() => onToggleExpanded(layer.id)}
-                              onToggleActive={() => onToggleActive(layer)}
-                              onTogglePreview={() => onTogglePreview(layer)}
-                              onDelete={() => onDelete(layer)}
-                              onEditDetails={
-                                onEditDetails ? () => onEditDetails(layer) : undefined
-                              }
-                            />
-                          </td>
-                        </tr>
-                        {expandedLayerId === layer.id && (
-                          <tr>
-                            <td colSpan={10} className="!py-3 bg-app-subtle/40">
-                              {renderVersionHistory(layer.id)}
-                            </td>
-                          </tr>
+                              onClick={() => setColorPickerLayerId(layer.id)}
+                              className="inline-flex items-center gap-2 rounded-xl border border-app-border bg-app-subtle/40 px-2.5 py-1.5 hover:border-app-border-strong disabled:opacity-50"
+                              title="Choose mineral color"
+                            >
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-app-text-muted">
+                                Color
+                              </span>
+                              <span
+                                className="h-6 w-7 rounded-md border border-app-border"
+                                style={{
+                                  backgroundColor: displayColor.startsWith('#')
+                                    ? displayColor
+                                    : '#0D9488',
+                                }}
+                                aria-hidden
+                              />
+                              <span className="hidden md:inline text-[10px] font-mono text-app-text-muted tabular-nums">
+                                {displayColor}
+                              </span>
+                            </button>
+
+                            {layer.layer_type === 'line' && (
+                              <label className="inline-flex items-center gap-2 rounded-xl border border-app-border bg-app-subtle/40 px-2.5 py-1.5">
+                                <span className="text-[10px] font-medium uppercase tracking-wide text-app-text-muted whitespace-nowrap">
+                                  Weight
+                                </span>
+                                <select
+                                  value={resolveStructureRank(layer)}
+                                  onChange={(e) =>
+                                    onStructureRankChange(
+                                      layer,
+                                      Number(e.target.value) as StructureLineRank
+                                    )
+                                  }
+                                  disabled={updateBusy}
+                                  className="input !py-0.5 !px-1.5 !rounded-lg text-xs max-w-[8.5rem] !bg-transparent border-0 shadow-none focus:!shadow-none"
+                                  aria-label={`Line weight for ${displayName(layer)}`}
+                                >
+                                  {STRUCTURE_RANK_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.shortLabel}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
+
+                            <label
+                              className="inline-flex items-center gap-2 rounded-xl border border-app-border bg-app-subtle/40 px-2.5 py-1.5"
+                              title="0–10 weight"
+                            >
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-app-text-muted whitespace-nowrap">
+                                Heat
+                              </span>
+                              <input
+                                type="number"
+                                min={LAYER_HEATMAP_WEIGHT_MIN}
+                                max={LAYER_HEATMAP_WEIGHT_MAX}
+                                step={1}
+                                value={layer.heatmap_weight ?? LAYER_HEATMAP_WEIGHT_DEFAULT}
+                                onChange={(e) => {
+                                  const n = Number(e.target.value)
+                                  if (Number.isFinite(n)) onHeatmapWeightChange(layer, n)
+                                }}
+                                onBlur={(e) => {
+                                  const n = Number(e.target.value)
+                                  if (!Number.isFinite(n)) {
+                                    onHeatmapWeightChange(layer, LAYER_HEATMAP_WEIGHT_DEFAULT)
+                                    return
+                                  }
+                                  const clamped = clampHeatmapWeight(n)
+                                  if (clamped !== (layer.heatmap_weight ?? LAYER_HEATMAP_WEIGHT_DEFAULT)) {
+                                    onHeatmapWeightChange(layer, clamped)
+                                  }
+                                }}
+                                disabled={updateBusy}
+                                className="input !py-0.5 !px-1.5 !rounded-lg text-xs w-[3.25rem] tabular-nums !bg-transparent"
+                                aria-label={`Heatmap weight for ${displayName(layer)}`}
+                              />
+                            </label>
+
+                            <label
+                              className="inline-flex items-center gap-2 rounded-xl border border-app-border bg-app-subtle/40 px-2.5 py-1.5 whitespace-nowrap"
+                              title={`Buffer radius (${formatBufferKmRange()}, empty = off)`}
+                            >
+                              <span className="text-[10px] font-medium uppercase tracking-wide text-app-text-muted">
+                                Buffer
+                              </span>
+                              <input
+                                type="number"
+                                min={LAYER_BUFFER_KM_MIN}
+                                max={LAYER_BUFFER_KM_MAX}
+                                step={1}
+                                value={layer.buffer_km ?? ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value
+                                  if (raw === '') {
+                                    onBufferChange(layer, null)
+                                    return
+                                  }
+                                  const n = Number(raw)
+                                  if (Number.isFinite(n)) onBufferChange(layer, n)
+                                }}
+                                onBlur={(e) => {
+                                  const raw = e.target.value
+                                  if (raw === '') return
+                                  const n = Number(raw)
+                                  if (!Number.isFinite(n)) {
+                                    onBufferChange(layer, null)
+                                    return
+                                  }
+                                  const clamped = clampBufferKm(n)
+                                  if (clamped !== layer.buffer_km) onBufferChange(layer, clamped)
+                                }}
+                                disabled={updateBusy}
+                                placeholder="Off"
+                                className="input !py-0.5 !px-1.5 !rounded-lg text-xs w-12 tabular-nums !bg-transparent"
+                                aria-label={`Buffer for ${displayName(layer)}`}
+                              />
+                              <span className="text-[10px] text-app-text-muted">km</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 sm:px-6 sm:pl-[4.75rem] bg-app-subtle/25 border-t app-divider">
+                            {renderVersionHistory(layer.id)}
+                          </div>
                         )}
-                      </Fragment>
-                    )
-                  })}
-                </Fragment>
-              )
-            })}
-          </tbody>
-        </table>
+                      </li>
+                    </Fragment>
+                  )
+                })}
+              </ul>
+            </section>
+          )
+        })}
       </div>
+
+      <MineralColorPickerModal
+        open={colorPickerLayer != null}
+        onClose={() => setColorPickerLayerId(null)}
+        title={`Color · ${colorPickerLayer ? displayName(colorPickerLayer) : 'Layer'}`}
+        layerName={colorPickerLayer ? displayName(colorPickerLayer) : ''}
+        usedColors={usedColors}
+        selectedColor={
+          colorPickerLayer
+            ? layerDisplayColor(colorPickerLayer)
+            : '#0D9488'
+        }
+        onSelect={(hex) => {
+          if (colorPickerLayer) onColorChange(colorPickerLayer, hex)
+        }}
+      />
     </div>
   )
 }

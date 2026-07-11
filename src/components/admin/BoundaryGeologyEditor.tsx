@@ -8,6 +8,7 @@ import type { AdminBoundaryGeology, BoundaryGeologyMetadata } from '../../types'
 
 interface BoundaryGeologyEditorProps {
   country: string
+  hideIntro?: boolean
 }
 
 const EMPTY_METADATA: BoundaryGeologyMetadata = {
@@ -20,7 +21,7 @@ const EMPTY_METADATA: BoundaryGeologyMetadata = {
   data_sources: '',
 }
 
-export default function BoundaryGeologyEditor({ country }: BoundaryGeologyEditorProps) {
+export default function BoundaryGeologyEditor({ country, hideIntro = false }: BoundaryGeologyEditorProps) {
   const { m } = useTranslation()
   const qc = useQueryClient()
   const g = m.adminBoundaries.geology
@@ -133,9 +134,9 @@ export default function BoundaryGeologyEditor({ country }: BoundaryGeologyEditor
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-app-muted leading-relaxed">{g.intro}</p>
+      {!hideIntro && <p className="text-sm text-app-muted">{g.intro}</p>}
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1.5">
           <span className="text-sm font-medium text-app-secondary">{g.boundaryLevel}</span>
           <select

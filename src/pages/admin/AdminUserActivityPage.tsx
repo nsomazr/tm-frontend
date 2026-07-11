@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { DonutChart, VerticalBarChart } from '../../components/analytics/Charts'
 import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
+import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 import ListPagination from '../../components/ui/ListPagination'
 import { usePagination } from '../../hooks/usePagination'
 import type { AdminUserActivityAnalytics } from '../../types'
@@ -30,6 +32,21 @@ function formatWhen(iso: string) {
     hour: '2-digit',
     minute: '2-digit',
   })
+}
+
+function usersHref(username: string) {
+  return `/admin/users?q=${encodeURIComponent(username)}`
+}
+
+function assistantActionHref(kind: string): { to: string; label: string } {
+  const key = kind.toLowerCase()
+  if (key.includes('export') || key.includes('report')) {
+    return { to: '/admin/reports', label: 'Open reports' }
+  }
+  if (key.includes('map') || key.includes('insight') || key.includes('chat') || key.includes('area')) {
+    return { to: '/', label: 'Open map' }
+  }
+  return { to: '/admin/user-activity', label: 'Activity overview' }
 }
 
 function PaginatedActivityTable<T>({
@@ -74,7 +91,9 @@ function PaginatedActivityTable<T>({
               <thead>
                 <tr>
                   {columns.map((col) => (
-                    <th key={col}>{col}</th>
+                    <th key={col} className={col === 'Actions' ? 'text-right' : undefined}>
+                      {col}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -203,6 +222,12 @@ function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
                 <span className="text-app-text-muted w-6">#{index + 1}</span>
                 <span className="font-medium text-app-text flex-1 truncate">{user.username}</span>
                 <span className="tabular-nums text-app-text-muted">{fmt(user.activity_score)} pts</span>
+                <Link
+                  to={usersHref(user.username)}
+                  className="text-xs font-medium text-terra-600 dark:text-terra-400 hover:underline shrink-0"
+                >
+                  Open
+                </Link>
               </li>
             ))}
           </ul>
@@ -215,7 +240,7 @@ function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
           subtitle="Latest mineral deep-explore events"
           emptyMessage="No explorations logged yet."
           items={data.recent_explorations}
-          columns={['When', 'User', 'Mineral']}
+          columns={['When', 'User', 'Mineral', 'Actions']}
           rowKey={(row, index) => `${row.created_at}-${index}`}
           renderRow={(row) => [
             <td key="when" className="text-app-text-muted whitespace-nowrap tabular-nums">
@@ -227,6 +252,17 @@ function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
             <td key="mineral" className="capitalize truncate max-w-[10rem]">
               {row.mineral_slug.replace(/-/g, ' ')}
             </td>,
+            <td key="actions" className="text-right">
+              <div className="inline-flex justify-end">
+                <ActionMenu label={`Actions for ${row.mineral_slug}`} minWidth="11rem">
+                  <ActionMenuItem to={`/?mineral=${encodeURIComponent(row.mineral_slug)}`}>
+                    View on map
+                  </ActionMenuItem>
+                  <ActionMenuItem to="/admin/mineral-analytics">Mineral analytics</ActionMenuItem>
+                  <ActionMenuItem to={usersHref(row.username)}>Open user</ActionMenuItem>
+                </ActionMenu>
+              </div>
+            </td>,
           ]}
         />
 
@@ -235,20 +271,31 @@ function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
           subtitle="Map insights, chats, and exports"
           emptyMessage="No assistant usage logged yet."
           items={data.recent_assistant_usage}
-          columns={['When', 'User', 'Action']}
+          columns={['When', 'User', 'Event', 'Actions']}
           rowKey={(row, index) => `${row.created_at}-${index}`}
-          renderRow={(row) => [
-            <td key="when" className="text-app-text-muted whitespace-nowrap tabular-nums">
-              {formatWhen(row.created_at)}
-            </td>,
-            <td key="user" className="truncate max-w-[7rem]">
-              {row.username}
-            </td>,
-            <td key="action" className="capitalize truncate max-w-[12rem]">
-              {kindLabel(row.kind)}
-              {row.credits > 1 ? ` · ${row.credits} cr` : ''}
-            </td>,
-          ]}
+          renderRow={(row) => {
+            const dest = assistantActionHref(row.kind)
+            return [
+              <td key="when" className="text-app-text-muted whitespace-nowrap tabular-nums">
+                {formatWhen(row.created_at)}
+              </td>,
+              <td key="user" className="truncate max-w-[7rem]">
+                {row.username}
+              </td>,
+              <td key="action" className="capitalize truncate max-w-[12rem]">
+                {kindLabel(row.kind)}
+                {row.credits > 1 ? ` · ${row.credits} cr` : ''}
+              </td>,
+              <td key="actions" className="text-right">
+                <div className="inline-flex justify-end">
+                  <ActionMenu label={`Actions for ${row.kind}`} minWidth="11rem">
+                    <ActionMenuItem to={dest.to}>{dest.label}</ActionMenuItem>
+                    <ActionMenuItem to={usersHref(row.username)}>Open user</ActionMenuItem>
+                  </ActionMenu>
+                </div>
+              </td>,
+            ]
+          }}
         />
       </div>
 
@@ -270,9 +317,8 @@ export default function AdminUserActivityPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-app-text">User activity</h1>
-        <p className="text-sm text-app-muted mt-1 max-w-2xl">
-          How users explore minerals, search the map, and use Ask Terra, to guide product and
-          business decisions.
+        <p className="text-sm text-app-muted mt-0.5">
+          Mineral explores, map search, and Ask Terra usage.
         </p>
       </div>
 

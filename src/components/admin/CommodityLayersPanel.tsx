@@ -54,26 +54,28 @@ function LayerVersionHistory({ layerId, className = 'mt-3' }: { layerId: number;
 
   return (
     <div className={`${className} rounded-lg border border-app-border/50 overflow-hidden`}>
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th>Version</th>
-            <th>Uploaded by</th>
-            <th>Features</th>
-            <th>When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pagination.pageItems.map((version) => (
-            <tr key={version.id}>
-              <td className="text-app-text">v{version.version_number}</td>
-              <td>{version.uploaded_by_name ?? 'Unknown'}</td>
-              <td className="tabular-nums">{version.feature_count}</td>
-              <td className="text-app-text-muted">{formatWhen(version.created_at)}</td>
+      <div className="overflow-x-auto">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Uploaded by</th>
+              <th>Features</th>
+              <th>When</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {pagination.pageItems.map((version) => (
+              <tr key={version.id}>
+                <td className="text-app-text">v{version.version_number}</td>
+                <td>{version.uploaded_by_name ?? 'Unknown'}</td>
+                <td className="tabular-nums">{version.feature_count}</td>
+                <td className="text-app-text-muted">{formatWhen(version.created_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <div className="px-3 pb-3">
         <ListPagination
           page={pagination.page}
@@ -206,6 +208,13 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
     })
   }
 
+  const handleHeatmapWeightChange = (layer: MapLayer, weight: number) => {
+    updateLayer.mutate({
+      layer,
+      data: { heatmap_weight: weight },
+    })
+  }
+
   const handleToggleActive = (layer: MapLayer) => {
     const nextActive = !layer.is_active
     toast.confirm(`${nextActive ? 'Show' : 'Hide'} "${displayName(layer)}" on the map?`, {
@@ -218,7 +227,13 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
   }
 
   const handleTogglePreview = (layer: MapLayer) => {
-    updateLayer.mutate({ layer, data: { is_preview: !layer.is_preview } })
+    const next = !layer.is_preview
+    updateLayer.mutate({ layer, data: { is_preview: next } })
+    toast.info(
+      next
+        ? `"${displayName(layer)}" will appear on the free map and legend`
+        : `"${displayName(layer)}" removed from the free map and legend`,
+    )
   }
 
   const handleDelete = (layer: MapLayer) => {
@@ -268,6 +283,7 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
       onColorChange={handleLayerColorChange}
       onStructureRankChange={handleStructureRankChange}
       onBufferChange={handleBufferChange}
+      onHeatmapWeightChange={handleHeatmapWeightChange}
       onToggleActive={handleToggleActive}
       onTogglePreview={handleTogglePreview}
       onDelete={handleDelete}

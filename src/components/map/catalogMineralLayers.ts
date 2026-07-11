@@ -16,6 +16,7 @@ export function catalogLayerMatchesSlug(layer: MapLayer, catalogSlug: string): b
   if (!catalogSlug) return false
   if (layer.slug === catalogSlug) return true
   if (layer.mineral_slug === catalogSlug) return true
+  if (layer.associated_catalog_slugs?.includes(catalogSlug)) return true
   const aliases = PERIODIC_LAYER_SLUGS[catalogSlug] ?? []
   return aliases.includes(layer.slug)
 }

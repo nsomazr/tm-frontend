@@ -52,24 +52,19 @@ export default function AdminMapSettingsPage() {
   const selectedCountry = countries.find((c) => c.code === countryCode)
 
   return (
-    <div className="max-w-2xl">
-      <div className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-1">Platform</p>
+    <div>
+      <div className="mb-4">
         <h1 className="text-2xl font-bold text-app-text">Map settings</h1>
-        <p className="mt-2 text-sm text-app-muted max-w-xl">
-          Choose the coordinate reference system (CRS) used on the public map for each country.
-          Explore area labels, saved point lists, and coordinate readouts follow the active
-          country on the map. Map users cannot change this; only platform admins can.
-        </p>
+        <p className="mt-0.5 text-sm text-app-muted">CRS for the public map, per country.</p>
       </div>
 
       <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
         <div className="border-b app-divider px-5 py-4 space-y-3">
           <div>
             <h2 className="font-semibold text-app-text">Coordinate reference system</h2>
-            <p className="text-sm text-app-muted mt-1">
-              Tanzania datasets commonly use <strong className="text-app-text-secondary">Arc 1960</strong>{' '}
-              geographic or UTM south zones 35S–37S. WGS 84 is used for GPS / satellite data.
+            <p className="text-sm text-app-muted mt-0.5">
+              Commonly <strong className="text-app-text-secondary">Arc 1960</strong> or UTM 35S–37S;
+              WGS 84 for GPS.
             </p>
           </div>
           <label className="block max-w-xs">
@@ -154,17 +149,16 @@ export default function AdminMapSettingsPage() {
             {' '}({current.epsg})
           </p>
           <p className="text-xs text-app-text-muted mt-2">
-            Changes apply immediately for everyone viewing the map in this country. Manual coordinate
-            entry in Explore area always uses WGS84 lat/lng; labels display in the selected CRS above.
+            Applies immediately. Explore entry stays WGS84; labels use this CRS.
           </p>
         </div>
       </section>
 
-      <p className="mt-6 text-sm text-app-muted">
+      <p className="mt-4 text-sm text-app-muted">
         <Link to="/maps" className="text-terra-600 dark:text-terra-400 hover:underline">
           Open map
         </Link>
-        {' '}to verify coordinate labels.
+        {' '}to verify labels.
       </p>
     </div>
   )

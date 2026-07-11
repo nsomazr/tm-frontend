@@ -15,7 +15,7 @@ export interface BoundaryVisibility {
 
 export const DEFAULT_BOUNDARY_VISIBILITY: BoundaryVisibility = {
   country: false,
-  regions: true,
+  regions: false,
   districts: false,
   wards: false,
   villages: false,
@@ -43,12 +43,10 @@ export function boundaryVisibilityIsDefault(visibility: BoundaryVisibility) {
 }
 
 export function initialBoundaryVisibilityForGeoJson(
-  geojson: { type: string; features: unknown[] } | null | undefined
+  _geojson: { type: string; features: unknown[] } | null | undefined
 ): BoundaryVisibility {
-  const next = { ...DEFAULT_BOUNDARY_VISIBILITY }
-  const levels = boundaryLevelsFromGeoJson(geojson)
-  if (levels.includes('regions')) next.regions = true
-  return next
+  // Boundaries stay off until the user enables them (regions / districts / villages).
+  return { ...DEFAULT_BOUNDARY_VISIBILITY }
 }
 
 export function boundaryLevelsFromGeoJson(

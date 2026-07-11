@@ -29,6 +29,7 @@ import {
 import MapSidebar from '../components/map/MapSidebar'
 import MapSearchBar from '../components/map/MapSearchBar'
 import MapCaptureGuard from '../components/map/MapCaptureGuard'
+import { clearLayerGeojsonCache } from '../components/map/mapGeojsonCache'
 import TerraAssistantLauncher from '../components/map/TerraAssistantLauncher'
 import ExploreDrawTool from '../components/map/ExploreDrawTool'
 import {
@@ -369,7 +370,7 @@ export default function FullMapPage() {
           districtIds: data.district_ids,
           villageIds: data.village_ids,
         })
-        setBoundaryVisibility(hasFullMapAccess ? DEFAULT_BOUNDARY_VISIBILITY : UNPAID_BOUNDARY_VISIBILITY)
+        // Leave regions/districts/villages for the user to toggle — do not auto-enable.
         return data
       } catch (error: unknown) {
         const err = error as {
@@ -524,18 +525,28 @@ export default function FullMapPage() {
     [hasFullMapAccess],
   )
 
+  const layersAccessKey = hasFullMapAccess ? 'full' : 'preview'
+  const layersMineralKey =
+    hasFullMapAccess && mineral && !catalogMineralSlug ? mineral : '__all__'
+
   const { data: layersData, isLoading, isFetching } = useQuery({
-    queryKey: ['layers', hasFullMapAccess && mineral && !catalogMineralSlug ? mineral : '__all__'],
+    queryKey: ['layers', layersAccessKey, layersMineralKey],
     queryFn: () =>
       mapsApi
-        .layers(hasFullMapAccess && mineral && !catalogMineralSlug ? { mineral_slug: mineral } : {})
+        .layers(
+          hasFullMapAccess && mineral && !catalogMineralSlug ? { mineral_slug: mineral } : {},
+        )
         .then((r) => r.data),
-    placeholderData: (prev) => prev,
     staleTime: 5 * 60 * 1000,
   })
 
   const searchResults = searchData?.results || []
-  const layers = layersData?.results || []
+  const layers = useMemo(() => {
+    const results = layersData?.results || []
+    // Defense in depth: unpaid map/legend only show admin-selected free-map layers.
+    if (hasFullMapAccess) return results
+    return results.filter((layer) => layer.is_preview)
+  }, [layersData?.results, hasFullMapAccess])
 
   const activeHeatmapSlug = useMemo(() => {
     if (!hasFullMapAccess || exploreOpen) return null
@@ -681,6 +692,12 @@ export default function FullMapPage() {
   )
 
   useEffect(() => {
+    if (!hasFullMapAccess) {
+      clearLayerGeojsonCache()
+    }
+  }, [hasFullMapAccess])
+
+  useEffect(() => {
     if (!layerIdsKey || exploreOpen || layers.length === 0) return
     if (catalogMineralSlug) {
       const nextVisible = visibleLayerIdsForCatalogSlug(catalogMineralSlug, layers)
@@ -735,13 +752,16 @@ export default function FullMapPage() {
     if (assistantMapContext.insideAdminBoundaries === false) return null
     const km2 = areaInsight.aerial?.analysis_area_km2
     if (!km2 || km2 <= 0) return null
+    const hitFeature = (assistantMapContext.featureIds?.length ?? 0) > 0
     return {
       lat: areaInsight.lat,
       lng: areaInsight.lng,
       areaKm2: km2,
       extended: areaInsight.aerial?.using_extended_area === true,
+      // Feature hits (points/polygons) stay centered on the click, not zoomed to the full zone.
+      focusMode: hitFeature ? 'point' : 'zone',
     }
-  }, [areaInsight, assistantMapContext?.fromMapClick, insightExplorationGeometry])
+  }, [areaInsight, assistantMapContext?.fromMapClick, assistantMapContext?.featureIds, insightExplorationGeometry])
 
   useEffect(() => {
     if (!areaInsight?.minerals?.length || layers.length === 0) return
@@ -797,10 +817,12 @@ export default function FullMapPage() {
       featureIds?: number[]
       boundaryId?: number
       explorationGeometry?: DrawGeometry
+      visibleLayerIds?: number[]
     }) => {
       const mapSnapshot = await captureInsightMapSnapshot()
       const { data } = await analyticsApi.areaInsights(params.lat, params.lng, params.zoom, {
         featureIds: params.featureIds,
+        visibleLayerIds: params.visibleLayerIds,
         country: DEFAULT_COUNTRY_CODE,
         boundaryId: params.boundaryId,
         explorationGeometry: params.explorationGeometry,
@@ -823,17 +845,24 @@ export default function FullMapPage() {
         featureIds: assistantMapContext.featureIds,
         boundaryId: assistantMapContext.boundaryId,
         explorationGeometry: assistantMapContext.explorationGeometry,
+        visibleLayerIds: assistantMapContext.visibleLayerIds,
       })
       setAreaInsight(data)
       setAssistantMapContext((prev) =>
-        prev ? { ...prev, basemap: mapBasemap } : prev,
+        prev
+          ? {
+              ...prev,
+              basemap: mapBasemap,
+              visibleLayerIds: [...visibleLayers],
+            }
+          : prev,
       )
     } catch {
       setAreaInsight(null)
     } finally {
       setInsightLoading(false)
     }
-  }, [assistantMapContext, fetchAreaInsight, mapBasemap])
+  }, [assistantMapContext, fetchAreaInsight, mapBasemap, visibleLayers])
 
   const handleExplore = useCallback(async () => {
     const draw = { mode: drawMode, points: drawPoints }
@@ -852,6 +881,7 @@ export default function FullMapPage() {
     setInsightLoading(true)
     setAreaInsight(null)
     const label = `Exploration ${drawMode} (${drawPoints.length} pt${drawPoints.length === 1 ? '' : 's'})`
+    const visibleLayerIds = [...visibleLayers]
     setAssistantMapContext({
       lat: centroid.lat,
       lng: centroid.lng,
@@ -861,6 +891,7 @@ export default function FullMapPage() {
       searchLabel: label,
       explorationGeometry: activeExplorationGeometry,
       basemap: mapBasemap,
+      visibleLayerIds,
     })
     setAssistantOpen(true)
     try {
@@ -869,6 +900,7 @@ export default function FullMapPage() {
         lng: centroid.lng,
         zoom: 12,
         explorationGeometry: activeExplorationGeometry,
+        visibleLayerIds,
       })
       setAreaInsight(data)
     } catch {
@@ -876,7 +908,15 @@ export default function FullMapPage() {
     } finally {
       setInsightLoading(false)
     }
-  }, [drawMode, drawPoints, activeExplorationGeometry, zoomToExplorationSelection, mapBasemap, fetchAreaInsight])
+  }, [
+    drawMode,
+    drawPoints,
+    activeExplorationGeometry,
+    zoomToExplorationSelection,
+    mapBasemap,
+    fetchAreaInsight,
+    visibleLayers,
+  ])
 
   const handleAreaInspect = useCallback(
     async (lat: number, lng: number, zoom: number, featureIds?: number[]) => {
@@ -955,6 +995,7 @@ export default function FullMapPage() {
         villageBoundaryName,
         insideAdminBoundaries,
         basemap: mapBasemap,
+        visibleLayerIds: [...visibleLayers],
       })
       setAssistantOpen(true)
       try {
@@ -964,6 +1005,7 @@ export default function FullMapPage() {
           zoom,
           featureIds,
           boundaryId,
+          visibleLayerIds: [...visibleLayers],
         })
         setAreaInsight(data)
       } catch {
@@ -978,6 +1020,7 @@ export default function FullMapPage() {
       mapBasemap,
       m.map.clickOutsideBoundaries,
       m.map.clickOutsideBoundariesDescription,
+      visibleLayers,
     ],
   )
 
@@ -998,16 +1041,25 @@ export default function FullMapPage() {
   const handleCloseAssistant = useCallback(() => {
     const fromMapClick = assistantMapContext?.fromMapClick
     setAssistantOpen(false)
-    setAreaInsight(null)
-    setAssistantMapContext(null)
     setInsightLoading(false)
-    if (fromMapClick && !selectedResult) {
+    setInsightExplorationGeometry(undefined)
+    // Keep areaInsight + map context so the analysis circle stays on the map.
+    if (fromMapClick) {
       setBoundaryFocus(null)
       setAdminFitBounds(null)
+      setMapFocus(null)
+    } else {
+      setAreaInsight(null)
+      setAssistantMapContext(null)
     }
     if (!debouncedSearch && !selectedResult) {
       setPanelDismissed(true)
     }
+    // Zoom out to country while leaving the circular zone visible.
+    window.setTimeout(() => {
+      mapControlsRef.current?.refreshLayout()
+      mapControlsRef.current?.zoomToCountry()
+    }, 80)
   }, [assistantMapContext, debouncedSearch, selectedResult])
 
   const toggleAssistantPanel = useCallback(() => {
@@ -1035,6 +1087,7 @@ export default function FullMapPage() {
         lng,
         zoom,
         mineralSlug: item.type === 'mineral' ? item.slug : undefined,
+        layerId: item.type === 'layer' ? item.id : undefined,
         regionId: item.type === 'region' ? item.id : undefined,
         boundaryId:
           item.type === 'region_boundary' ||
@@ -1044,6 +1097,7 @@ export default function FullMapPage() {
             ? (item.boundary_id ?? item.id)
             : undefined,
         searchLabel,
+        visibleLayerIds: [...visibleLayers],
       })
 
       if (item.center || item.bounds) {
@@ -1062,7 +1116,7 @@ export default function FullMapPage() {
         setInsightLoading(false)
       }
     },
-    [displayName, focusOn, setAdminFitBounds, setMapFocus]
+    [displayName, focusOn, setAdminFitBounds, setMapFocus, visibleLayers]
   )
 
   const loadSearchPreview = useCallback(async (item: MineralSearchInsight) => {
@@ -1152,6 +1206,7 @@ export default function FullMapPage() {
   }
 
   const handleClosePanel = () => {
+    const fromMapClick = assistantMapContext?.fromMapClick
     setAssistantOpen(false)
     setPanelDismissed(true)
     setSearch('')
@@ -1160,11 +1215,24 @@ export default function FullMapPage() {
     setSelectedResult(null)
     setSearchPreview(null)
     setSearchPreviewLoading(false)
-    setAreaInsight(null)
     setMapFocus(null)
     setAdminFitBounds(null)
     setBoundaryFocus(null)
+    setInsightExplorationGeometry(undefined)
+    if (fromMapClick) {
+      // Keep insight so the analysis circle remains; only zoom out.
+      window.setTimeout(() => {
+        mapControlsRef.current?.refreshLayout()
+        mapControlsRef.current?.zoomToCountry()
+      }, 80)
+      return
+    }
+    setAreaInsight(null)
     setAssistantMapContext(null)
+    window.setTimeout(() => {
+      mapControlsRef.current?.refreshLayout()
+      mapControlsRef.current?.resetView()
+    }, 80)
   }
 
   const handleClearBoundaryFocus = useCallback(() => {
@@ -1177,6 +1245,12 @@ export default function FullMapPage() {
     setMapFocus(null)
     setAdminFitBounds(null)
     setBoundaryFocus(null)
+    // Home / full reset also clears the inspection circle.
+    setAreaInsight(null)
+    setAssistantMapContext(null)
+    setAssistantOpen(false)
+    setInsightLoading(false)
+    setInsightExplorationGeometry(undefined)
   }, [])
 
   const askTerraFromSearch = insightLoading && assistantOpen && !!assistantMapContext?.searchLabel
