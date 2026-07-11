@@ -24,9 +24,7 @@ import {
   LAYER_HEATMAP_WEIGHT_MAX,
   LAYER_HEATMAP_WEIGHT_MIN,
 } from '../../constants/layerHeatmapWeight'
-import { DEFAULT_PAGE_SIZE } from '../../hooks/usePagination'
-
-const GROUP_PAGE_SIZE = DEFAULT_PAGE_SIZE
+const GROUP_PAGE_SIZE = 5
 
 export const LAYER_ARRANGE_GROUPS = [
   {
@@ -214,6 +212,8 @@ export default function LayersManageTable({
   const [openMenuLayerId, setOpenMenuLayerId] = useState<number | null>(null)
   const [colorPickerLayerId, setColorPickerLayerId] = useState<number | null>(null)
   const [groupPages, setGroupPages] = useState<Record<string, number>>({})
+  /** When true, that group lists every layer (for cross-page drag reorder). */
+  const [groupShowAll, setGroupShowAll] = useState<Record<string, boolean>>({})
   const highlightRowRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -246,14 +246,19 @@ export default function LayersManageTable({
     for (const group of groupedLayers) {
       const index = group.layers.findIndex((layer) => layer.id === highlightLayerId)
       if (index < 0) continue
+      if (groupShowAll[group.type]) break
       const page = Math.floor(index / GROUP_PAGE_SIZE) + 1
       setGroupPages((prev) => (prev[group.type] === page ? prev : { ...prev, [group.type]: page }))
       break
     }
-  }, [highlightLayerId, groupedLayers])
+  }, [highlightLayerId, groupedLayers, groupShowAll])
 
   const setGroupPage = (groupType: string, page: number) => {
     setGroupPages((prev) => ({ ...prev, [groupType]: page }))
+  }
+
+  const toggleGroupShowAll = (groupType: string) => {
+    setGroupShowAll((prev) => ({ ...prev, [groupType]: !prev[groupType] }))
   }
 
   const handleDrop = (
@@ -321,12 +326,13 @@ export default function LayersManageTable({
       <div className="divide-y divide-[var(--color-app-border)]">
         {groupedLayers.map((group) => {
           const groupCanDrag = group.activeLayers.length > 1 && !reorderBusy
+          const showAll = Boolean(groupShowAll[group.type])
+          const needsPaging = group.layers.length > GROUP_PAGE_SIZE
           const pageCount = Math.max(1, Math.ceil(group.layers.length / GROUP_PAGE_SIZE))
           const page = Math.min(Math.max(1, groupPages[group.type] ?? 1), pageCount)
-          const pageLayers = group.layers.slice(
-            (page - 1) * GROUP_PAGE_SIZE,
-            page * GROUP_PAGE_SIZE,
-          )
+          const pageLayers = showAll
+            ? group.layers
+            : group.layers.slice((page - 1) * GROUP_PAGE_SIZE, page * GROUP_PAGE_SIZE)
 
           return (
             <section key={group.type} className="bg-app-surface">
@@ -344,11 +350,27 @@ export default function LayersManageTable({
                     </div>
                   </div>
                 </div>
-                {groupCanDrag && (
-                  <span className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.08em] text-app-text-muted shrink-0">
-                    Top = front
-                  </span>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {needsPaging && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroupShowAll(group.type)}
+                      className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-app-border bg-app-surface/80 text-app-text-secondary hover:bg-app-subtle hover:text-app-text transition-colors"
+                      title={
+                        showAll
+                          ? 'Show 5 per page'
+                          : 'Show every layer in this group (easier drag reorder)'
+                      }
+                    >
+                      {showAll ? 'Pages of 5' : 'Show all'}
+                    </button>
+                  )}
+                  {groupCanDrag && (
+                    <span className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.08em] text-app-text-muted">
+                      Top = front
+                    </span>
+                  )}
+                </div>
               </div>
 
               <ul className="app-divide-y">
@@ -684,7 +706,7 @@ export default function LayersManageTable({
                   )
                 })}
               </ul>
-              {group.layers.length > GROUP_PAGE_SIZE && (
+              {needsPaging && !showAll && (
                 <div className="px-4 py-3 sm:px-6 border-t app-divider bg-app-subtle/20">
                   <ListPagination
                     page={page}
