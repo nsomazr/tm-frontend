@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { analyticsApi } from '../../api'
 import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 import type { ManagerPerformanceRow } from '../../types'
 
 function fmt(n: number) {
@@ -103,8 +105,10 @@ export default function ManagerPerformancePage() {
     queryFn: () => analyticsApi.adminManagerPerformance().then((r) => r.data),
   })
 
+  const managers = data?.managers ?? []
+  const managerPagination = usePagination(managers)
+
   const summary = useMemo(() => {
-    const managers = data?.managers ?? []
     const totals = managers.reduce(
       (acc, row) => {
         acc.features += row.features.total
@@ -114,7 +118,7 @@ export default function ManagerPerformancePage() {
       { features: 0, uploads: 0 }
     )
     return { count: managers.length, ...totals }
-  }, [data])
+  }, [managers])
 
   return (
     <div className="space-y-6">
@@ -158,7 +162,7 @@ export default function ManagerPerformancePage() {
                 Updated {fmtDate(data.generated_at)}
               </p>
             </div>
-            {data.managers.length === 0 ? (
+            {managers.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-app-text-muted">
                 No mineral managers yet.{' '}
                 <Link to="/admin/managers" className="text-terra-600 hover:underline">
@@ -166,11 +170,24 @@ export default function ManagerPerformancePage() {
                 </Link>
               </p>
             ) : (
-              <div>
-                {data.managers.map((row) => (
-                  <ManagerRow key={row.user_id} row={row} />
-                ))}
-              </div>
+              <>
+                <div>
+                  {managerPagination.pageItems.map((row) => (
+                    <ManagerRow key={row.user_id} row={row} />
+                  ))}
+                </div>
+                {managerPagination.hasMultiplePages && (
+                  <div className="px-5 py-3 border-t app-divider bg-app-subtle/20">
+                    <ListPagination
+                      page={managerPagination.page}
+                      pageCount={managerPagination.pageCount}
+                      total={managerPagination.total}
+                      pageSize={managerPagination.pageSize}
+                      onPageChange={managerPagination.setPage}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </section>
         </>

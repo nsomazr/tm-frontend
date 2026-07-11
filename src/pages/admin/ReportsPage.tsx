@@ -231,7 +231,7 @@ export default function ReportsPage() {
 
   const allReports = reports?.results ?? []
   const visibleReports = showHidden ? allReports : allReports.filter((r) => r.is_active !== false)
-  const reportPagination = usePagination(visibleReports, 25)
+  const reportPagination = usePagination(visibleReports)
 
   return (
     <div>

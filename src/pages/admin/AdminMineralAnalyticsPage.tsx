@@ -5,6 +5,8 @@ import { LayerTypeGrid } from '../../components/analytics/AnalyticsViz'
 import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
 import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 import type { AdminMineralAnalytics } from '../../types'
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -19,6 +21,7 @@ function KpiCard({ label, value, hint }: { label: string; value: string; hint?: 
 
 function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
   const { coverage } = data
+  const mineralPagination = usePagination(coverage.minerals)
   const regionChart = coverage.hotspots_by_region.slice(0, 8).map((row) => ({
     name: row.region,
     value: row.count,
@@ -105,58 +108,71 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
         {coverage.minerals.length === 0 ? (
           <p className="px-5 py-8 text-sm text-app-text-muted">No minerals in catalog yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Mineral</th>
-                  <th className="text-right">Layers</th>
-                  <th className="text-right">Areas</th>
-                  <th className="text-right">Reports</th>
-                  <th className="text-right">Explorations</th>
-                  <th className="text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {coverage.minerals.map((mineral) => {
-                  const interest = data.exploration_interest.find(
-                    (row) => row.mineral_slug === mineral.slug
-                  )
-                  return (
-                    <tr key={mineral.slug}>
-                      <td>
-                        <span className="inline-flex items-center gap-2">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: mineral.color }}
-                          />
-                          {mineral.name}
-                        </span>
-                      </td>
-                      <td className="text-right tabular-nums">{fmt(mineral.layer_count)}</td>
-                      <td className="text-right tabular-nums">{fmt(mineral.feature_count)}</td>
-                      <td className="text-right tabular-nums">{fmt(mineral.report_count)}</td>
-                      <td className="text-right tabular-nums text-app-text-muted">
-                        {interest ? fmt(interest.explorations) : '-'}
-                      </td>
-                      <td className="text-right">
-                        <div className="inline-flex justify-end">
-                          <ActionMenu label={`Actions for ${mineral.name}`} minWidth="11rem">
-                            <ActionMenuItem to={`/?mineral=${encodeURIComponent(mineral.slug)}`}>
-                              View on map
-                            </ActionMenuItem>
-                            <ActionMenuItem to="/admin/minerals">Open commodities</ActionMenuItem>
-                            <ActionMenuItem to="/admin/coverage">Coverage</ActionMenuItem>
-                            <ActionMenuItem to="/admin/reports">Reports</ActionMenuItem>
-                          </ActionMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="overflow-x-auto">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Mineral</th>
+                    <th className="text-right">Layers</th>
+                    <th className="text-right">Areas</th>
+                    <th className="text-right">Reports</th>
+                    <th className="text-right">Explorations</th>
+                    <th className="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mineralPagination.pageItems.map((mineral) => {
+                    const interest = data.exploration_interest.find(
+                      (row) => row.mineral_slug === mineral.slug
+                    )
+                    return (
+                      <tr key={mineral.slug}>
+                        <td>
+                          <span className="inline-flex items-center gap-2">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: mineral.color }}
+                            />
+                            {mineral.name}
+                          </span>
+                        </td>
+                        <td className="text-right tabular-nums">{fmt(mineral.layer_count)}</td>
+                        <td className="text-right tabular-nums">{fmt(mineral.feature_count)}</td>
+                        <td className="text-right tabular-nums">{fmt(mineral.report_count)}</td>
+                        <td className="text-right tabular-nums text-app-text-muted">
+                          {interest ? fmt(interest.explorations) : '-'}
+                        </td>
+                        <td className="text-right">
+                          <div className="inline-flex justify-end">
+                            <ActionMenu label={`Actions for ${mineral.name}`} minWidth="11rem">
+                              <ActionMenuItem to={`/?mineral=${encodeURIComponent(mineral.slug)}`}>
+                                View on map
+                              </ActionMenuItem>
+                              <ActionMenuItem to="/admin/minerals">Open commodities</ActionMenuItem>
+                              <ActionMenuItem to="/admin/coverage">Coverage</ActionMenuItem>
+                              <ActionMenuItem to="/admin/reports">Reports</ActionMenuItem>
+                            </ActionMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {mineralPagination.hasMultiplePages && (
+              <div className="px-5 py-3 border-t app-divider bg-app-subtle/20">
+                <ListPagination
+                  page={mineralPagination.page}
+                  pageCount={mineralPagination.pageCount}
+                  total={mineralPagination.total}
+                  pageSize={mineralPagination.pageSize}
+                  onPageChange={mineralPagination.setPage}
+                />
+              </div>
+            )}
+          </>
         )}
       </section>
     </div>

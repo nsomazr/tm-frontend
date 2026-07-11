@@ -6,10 +6,10 @@ import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
 import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 import ListPagination from '../../components/ui/ListPagination'
-import { usePagination } from '../../hooks/usePagination'
+import { DEFAULT_PAGE_SIZE, usePagination } from '../../hooks/usePagination'
 import type { AdminUserActivityAnalytics } from '../../types'
 
-const ACTIVITY_LOG_PAGE_SIZE = 5
+const ACTIVITY_LOG_PAGE_SIZE = DEFAULT_PAGE_SIZE
 
 function KpiCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (

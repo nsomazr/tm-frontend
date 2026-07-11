@@ -192,6 +192,18 @@ export const paymentsApi = {
   adminOrder: (reference: string) => api.get<PaymentOrder>(`/payments/admin/orders/${reference}/`),
   refreshOrder: (reference: string) => api.post<PaymentOrder>(`/payments/admin/orders/${reference}/refresh/`),
   completeOrder: (reference: string) => api.post<PaymentOrder>(`/payments/admin/orders/${reference}/complete/`),
+  generateInvoice: (reference: string, regenerate = false) =>
+    api.post<PaymentOrder>(`/payments/admin/orders/${reference}/invoice/generate/`, { regenerate }),
+  downloadInvoice: (reference: string) =>
+    api.get(`/payments/admin/orders/${reference}/invoice/download/`, { responseType: 'blob' }),
+  emailInvoice: (reference: string, email?: string) =>
+    api.post<PaymentOrder>(`/payments/admin/orders/${reference}/invoice/email/`, email ? { email } : {}),
+  generateReceipt: (reference: string, regenerate = false) =>
+    api.post<PaymentOrder>(`/payments/admin/orders/${reference}/receipt/generate/`, { regenerate }),
+  downloadReceipt: (reference: string) =>
+    api.get(`/payments/admin/orders/${reference}/receipt/download/`, { responseType: 'blob' }),
+  emailReceipt: (reference: string, email?: string) =>
+    api.post<PaymentOrder>(`/payments/admin/orders/${reference}/receipt/email/`, email ? { email } : {}),
 }
 
 export interface ReportAiDraftResponse {

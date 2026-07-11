@@ -24,7 +24,9 @@ import {
   LAYER_HEATMAP_WEIGHT_MAX,
   LAYER_HEATMAP_WEIGHT_MIN,
 } from '../../constants/layerHeatmapWeight'
-const GROUP_PAGE_SIZE = 5
+import { DEFAULT_PAGE_SIZE } from '../../hooks/usePagination'
+
+const GROUP_PAGE_SIZE = DEFAULT_PAGE_SIZE
 
 export const LAYER_ARRANGE_GROUPS = [
   {
@@ -358,11 +360,11 @@ export default function LayersManageTable({
                       className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-app-border bg-app-surface/80 text-app-text-secondary hover:bg-app-subtle hover:text-app-text transition-colors"
                       title={
                         showAll
-                          ? 'Show 5 per page'
+                          ? `Show ${GROUP_PAGE_SIZE} per page`
                           : 'Show every layer in this group (easier drag reorder)'
                       }
                     >
-                      {showAll ? 'Pages of 5' : 'Show all'}
+                      {showAll ? `Pages of ${GROUP_PAGE_SIZE}` : 'Show all'}
                     </button>
                   )}
                   {groupCanDrag && (

@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { paymentsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
+import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 import ListPagination from '../../components/ui/ListPagination'
 import { toast } from '../../components/ui/toast'
 import { usePagination } from '../../hooks/usePagination'
@@ -81,6 +82,31 @@ function activationLabel(source?: PaymentOrder['activation_source']) {
   return 'Payment gateway'
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
+function promptEmail(defaultEmail?: string | null) {
+  const value = window.prompt('Send to email address', defaultEmail || '')
+  if (value == null) return null
+  return value.trim()
+}
+
+function documentStatusLabel(doc: PaymentOrder['invoice'] | PaymentOrder['receipt']) {
+  if (!doc) return 'Not generated'
+  if (doc.email_sent_at) {
+    return `Emailed ${doc.email_send_count}× · ${formatWhen(doc.email_sent_at)}`
+  }
+  return doc.has_pdf ? 'PDF ready' : 'Generated'
+}
+
 function hasGatewayPayload(response?: Record<string, unknown>) {
   return !!response && Object.keys(response).length > 0
 }
@@ -124,16 +150,30 @@ function OrderDetailModal({
   isSuperAdmin,
   refreshPending,
   completePending,
+  docBusy,
   onRefresh,
   onComplete,
+  onGenerateInvoice,
+  onDownloadInvoice,
+  onEmailInvoice,
+  onGenerateReceipt,
+  onDownloadReceipt,
+  onEmailReceipt,
 }: {
   order: PaymentOrder
   onClose: () => void
   isSuperAdmin: boolean
   refreshPending: boolean
   completePending: boolean
+  docBusy: boolean
   onRefresh: () => void
   onComplete: () => void
+  onGenerateInvoice: () => void
+  onDownloadInvoice: () => void
+  onEmailInvoice: () => void
+  onGenerateReceipt: () => void
+  onDownloadReceipt: () => void
+  onEmailReceipt: () => void
 }) {
   const [showRawGateway, setShowRawGateway] = useState(false)
   const gatewayRows = order.gateway_response ? gatewayEventRows(order.gateway_response) : []
@@ -261,22 +301,70 @@ function OrderDetailModal({
               {activationLabel(order.activation_source) && (
                 <DetailField label="Completed via">{activationLabel(order.activation_source)}</DetailField>
               )}
-              {order.invoice_number ? (
+              {order.invoice_number || order.invoice ? (
                 <DetailField label="Invoice">
-                  <span className="font-mono text-xs">{order.invoice_number}</span>
-                  {order.invoice_issued_at && (
-                    <span className="block text-xs map-text-muted mt-0.5">
-                      Issued {formatWhen(order.invoice_issued_at)}
-                    </span>
-                  )}
+                  <span className="font-mono text-xs">{order.invoice?.number || order.invoice_number}</span>
+                  <span className="block text-xs map-text-muted mt-0.5">
+                    {documentStatusLabel(order.invoice)}
+                  </span>
                 </DetailField>
               ) : order.status === 'completed' ? (
                 <DetailField label="Invoice">
-                  <span className="text-xs map-text-muted">Generating…</span>
+                  <span className="text-xs map-text-muted">Not generated yet</span>
+                </DetailField>
+              ) : null}
+              {order.receipt || order.receipt_number ? (
+                <DetailField label="Receipt">
+                  <span className="font-mono text-xs">{order.receipt?.number || order.receipt_number}</span>
+                  <span className="block text-xs map-text-muted mt-0.5">
+                    {documentStatusLabel(order.receipt)}
+                  </span>
+                </DetailField>
+              ) : order.status === 'completed' ? (
+                <DetailField label="Receipt">
+                  <span className="text-xs map-text-muted">Not generated yet</span>
                 </DetailField>
               ) : null}
             </dl>
           </section>
+
+          {(order.document_emails?.length ?? 0) > 0 && (
+            <section>
+              <h3 className="text-xs font-semibold uppercase tracking-wide map-text-muted mb-3">
+                Email delivery log
+              </h3>
+              <ul className="space-y-2 text-sm">
+                {order.document_emails!.map((log) => (
+                  <li
+                    key={log.id}
+                    className="rounded-lg border border-app-border bg-app-subtle px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="capitalize font-medium map-text">{log.document_type}</span>
+                      <span
+                        className={
+                          log.status === 'sent'
+                            ? 'status-badge-completed'
+                            : 'status-badge-failed'
+                        }
+                      >
+                        {log.status}
+                      </span>
+                      <span className="text-xs map-text-muted">{formatWhen(log.created_at)}</span>
+                    </div>
+                    <p className="text-xs map-text mt-1">
+                      To {log.sent_to}
+                      {log.document_number ? ` · ${log.document_number}` : ''}
+                      {log.sent_by_email ? ` · by ${log.sent_by_email}` : ''}
+                    </p>
+                    {log.error && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1 break-all">{log.error}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {gatewayRows.length > 0 && (
             <section>
@@ -310,6 +398,62 @@ function OrderDetailModal({
           )}
 
           <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onGenerateInvoice}
+              disabled={docBusy}
+              className="btn-secondary text-sm disabled:opacity-50"
+            >
+              {order.invoice ? 'Regenerate invoice' : 'Generate invoice'}
+            </button>
+            {order.invoice?.has_pdf && (
+              <button
+                type="button"
+                onClick={onDownloadInvoice}
+                disabled={docBusy}
+                className="btn-secondary text-sm disabled:opacity-50"
+              >
+                Download invoice
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onEmailInvoice}
+              disabled={docBusy}
+              className="btn-secondary text-sm disabled:opacity-50"
+            >
+              Email invoice
+            </button>
+            {order.status === 'completed' && (
+              <>
+                <button
+                  type="button"
+                  onClick={onGenerateReceipt}
+                  disabled={docBusy}
+                  className="btn-secondary text-sm disabled:opacity-50"
+                >
+                  {order.receipt ? 'Regenerate receipt' : 'Generate receipt'}
+                </button>
+                {order.receipt?.has_pdf && (
+                  <button
+                    type="button"
+                    onClick={onDownloadReceipt}
+                    disabled={docBusy}
+                    className="btn-secondary text-sm disabled:opacity-50"
+                  >
+                    Download receipt
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onEmailReceipt}
+                  disabled={docBusy}
+                  className="btn-secondary text-sm disabled:opacity-50"
+                >
+                  Email receipt
+                </button>
+              </>
+            )}
             {order.status === 'pending' && (
               <button
                 type="button"
@@ -390,6 +534,75 @@ export default function RevenuePage() {
     onError: () => toast.error('Could not mark order as completed'),
   })
 
+  const applyOrderUpdate = (data: PaymentOrder) => {
+    setSelected((prev) => (prev?.merchant_reference === data.merchant_reference ? data : prev))
+    invalidate()
+  }
+
+  const generateInvoice = useMutation({
+    mutationFn: ({ reference, regenerate }: { reference: string; regenerate?: boolean }) =>
+      paymentsApi.generateInvoice(reference, regenerate),
+    onSuccess: ({ data }) => {
+      applyOrderUpdate(data)
+      toast.success('Invoice generated')
+    },
+    onError: (err: Error) => toast.error('Could not generate invoice', { description: err.message }),
+  })
+
+  const downloadInvoice = useMutation({
+    mutationFn: async (order: PaymentOrder) => {
+      const { data } = await paymentsApi.downloadInvoice(order.merchant_reference)
+      const name = `${order.invoice?.number || order.invoice_number || order.merchant_reference}-invoice.pdf`
+      downloadBlob(data as Blob, name)
+    },
+    onSuccess: () => toast.success('Invoice download started'),
+    onError: () => toast.error('Could not download invoice'),
+  })
+
+  const emailInvoice = useMutation({
+    mutationFn: ({ reference, email }: { reference: string; email?: string }) =>
+      paymentsApi.emailInvoice(reference, email),
+    onSuccess: ({ data }) => {
+      applyOrderUpdate(data)
+      toast.success('Invoice emailed', {
+        description: data.invoice?.email_sent_to || data.user_email || undefined,
+      })
+    },
+    onError: (err: Error) => toast.error('Could not email invoice', { description: err.message }),
+  })
+
+  const generateReceipt = useMutation({
+    mutationFn: ({ reference, regenerate }: { reference: string; regenerate?: boolean }) =>
+      paymentsApi.generateReceipt(reference, regenerate),
+    onSuccess: ({ data }) => {
+      applyOrderUpdate(data)
+      toast.success('Receipt generated')
+    },
+    onError: (err: Error) => toast.error('Could not generate receipt', { description: err.message }),
+  })
+
+  const downloadReceipt = useMutation({
+    mutationFn: async (order: PaymentOrder) => {
+      const { data } = await paymentsApi.downloadReceipt(order.merchant_reference)
+      const name = `${order.receipt?.number || order.receipt_number || order.merchant_reference}-receipt.pdf`
+      downloadBlob(data as Blob, name)
+    },
+    onSuccess: () => toast.success('Receipt download started'),
+    onError: () => toast.error('Could not download receipt'),
+  })
+
+  const emailReceipt = useMutation({
+    mutationFn: ({ reference, email }: { reference: string; email?: string }) =>
+      paymentsApi.emailReceipt(reference, email),
+    onSuccess: ({ data }) => {
+      applyOrderUpdate(data)
+      toast.success('Receipt emailed', {
+        description: data.receipt?.email_sent_to || data.user_email || undefined,
+      })
+    },
+    onError: (err: Error) => toast.error('Could not email receipt', { description: err.message }),
+  })
+
   const openDetail = async (order: PaymentOrder) => {
     try {
       const { data } = await paymentsApi.adminOrder(order.merchant_reference)
@@ -399,9 +612,46 @@ export default function RevenuePage() {
     }
   }
 
+  const handleEmailInvoice = (order: PaymentOrder) => {
+    const email = promptEmail(order.user_email)
+    if (email === null) return
+    if (!email && !order.user_email) {
+      toast.error('Customer has no email on file')
+      return
+    }
+    emailInvoice.mutate({
+      reference: order.merchant_reference,
+      email: email || undefined,
+    })
+  }
+
+  const handleEmailReceipt = (order: PaymentOrder) => {
+    if (order.status !== 'completed') {
+      toast.error('Receipts are only for completed orders')
+      return
+    }
+    const email = promptEmail(order.user_email)
+    if (email === null) return
+    if (!email && !order.user_email) {
+      toast.error('Customer has no email on file')
+      return
+    }
+    emailReceipt.mutate({
+      reference: order.merchant_reference,
+      email: email || undefined,
+    })
+  }
+
   const orders = ordersPage?.results || []
   const ordersPagination = usePagination(orders)
-  const actionPending = refreshOrder.isPending || completeOrder.isPending
+  const docBusy =
+    generateInvoice.isPending ||
+    downloadInvoice.isPending ||
+    emailInvoice.isPending ||
+    generateReceipt.isPending ||
+    downloadReceipt.isPending ||
+    emailReceipt.isPending
+  const actionPending = refreshOrder.isPending || completeOrder.isPending || docBusy
 
   return (
     <div>
@@ -537,34 +787,76 @@ export default function RevenuePage() {
                     </td>
                     <td className="text-xs map-text-muted whitespace-nowrap">{formatWhen(order.created_at)}</td>
                     <td className="text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openDetail(order)}
-                          className="btn-secondary !px-2.5 !py-1.5 text-xs"
-                        >
-                          View
-                        </button>
-                        {order.status === 'pending' && (
-                          <button
-                            type="button"
-                            disabled={actionPending}
-                            onClick={() => refreshOrder.mutate(order.merchant_reference)}
-                            className="btn-secondary !px-2.5 !py-1.5 text-xs disabled:opacity-50"
+                      <div className="inline-flex justify-end">
+                        <ActionMenu label={`Actions for ${order.merchant_reference}`} minWidth="12rem">
+                          <ActionMenuItem onClick={() => openDetail(order)}>View details</ActionMenuItem>
+                          <ActionMenuItem
+                            disabled={docBusy}
+                            onClick={() =>
+                              generateInvoice.mutate({
+                                reference: order.merchant_reference,
+                                regenerate: Boolean(order.invoice),
+                              })
+                            }
                           >
-                            Refresh
-                          </button>
-                        )}
-                        {isSuperAdmin && order.status !== 'completed' && (
-                          <button
-                            type="button"
-                            disabled={actionPending}
-                            onClick={() => completeOrder.mutate(order.merchant_reference)}
-                            className="btn-primary !px-2.5 !py-1.5 text-xs disabled:opacity-50"
+                            {order.invoice ? 'Regenerate invoice' : 'Generate invoice'}
+                          </ActionMenuItem>
+                          <ActionMenuItem
+                            disabled={docBusy || !order.invoice?.has_pdf}
+                            onClick={() => downloadInvoice.mutate(order)}
                           >
-                            Complete
-                          </button>
-                        )}
+                            Download invoice
+                          </ActionMenuItem>
+                          <ActionMenuItem
+                            disabled={docBusy}
+                            onClick={() => handleEmailInvoice(order)}
+                          >
+                            Email invoice
+                          </ActionMenuItem>
+                          {order.status === 'completed' && (
+                            <>
+                              <ActionMenuItem
+                                disabled={docBusy}
+                                onClick={() =>
+                                  generateReceipt.mutate({
+                                    reference: order.merchant_reference,
+                                    regenerate: Boolean(order.receipt),
+                                  })
+                                }
+                              >
+                                {order.receipt ? 'Regenerate receipt' : 'Generate receipt'}
+                              </ActionMenuItem>
+                              <ActionMenuItem
+                                disabled={docBusy || !order.receipt?.has_pdf}
+                                onClick={() => downloadReceipt.mutate(order)}
+                              >
+                                Download receipt
+                              </ActionMenuItem>
+                              <ActionMenuItem
+                                disabled={docBusy}
+                                onClick={() => handleEmailReceipt(order)}
+                              >
+                                Email receipt
+                              </ActionMenuItem>
+                            </>
+                          )}
+                          {order.status === 'pending' && (
+                            <ActionMenuItem
+                              disabled={actionPending}
+                              onClick={() => refreshOrder.mutate(order.merchant_reference)}
+                            >
+                              Refresh status
+                            </ActionMenuItem>
+                          )}
+                          {isSuperAdmin && order.status !== 'completed' && (
+                            <ActionMenuItem
+                              disabled={actionPending}
+                              onClick={() => completeOrder.mutate(order.merchant_reference)}
+                            >
+                              Mark completed
+                            </ActionMenuItem>
+                          )}
+                        </ActionMenu>
                       </div>
                     </td>
                   </tr>
@@ -590,8 +882,25 @@ export default function RevenuePage() {
           isSuperAdmin={isSuperAdmin}
           refreshPending={refreshOrder.isPending}
           completePending={completeOrder.isPending}
+          docBusy={docBusy}
           onRefresh={() => refreshOrder.mutate(selected.merchant_reference)}
           onComplete={() => completeOrder.mutate(selected.merchant_reference)}
+          onGenerateInvoice={() =>
+            generateInvoice.mutate({
+              reference: selected.merchant_reference,
+              regenerate: Boolean(selected.invoice),
+            })
+          }
+          onDownloadInvoice={() => downloadInvoice.mutate(selected)}
+          onEmailInvoice={() => handleEmailInvoice(selected)}
+          onGenerateReceipt={() =>
+            generateReceipt.mutate({
+              reference: selected.merchant_reference,
+              regenerate: Boolean(selected.receipt),
+            })
+          }
+          onDownloadReceipt={() => downloadReceipt.mutate(selected)}
+          onEmailReceipt={() => handleEmailReceipt(selected)}
         />
       )}
     </div>

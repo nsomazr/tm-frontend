@@ -1,6 +1,9 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { adsApi } from '../../../api'
+import ListPagination from '../../../components/ui/ListPagination'
+import { usePagination } from '../../../hooks/usePagination'
 import { adStatusBadgeClass } from './adAdminUtils'
 
 export default function AdsPerformancePage() {
@@ -14,9 +17,14 @@ export default function AdsPerformancePage() {
     queryFn: () => adsApi.adminList(),
   })
 
-  const sortedCampaigns = [...campaigns].sort(
-    (a, b) => b.impression_count - a.impression_count || b.click_count - a.click_count,
+  const sortedCampaigns = useMemo(
+    () =>
+      [...campaigns].sort(
+        (a, b) => b.impression_count - a.impression_count || b.click_count - a.click_count,
+      ),
+    [campaigns],
   )
+  const campaignPagination = usePagination(sortedCampaigns)
 
   return (
     <div>
@@ -107,7 +115,7 @@ export default function AdsPerformancePage() {
                   </td>
                 </tr>
               ) : (
-                sortedCampaigns.map((campaign) => (
+                campaignPagination.pageItems.map((campaign) => (
                   <tr key={campaign.id} className="border-b app-divider last:border-0">
                     <td className="px-4 py-3">
                       <p className="font-medium text-app-text">{campaign.title}</p>
@@ -139,6 +147,17 @@ export default function AdsPerformancePage() {
             </tbody>
           </table>
         </div>
+        {campaignPagination.hasMultiplePages && !campaignsLoading && sortedCampaigns.length > 0 && (
+          <div className="px-4 py-3 border-t app-divider bg-app-subtle/20">
+            <ListPagination
+              page={campaignPagination.page}
+              pageCount={campaignPagination.pageCount}
+              total={campaignPagination.total}
+              pageSize={campaignPagination.pageSize}
+              onPageChange={campaignPagination.setPage}
+            />
+          </div>
+        )}
       </section>
     </div>
   )

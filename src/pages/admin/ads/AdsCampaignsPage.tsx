@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { adsApi } from '../../../api'
 import FileUploadField from '../../../components/ui/FileUploadField'
+import ListPagination from '../../../components/ui/ListPagination'
 import { toast } from '../../../components/ui/toast'
 import { AD_AUDIENCES, AD_PLACEMENTS } from '../../../constants/adPlacements'
+import { usePagination } from '../../../hooks/usePagination'
 import type { AdCampaign, AdPlacement, AdAudience } from '../../../types'
 import { adStatusBadgeClass } from './adAdminUtils'
 
@@ -198,6 +200,7 @@ export default function AdsCampaignsPage() {
     () => [...campaigns].sort((a, b) => b.priority - a.priority || b.id - a.id),
     [campaigns],
   )
+  const campaignPagination = usePagination(sortedCampaigns)
 
   const togglePlacement = (placement: AdPlacement) => {
     setForm((prev) => ({
@@ -268,8 +271,9 @@ export default function AdsCampaignsPage() {
                 </button>
               </div>
             ) : (
+              <>
               <ul className="divide-y app-divider">
-                {sortedCampaigns.map((campaign) => (
+                {campaignPagination.pageItems.map((campaign) => (
                   <li
                     key={campaign.id}
                     className="px-4 sm:px-5 py-4 flex flex-col sm:flex-row sm:items-start gap-3 sm:justify-between"
@@ -325,6 +329,18 @@ export default function AdsCampaignsPage() {
                   </li>
                 ))}
               </ul>
+              {campaignPagination.hasMultiplePages && (
+                <div className="px-4 sm:px-5 py-3 border-t app-divider bg-app-subtle/20">
+                  <ListPagination
+                    page={campaignPagination.page}
+                    pageCount={campaignPagination.pageCount}
+                    total={campaignPagination.total}
+                    pageSize={campaignPagination.pageSize}
+                    onPageChange={campaignPagination.setPage}
+                  />
+                </div>
+              )}
+              </>
             )}
           </div>
         ) : (

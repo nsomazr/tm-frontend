@@ -8,6 +8,8 @@ import { analyticsApi } from '../../api'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import { formatAreaKm2 } from '../../components/map/mapFormat'
 import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
+import ListPagination from '../../components/ui/ListPagination'
+import { usePagination } from '../../hooks/usePagination'
 
 const LAYER_TYPE_LABELS: Record<string, string> = {
   polygon: 'Polygon',
@@ -69,6 +71,8 @@ export default function AdminCoveragePage() {
     () => mineralHotspots.find((layer) => layer.slug === selectedLayerSlug) ?? mineralHotspots[0],
     [mineralHotspots, selectedLayerSlug]
   )
+
+  const layerPagination = usePagination(layers)
 
   const isLoading = hotspotsLoading || investorLoading
   const totalProspects = hotspots?.total_prospects ?? layers.reduce((s, layer) => s + layer.feature_count, 0)
@@ -185,6 +189,7 @@ export default function AdminCoveragePage() {
             {layers.length === 0 ? (
               <p className="px-5 py-6 text-sm text-app-muted">No shapefiles uploaded yet.</p>
             ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -198,7 +203,7 @@ export default function AdminCoveragePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {layers.map((layer) => {
+                  {layerPagination.pageItems.map((layer) => {
                     const layerRegions = layerHotspots.find((row) => row.slug === layer.slug)?.hotspots ?? []
                     const topRegion = layerRegions[0]
                     const mapMineral = layer.mineral_slug || layer.slug
@@ -262,6 +267,18 @@ export default function AdminCoveragePage() {
                 </tbody>
               </table>
             </div>
+            {layerPagination.hasMultiplePages && (
+              <div className="px-5 py-3 border-t app-divider bg-app-subtle/20">
+                <ListPagination
+                  page={layerPagination.page}
+                  pageCount={layerPagination.pageCount}
+                  total={layerPagination.total}
+                  pageSize={layerPagination.pageSize}
+                  onPageChange={layerPagination.setPage}
+                />
+              </div>
+            )}
+            </>
             )}
             <div className="px-5 py-3 border-t app-divider flex flex-wrap gap-4">
               <Link to="/admin/layers" className="text-sm text-terra-600 dark:text-terra-400 hover:underline">Manage layers →</Link>

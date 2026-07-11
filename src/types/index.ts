@@ -314,6 +314,27 @@ export interface Invoice {
   issued_at: string
 }
 
+export interface PaymentDocumentSummary {
+  number: string
+  issued_at: string
+  has_pdf: boolean
+  email_sent_at: string | null
+  email_sent_to: string | null
+  email_send_count: number
+  email_last_error: string | null
+}
+
+export interface DocumentEmailLog {
+  id: number
+  document_type: 'invoice' | 'receipt'
+  document_number: string
+  sent_to: string
+  sent_by_email?: string | null
+  status: 'sent' | 'failed'
+  error: string
+  created_at: string
+}
+
 export interface PaymentOrderSubscriptionDetail {
   id: number
   status: string
@@ -367,6 +388,10 @@ export interface PaymentOrder {
   aerial_detail?: PaymentOrderAerialDetail | null
   invoice_number?: string | null
   invoice_issued_at?: string | null
+  invoice?: PaymentDocumentSummary | null
+  receipt_number?: string | null
+  receipt?: PaymentDocumentSummary | null
+  document_emails?: DocumentEmailLog[]
   activation_source?: 'manual_admin' | 'webhook' | 'gateway' | null
   gateway_response?: Record<string, unknown>
   created_at: string
