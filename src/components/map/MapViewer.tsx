@@ -598,7 +598,15 @@ export default function MapViewer({
   const [internalVisible, setInternalVisible] = useState<Set<number>>(
     () => new Set(initialLayers.map((l) => l.id))
   )
-  const visibleLayers = externalVisible ?? internalVisible
+  // Free/static map must never paint with an empty visibility set while layers exist
+  // (parent starts with `new Set()` before the visibility effect runs).
+  const visibleLayers = useMemo(() => {
+    const base = externalVisible ?? internalVisible
+    if (staticMap && layers.length > 0 && base.size === 0) {
+      return new Set(layers.map((layer) => layer.id))
+    }
+    return base
+  }, [externalVisible, internalVisible, staticMap, layers])
   const isMobile = useMediaQuery('(max-width: 767px)')
   countryFitChromeRef.current = {
     leftPanel: Boolean(
@@ -679,13 +687,15 @@ export default function MapViewer({
   const populateLayerSource = useCallback((layerId: number, layer: MapLayer, source: VectorSource, force = false) => {
     loadLayerGeojson(layer.slug, force, layer.mineral_slug)
       .then((data) => {
-        if (!vectorLayersRef.current.has(layerId)) return
+        const current = vectorLayersRef.current.get(layerId)
+        if (!current || current.getSource() !== source) return
         source.clear()
         source.addFeatures(readGeojsonFeatures(data))
       })
       .catch(() => {
         window.setTimeout(() => {
-          if (!vectorLayersRef.current.has(layerId)) return
+          const current = vectorLayersRef.current.get(layerId)
+          if (!current || current.getSource() !== source) return
           if (source.getFeatures().length > 0) return
           populateLayerSource(layerId, layer, source, true)
         }, 1500)

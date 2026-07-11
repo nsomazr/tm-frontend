@@ -1,6 +1,7 @@
 import { Fragment, useState, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import type { MapLayer } from '../../types'
 import ActionMenu, { ActionMenuItem } from '../ui/ActionMenu'
+import ListPagination from '../ui/ListPagination'
 import MineralColorPickerModal from './MineralColorPickerModal'
 import { sortLayersTopToBottom, stackPositionLabel } from './layerOrder'
 import { layerDisplayColor, layerFillColor } from './layerColors'
@@ -23,6 +24,9 @@ import {
   LAYER_HEATMAP_WEIGHT_MAX,
   LAYER_HEATMAP_WEIGHT_MIN,
 } from '../../constants/layerHeatmapWeight'
+import { DEFAULT_PAGE_SIZE } from '../../hooks/usePagination'
+
+const GROUP_PAGE_SIZE = DEFAULT_PAGE_SIZE
 
 export const LAYER_ARRANGE_GROUPS = [
   {
@@ -209,6 +213,7 @@ export default function LayersManageTable({
   const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [openMenuLayerId, setOpenMenuLayerId] = useState<number | null>(null)
   const [colorPickerLayerId, setColorPickerLayerId] = useState<number | null>(null)
+  const [groupPages, setGroupPages] = useState<Record<string, number>>({})
   const highlightRowRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -224,13 +229,32 @@ export default function LayersManageTable({
 
   const canResetStack = stackableLayers.length > 1
 
-  const groupedLayers = LAYER_ARRANGE_GROUPS.map((group) => ({
-    ...group,
-    layers: sortLayersTopToBottom(layers.filter((layer) => layer.layer_type === group.type)),
-    activeLayers: sortLayersTopToBottom(
-      stackableLayers.filter((layer) => layer.layer_type === group.type)
-    ),
-  })).filter((group) => group.layers.length > 0)
+  const groupedLayers = useMemo(
+    () =>
+      LAYER_ARRANGE_GROUPS.map((group) => ({
+        ...group,
+        layers: sortLayersTopToBottom(layers.filter((layer) => layer.layer_type === group.type)),
+        activeLayers: sortLayersTopToBottom(
+          stackableLayers.filter((layer) => layer.layer_type === group.type)
+        ),
+      })).filter((group) => group.layers.length > 0),
+    [layers, stackableLayers],
+  )
+
+  useEffect(() => {
+    if (highlightLayerId == null) return
+    for (const group of groupedLayers) {
+      const index = group.layers.findIndex((layer) => layer.id === highlightLayerId)
+      if (index < 0) continue
+      const page = Math.floor(index / GROUP_PAGE_SIZE) + 1
+      setGroupPages((prev) => (prev[group.type] === page ? prev : { ...prev, [group.type]: page }))
+      break
+    }
+  }, [highlightLayerId, groupedLayers])
+
+  const setGroupPage = (groupType: string, page: number) => {
+    setGroupPages((prev) => ({ ...prev, [groupType]: page }))
+  }
 
   const handleDrop = (
     groupType: string,
@@ -297,6 +321,12 @@ export default function LayersManageTable({
       <div className="divide-y divide-[var(--color-app-border)]">
         {groupedLayers.map((group) => {
           const groupCanDrag = group.activeLayers.length > 1 && !reorderBusy
+          const pageCount = Math.max(1, Math.ceil(group.layers.length / GROUP_PAGE_SIZE))
+          const page = Math.min(Math.max(1, groupPages[group.type] ?? 1), pageCount)
+          const pageLayers = group.layers.slice(
+            (page - 1) * GROUP_PAGE_SIZE,
+            page * GROUP_PAGE_SIZE,
+          )
 
           return (
             <section key={group.type} className="bg-app-surface">
@@ -322,7 +352,7 @@ export default function LayersManageTable({
               </div>
 
               <ul className="app-divide-y">
-                {group.layers.map((layer) => {
+                {pageLayers.map((layer) => {
                   const displayColor = layerDisplayColor(layer)
                   const activeIndex = group.activeLayers.findIndex((item) => item.id === layer.id)
                   const stackShort =
@@ -654,6 +684,17 @@ export default function LayersManageTable({
                   )
                 })}
               </ul>
+              {group.layers.length > GROUP_PAGE_SIZE && (
+                <div className="px-4 py-3 sm:px-6 border-t app-divider bg-app-subtle/20">
+                  <ListPagination
+                    page={page}
+                    pageCount={pageCount}
+                    total={group.layers.length}
+                    pageSize={GROUP_PAGE_SIZE}
+                    onPageChange={(next) => setGroupPage(group.type, next)}
+                  />
+                </div>
+              )}
             </section>
           )
         })}

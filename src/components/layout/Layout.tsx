@@ -65,11 +65,13 @@ function HeaderNav({ className, showMinerals }: { className?: string; showMinera
 export default function Layout() {
   const { m } = useTranslation()
   const location = useLocation()
+  const { hasFullMapAccess } = useAuth()
   const isMapPage = location.pathname === '/' || location.pathname === '/maps'
   const isWorkspace =
     location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin')
   const desktopControlsClass = isMapPage ? 'hidden lg:flex' : 'hidden md:flex'
   const mobileMenuClass = isMapPage ? 'lg:hidden' : 'md:hidden'
+  const showMineralsNav = isMapPage && hasFullMapAccess
 
   const header = (
     <header className={`app-header w-full max-w-[100vw] overflow-x-clip ${isMapPage ? 'map-page-header shrink-0' : ''}`}>
@@ -84,7 +86,7 @@ export default function Layout() {
         </Link>
         <HeaderNav
           className={`hidden items-center gap-1 flex-1 justify-center min-w-0 ${isMapPage ? 'lg:flex' : 'md:flex'}`}
-          showMinerals={isMapPage}
+          showMinerals={showMineralsNav}
         />
         <div className={`ml-auto items-center gap-1 sm:gap-2 shrink-0 ${desktopControlsClass}`}>
           <ThemeToggle compact />

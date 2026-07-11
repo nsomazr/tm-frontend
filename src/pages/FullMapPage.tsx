@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { analyticsApi, geographyApi, mapsApi } from '../api'
+import { analyticsApi, fetchAllMapLayers, geographyApi, mapsApi } from '../api'
 import MapViewer, {
   type AdminFitBounds,
   type AnalysisZoneSpec,
@@ -29,7 +29,6 @@ import {
 import MapSidebar from '../components/map/MapSidebar'
 import MapSearchBar from '../components/map/MapSearchBar'
 import MapCaptureGuard from '../components/map/MapCaptureGuard'
-import { clearLayerGeojsonCache } from '../components/map/mapGeojsonCache'
 import TerraAssistantLauncher from '../components/map/TerraAssistantLauncher'
 import ExploreDrawTool from '../components/map/ExploreDrawTool'
 import {
@@ -393,7 +392,7 @@ export default function FullMapPage() {
 
   const applyCatalogMineral = useCallback(
     async (entry: MineralCatalogEntry | null) => {
-      if (!entry) {
+      if (!entry || !hasFullMapAccess) {
         setCatalogMineralSlug(null)
         setMineral('')
         setMineralHighlight(null)
@@ -427,11 +426,17 @@ export default function FullMapPage() {
         mineralHeatmapQueryOptions({ slug: entry.slug, countryCode, layerIds: undefined }),
       )
     },
-    [loadMineralMapOverlay, setSearchParams, queryClient, countryCode],
+    [hasFullMapAccess, loadMineralMapOverlay, setSearchParams, queryClient, countryCode],
   )
 
   useEffect(() => {
     const slug = searchParams.get('mineral')
+    if (!hasFullMapAccess) {
+      if (slug || catalogMineralSlug) {
+        void applyCatalogMineral(null)
+      }
+      return
+    }
     if (!slug) {
       if (catalogMineralSlug) {
         void applyCatalogMineral(null)
@@ -443,7 +448,7 @@ export default function FullMapPage() {
     if (!entry) return
     if (catalogMineralSlug === slug) return
     void applyCatalogMineral(entry)
-  }, [searchParams, mineralCatalog, applyCatalogMineral, catalogMineralSlug])
+  }, [hasFullMapAccess, searchParams, mineralCatalog, applyCatalogMineral, catalogMineralSlug])
 
   const { data: boundaryCountriesData } = useQuery({
     queryKey: ['countries-with-boundaries'],
@@ -529,24 +534,21 @@ export default function FullMapPage() {
   const layersMineralKey =
     hasFullMapAccess && mineral && !catalogMineralSlug ? mineral : '__all__'
 
-  const { data: layersData, isLoading, isFetching } = useQuery({
+  const { data: layersList = [], isLoading, isFetching } = useQuery({
     queryKey: ['layers', layersAccessKey, layersMineralKey],
     queryFn: () =>
-      mapsApi
-        .layers(
-          hasFullMapAccess && mineral && !catalogMineralSlug ? { mineral_slug: mineral } : {},
-        )
-        .then((r) => r.data),
+      fetchAllMapLayers(
+        hasFullMapAccess && mineral && !catalogMineralSlug ? { mineral_slug: mineral } : {},
+      ),
     staleTime: 5 * 60 * 1000,
   })
 
   const searchResults = searchData?.results || []
   const layers = useMemo(() => {
-    const results = layersData?.results || []
     // Defense in depth: unpaid map/legend only show admin-selected free-map layers.
-    if (hasFullMapAccess) return results
-    return results.filter((layer) => layer.is_preview)
-  }, [layersData?.results, hasFullMapAccess])
+    if (hasFullMapAccess) return layersList
+    return layersList.filter((layer) => layer.is_preview)
+  }, [layersList, hasFullMapAccess])
 
   const activeHeatmapSlug = useMemo(() => {
     if (!hasFullMapAccess || exploreOpen) return null
@@ -692,12 +694,6 @@ export default function FullMapPage() {
   )
 
   useEffect(() => {
-    if (!hasFullMapAccess) {
-      clearLayerGeojsonCache()
-    }
-  }, [hasFullMapAccess])
-
-  useEffect(() => {
     if (!layerIdsKey || exploreOpen || layers.length === 0) return
     if (catalogMineralSlug) {
       const nextVisible = visibleLayerIdsForCatalogSlug(catalogMineralSlug, layers)
@@ -706,6 +702,7 @@ export default function FullMapPage() {
         return
       }
     }
+    // Free map: every preview layer stays on. Paid: same default (all on).
     setVisibleLayers(hasFullMapAccess ? defaultVisibleLayerIds(layers) : allVisibleLayerIds(layers))
   }, [mineral, layerIdsKey, hasFullMapAccess, exploreOpen, catalogMineralSlug, layers])
 
