@@ -1,13 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { clearLayerGeojsonCache } from '../../components/map/mapGeojsonCache'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchAllMapLayers, fetchAllMinerals, mapsApi } from '../../api'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchAllMapLayers, mapsApi, mineralsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
-import {
-  SPECIAL_COMMODITY_FALLBACKS,
-  TRACKED_ELEMENT_COMMODITIES,
-} from '../../constants/periodicCommodities'
 import FileUploadField from '../../components/ui/FileUploadField'
 import UploadProgressBar from '../../components/ui/UploadProgressBar'
 import {
@@ -19,7 +15,12 @@ import {
 import { toast } from '../../components/ui/toast'
 import { ADMIN_LAYERS_KEY, useAdminLayers } from '../../hooks/useAdminLayers'
 import { useDisplayName } from '../../i18n/useDisplayName'
-import { layerFillColor, layerStyleWithColor, suggestLayerStyle } from '../../components/admin/layerColors'
+import {
+  layerDisplayColor,
+  layerFillColor,
+  layerStyleWithColor,
+  suggestLayerStyle,
+} from '../../components/admin/layerColors'
 import MineralColorPickerModal from '../../components/admin/MineralColorPickerModal'
 import {
   STRUCTURE_RANK_OPTIONS,
@@ -47,16 +48,51 @@ const LAYER_TYPES = [
   { value: 'line' as const, label: 'Line' },
 ] as const
 
-const NAV_COMMODITY_SLUGS = new Set([
-  ...TRACKED_ELEMENT_COMMODITIES.map((c) => c.slug),
-  ...SPECIAL_COMMODITY_FALLBACKS.map((c) => c.slug),
-])
-
 function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
   qc.invalidateQueries({ queryKey: ['layers'] })
   qc.invalidateQueries({ queryKey: ['map-layers'] })
   qc.invalidateQueries({ queryKey: ['layer-uploads'] })
+  qc.invalidateQueries({ queryKey: ['mineral'] })
+  qc.invalidateQueries({ queryKey: ['minerals'] })
+}
+
+/** Attach the new layer to selected layers' commodities, and/or adopt selected point/line layers. */
+async function persistLinkedLayers(
+  created: MapLayer,
+  linkedLayerIds: number[],
+  allLayers: MapLayer[],
+) {
+  if (!linkedLayerIds.length) return
+
+  const selected = allLayers.filter((layer) => linkedLayerIds.includes(layer.id))
+  const pointLineIds = selected
+    .filter((layer) => layer.layer_type === 'point' || layer.layer_type === 'line')
+    .map((layer) => layer.id)
+
+  if (created.mineral_slug && pointLineIds.length > 0) {
+    const { data: mineral } = await mineralsApi.get(created.mineral_slug)
+    const next = new Set([...(mineral.associated_layer_ids ?? []), ...pointLineIds])
+    await mineralsApi.update(created.mineral_slug, {
+      associated_layer_ids: [...next],
+    })
+  }
+
+  const targetSlugs = [
+    ...new Set(
+      selected
+        .map((layer) => layer.mineral_slug)
+        .filter((slug): slug is string => Boolean(slug) && slug !== created.mineral_slug),
+    ),
+  ]
+
+  await Promise.all(
+    targetSlugs.map(async (slug) => {
+      const { data: mineral } = await mineralsApi.get(slug)
+      const next = new Set([...(mineral.associated_layer_ids ?? []), created.id])
+      await mineralsApi.update(slug, { associated_layer_ids: [...next] })
+    }),
+  )
 }
 
 type ImportOutcome = {
@@ -77,7 +113,7 @@ export default function LayersPage() {
   const [newName, setNewName] = useState('')
   const [newNameSw, setNewNameSw] = useState('')
   const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>('polygon')
-  const [newMineralId, setNewMineralId] = useState('')
+  const [linkedLayerIds, setLinkedLayerIds] = useState<number[]>([])
   const [newPreview, setNewPreview] = useState(false)
   const [newColor, setNewColor] = useState('#0D9488')
   const [colorTouched, setColorTouched] = useState(false)
@@ -93,25 +129,16 @@ export default function LayersPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const { data: allLayers = [] } = useAdminLayers()
-  const { data: mineralsList = [] } = useQuery({
-    queryKey: ['minerals', 'all'],
-    queryFn: fetchAllMinerals,
-  })
 
   const importableLayers = allLayers.filter((l) => l.is_active)
   const stackableLayers = allLayers.filter((l) => l.is_active)
-
-  const commodityOptions = useMemo(() => {
-    const list = mineralsList.filter((m) => m.is_active)
-    return [...list].sort((a, b) => {
-      const aNav = NAV_COMMODITY_SLUGS.has(a.slug) ? 0 : a.slug === 'general' ? 2 : 1
-      const bNav = NAV_COMMODITY_SLUGS.has(b.slug) ? 0 : b.slug === 'general' ? 2 : 1
-      if (aNav !== bNav) return aNav - bNav
-      return a.name.localeCompare(b.name)
-    })
-  }, [mineralsList])
-
-  const selectedCommodity = commodityOptions.find((m) => String(m.id) === newMineralId)
+  const linkableLayers = useMemo(
+    () =>
+      [...allLayers.filter((layer) => layer.is_active)].sort((a, b) =>
+        displayName(a).localeCompare(displayName(b)),
+      ),
+    [allLayers, displayName],
+  )
 
   const usedLayerColors = useMemo(
     () => allLayers.map((layer) => layerFillColor(layer.style)).filter(Boolean),
@@ -120,29 +147,26 @@ export default function LayersPage() {
 
   useEffect(() => {
     if (colorTouched) return
-    if (selectedCommodity?.color) {
-      setNewColor(selectedCommodity.color)
-      return
-    }
     const suggested = suggestLayerStyle(newName, usedLayerColors, newLayerType)
     setNewColor(suggested.fill)
-  }, [newName, usedLayerColors, newLayerType, colorTouched, selectedCommodity?.color])
+  }, [newName, usedLayerColors, newLayerType, colorTouched])
 
   useEffect(() => {
     if (structureRankTouched || newLayerType !== 'line') return
     setNewStructureRank(suggestStructureRank(newName, newLayerType))
   }, [newName, newLayerType, structureRankTouched])
 
+  const toggleLinkedLayer = (layerId: number) => {
+    setLinkedLayerIds((prev) =>
+      prev.includes(layerId) ? prev.filter((id) => id !== layerId) : [...prev, layerId],
+    )
+  }
+
   const createLayer = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!newName.trim()) throw new Error('Layer name is required')
-      if (!newMineralId) throw new Error('Choose which commodity this layer belongs to')
-      const mineralId = Number(newMineralId)
-      if (!Number.isFinite(mineralId)) throw new Error('Invalid commodity')
       const style = suggestLayerStyle(newName, usedLayerColors, newLayerType)
-      const fill = colorTouched
-        ? newColor
-        : selectedCommodity?.color || style.fill
+      const fill = colorTouched ? newColor : style.fill
       const baseStyle = layerStyleWithColor(
         { fill, stroke: fill, strokeWidth: style.strokeWidth },
         newLayerType,
@@ -152,7 +176,6 @@ export default function LayersPage() {
         name: newName.trim(),
         name_sw: newNameSw.trim(),
         layer_type: newLayerType,
-        mineral: mineralId,
         z_index: stackableLayers.length,
         is_preview: newPreview,
         is_active: true,
@@ -163,7 +186,15 @@ export default function LayersPage() {
         ...(useBufferZone ? { buffer_km: clampBufferKm(newBufferKm) } : { buffer_km: null }),
         heatmap_weight: clampHeatmapWeight(newHeatmapWeight),
       }
-      return mapsApi.createLayer(payload)
+      const res = await mapsApi.createLayer(payload)
+      try {
+        await persistLinkedLayers(res.data, linkedLayerIds, allLayers)
+      } catch {
+        toast.error('Layer created, but linking failed', {
+          description: 'You can link layers later in Commodities → Edit.',
+        })
+      }
+      return res
     },
     onSuccess: (res) => {
       invalidateLayerQueries(qc)
@@ -174,7 +205,7 @@ export default function LayersPage() {
       })
       setNewName('')
       setNewNameSw('')
-      setNewMineralId('')
+      setLinkedLayerIds([])
       setNewPreview(false)
       setColorTouched(false)
       setStructureRankTouched(false)
@@ -277,8 +308,12 @@ export default function LayersPage() {
     ? `/admin/minerals?layer=${encodeURIComponent(importOutcome.layerSlug)}`
     : '/admin/minerals'
 
-  const canCreate = newName.trim().length > 0 && !!newMineralId
+  const canCreate = newName.trim().length > 0
   const canImport = !!selectedLayerId && !!uploadFile
+  const linkedSummary =
+    linkedLayerIds.length === 0
+      ? 'None selected'
+      : `${linkedLayerIds.length} selected`
 
   return (
     <div>
@@ -372,30 +407,49 @@ export default function LayersPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="block min-w-0">
-                    <span className="text-sm font-medium text-app-text">Commodity</span>
-                    <select
-                      value={newMineralId}
-                      onChange={(e) => {
-                        setNewMineralId(e.target.value)
-                        setColorTouched(false)
-                      }}
-                      className="input mt-1 w-full"
-                      required
-                    >
-                      <option value="">Select…</option>
-                      {commodityOptions.map((mineral) => (
-                        <option key={mineral.id} value={mineral.id}>
-                          {mineral.name}
-                          {NAV_COMMODITY_SLUGS.has(mineral.slug)
-                            ? ''
-                            : mineral.slug === 'general'
-                              ? ' (shared)'
-                              : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="min-w-0">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-medium text-app-text">Link Layers</span>
+                      <span className="text-xs text-app-text-muted">{linkedSummary}</span>
+                    </div>
+                    {linkableLayers.length === 0 ? (
+                      <p className="mt-1 text-xs text-app-text-muted rounded-xl border border-dashed border-app-border px-3 py-2.5">
+                        No other layers yet — optional.
+                      </p>
+                    ) : (
+                      <ul className="mt-1 max-h-36 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
+                        {linkableLayers.map((layer) => {
+                          const checked = linkedLayerIds.includes(layer.id)
+                          return (
+                            <li key={layer.id}>
+                              <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-app-subtle/50">
+                                <input
+                                  type="checkbox"
+                                  className="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleLinkedLayer(layer.id)}
+                                />
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full shrink-0 border border-app-border/50"
+                                  style={{ backgroundColor: layerDisplayColor(layer) }}
+                                  aria-hidden
+                                />
+                                <span className="min-w-0 flex-1 text-sm text-app-text truncate">
+                                  {displayName(layer)}
+                                </span>
+                                <span className="text-[10px] uppercase tracking-wide text-app-text-muted">
+                                  {layer.layer_type}
+                                </span>
+                              </label>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                    <p className="mt-1 text-xs text-app-text-muted">
+                      Optional — pick any combination, or none.
+                    </p>
+                  </div>
                   <div className="min-w-0">
                     <span className="text-sm font-medium text-app-text">Type</span>
                     <div

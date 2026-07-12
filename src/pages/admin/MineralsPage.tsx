@@ -237,9 +237,9 @@ function CommodityEditor({
           />
 
           <div>
-            <span className="text-sm font-medium text-app-text">Associated layers</span>
+            <span className="text-sm font-medium text-app-text">Link Layers</span>
             {associableLayers.length === 0 ? (
-              <p className="text-xs text-app-text-muted mt-1">No point or line layers.</p>
+              <p className="text-xs text-app-text-muted mt-1">No point or line layers — optional.</p>
             ) : (
               <ul className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
                 {associableLayers.map((candidate) => {
