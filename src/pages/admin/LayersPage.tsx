@@ -414,7 +414,7 @@ export default function LayersPage() {
                     </div>
                     {linkableLayers.length === 0 ? (
                       <p className="mt-1 text-xs text-app-text-muted rounded-xl border border-dashed border-app-border px-3 py-2.5">
-                        No other layers yet — optional.
+                        No other layers yet. Optional.
                       </p>
                     ) : (
                       <ul className="mt-1 max-h-36 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
@@ -447,7 +447,7 @@ export default function LayersPage() {
                       </ul>
                     )}
                     <p className="mt-1 text-xs text-app-text-muted">
-                      Optional — pick any combination, or none.
+                      Optional. Pick any combination, or none.
                     </p>
                   </div>
                   <div className="min-w-0">
