@@ -25,9 +25,16 @@ export type LayerStyleSuggestion = {
   strokeWidth: number
   fillRgba: string
   strokeRgba: string
+  /** Human label when suggestion came from geological match or commodity. */
+  sourceLabel?: string
 }
 
 function normalizeColor(color: string) {
+  return normalizeHex(color).toLowerCase()
+}
+
+/** HTML color inputs require lowercase #rrggbb. */
+export function colorInputValue(color: string) {
   return normalizeHex(color).toLowerCase()
 }
 
@@ -39,37 +46,82 @@ function hashHue(seed: string) {
   return Math.abs(hash) % 360
 }
 
-export function suggestLayerStyle(
-  layerName: string,
-  usedColors: string[] = [],
-  layerType: string = 'polygon'
-): LayerStyleSuggestion {
-  const used = new Set(usedColors.map(normalizeColor))
-  const geological = matchGeologicalColor(layerName)
-  if (geological && !used.has(normalizeColor(geological.hex))) {
-    const record = colorRecordForLayer(geological.hex, layerType)
-    return {
-      fill: record.hex,
-      stroke: record.hex,
-      strokeWidth: 1.5,
-      fillRgba: record.fillRgba,
-      strokeRgba: record.strokeRgba,
-    }
+function hslToHex(h: number, s: number, l: number) {
+  const sat = s / 100
+  const light = l / 100
+  const c = (1 - Math.abs(2 * light - 1)) * sat
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = light - c / 2
+  let r = 0
+  let g = 0
+  let b = 0
+  if (h < 60) [r, g, b] = [c, x, 0]
+  else if (h < 120) [r, g, b] = [x, c, 0]
+  else if (h < 180) [r, g, b] = [0, c, x]
+  else if (h < 240) [r, g, b] = [0, x, c]
+  else if (h < 300) [r, g, b] = [x, 0, c]
+  else [r, g, b] = [c, 0, x]
+  const toHex = (v: number) =>
+    Math.round((v + m) * 255)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase()
+}
+
+function uniqueFallbackColor(seed: string, used: Set<string>) {
+  for (let i = 0; i < 360; i++) {
+    const hue = (hashHue(seed) + i * 37) % 360
+    const hex = hslToHex(hue, 62, 42)
+    if (!used.has(normalizeColor(hex))) return hex
   }
+  return LAYER_COLOR_PALETTE[hashHue(seed) % LAYER_COLOR_PALETTE.length]
+}
 
-  const fromPalette = LAYER_COLOR_PALETTE.find((color) => !used.has(normalizeColor(color)))
-  const fill =
-    fromPalette ??
-    LAYER_COLOR_PALETTE[hashHue(layerName || 'layer') % LAYER_COLOR_PALETTE.length]
-
-  const record = colorRecordForLayer(fill, layerType)
+function toSuggestion(
+  hex: string,
+  layerType: string,
+  sourceLabel?: string
+): LayerStyleSuggestion {
+  const record = colorRecordForLayer(hex, layerType)
   return {
     fill: record.hex,
     stroke: record.hex,
     strokeWidth: 1.5,
     fillRgba: record.fillRgba,
     strokeRgba: record.strokeRgba,
+    sourceLabel,
   }
+}
+
+/**
+ * Suggest a map color for a new layer.
+ * Priority: geological match from name → preferred commodity color → free palette → unique HSL.
+ */
+export function suggestLayerStyle(
+  layerName: string,
+  usedColors: string[] = [],
+  layerType: string = 'polygon',
+  preferredHex?: string | null
+): LayerStyleSuggestion {
+  const used = new Set(usedColors.map(normalizeColor).filter(Boolean))
+  const geological = matchGeologicalColor(layerName)
+  if (geological && !used.has(normalizeColor(geological.hex))) {
+    return toSuggestion(geological.hex, layerType, geological.label)
+  }
+
+  if (preferredHex) {
+    const preferred = normalizeHex(preferredHex)
+    if (!used.has(normalizeColor(preferred))) {
+      return toSuggestion(preferred, layerType, 'Commodity color')
+    }
+  }
+
+  const fromPalette = LAYER_COLOR_PALETTE.find((color) => !used.has(normalizeColor(color)))
+  if (fromPalette) {
+    return toSuggestion(fromPalette, layerType, 'Available palette color')
+  }
+
+  return toSuggestion(uniqueFallbackColor(layerName || 'layer', used), layerType, 'Unique color')
 }
 
 export function layerFillColor(style: { fill?: unknown; stroke?: unknown; fillRgba?: unknown } | null | undefined) {

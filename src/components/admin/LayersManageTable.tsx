@@ -4,7 +4,7 @@ import ActionMenu, { ActionMenuItem } from '../ui/ActionMenu'
 import ListPagination from '../ui/ListPagination'
 import MineralColorPickerModal from './MineralColorPickerModal'
 import { sortLayersTopToBottom, stackPositionLabel } from './layerOrder'
-import { layerDisplayColor, layerFillColor } from './layerColors'
+import { layerDisplayColor, layerStyleWithColor } from './layerColors'
 import {
   STRUCTURE_RANK_OPTIONS,
   resolveStructureRank,
@@ -224,7 +224,7 @@ export default function LayersManageTable({
   }, [highlightLayerId])
 
   const usedColors = useMemo(
-    () => layers.map((layer) => layerFillColor(layer.style)).filter(Boolean),
+    () => layers.map((layer) => layerDisplayColor(layer)).filter(Boolean),
     [layers]
   )
   const colorPickerLayer = layers.find((layer) => layer.id === colorPickerLayerId) ?? null

@@ -53,6 +53,7 @@ export default function MobileMenu() {
 
   const navLinks = [
     { to: '/', label: m.nav.map, end: true },
+    { to: '/marketplace', label: m.nav.marketplace },
     { to: '/about', label: m.nav.about },
     { to: '/subscriptions', label: m.nav.pricing },
     { to: '/downloads', label: m.nav.reports },

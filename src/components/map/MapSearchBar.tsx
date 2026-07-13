@@ -42,12 +42,12 @@ export default function MapSearchBar({
 
   return (
     <div
-      className={`absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] right-[max(0.75rem,env(safe-area-inset-right,0px))] z-40 mx-auto w-full pointer-events-none ${
-        showExpandedChrome ? 'max-w-xl sm:max-w-2xl' : 'max-w-md sm:max-w-lg'
+      className={`map-search-bar-anchor pointer-events-none absolute z-40 left-1/2 top-[max(0.5rem,env(safe-area-inset-top,0px))] w-[min(100%,28rem)] -translate-x-1/2 px-3 sm:top-[max(0.75rem,env(safe-area-inset-top,0px))] sm:w-[min(100%,36rem)] sm:max-w-lg sm:px-4 ${
+        showExpandedChrome ? 'sm:max-w-2xl sm:w-[min(100%,42rem)]' : ''
       }`}
     >
       <div
-        className={`map-search-unified pointer-events-auto map-chrome overflow-hidden ${
+        className={`map-search-unified pointer-events-auto map-chrome w-full overflow-hidden ${
           showExpandedChrome ? (exploreOpen ? 'rounded-2xl' : 'rounded-2xl sm:rounded-[1.75rem]') : 'rounded-full'
         } ${barActive ? 'map-search-unified--active' : ''} ${exploreOpen ? 'map-search-unified--expanded' : ''}`}
       >
@@ -100,11 +100,7 @@ export default function MapSearchBar({
                 }`}
               >
                 <span
-                  className={`flex items-center justify-center rounded-lg transition-all duration-300 ease-out ${
-                    isCompact
-                      ? 'h-7 w-7'
-                      : 'h-7 w-7'
-                  } ${
+                  className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all duration-300 ease-out ${
                     exploreOpen
                       ? 'bg-terra-600 text-white shadow-sm'
                       : 'bg-terra-500/10 text-terra-600 group-hover:bg-terra-500/15 dark:text-terra-400'

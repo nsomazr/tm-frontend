@@ -4,10 +4,18 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { reportsApi } from '../../api'
 import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import { toast } from '../../components/ui/toast'
+import StepProgress from '../../components/ui/StepProgress'
 import type { UserExplorationReport } from '../../types'
 import { EmptyState, PageHeader } from './DashboardUi'
 
 type WizardStep = 'describe' | 'generating' | 'preview' | 'refine'
+
+const EXPLORATION_STEPS: { id: WizardStep; label: string; short: string }[] = [
+  { id: 'describe', label: 'Describe', short: 'Your prompt' },
+  { id: 'generating', label: 'Generate', short: 'Drafting' },
+  { id: 'preview', label: 'Preview', short: 'Review' },
+  { id: 'refine', label: 'Refine', short: 'Edit & export' },
+]
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob)
@@ -107,6 +115,14 @@ export default function ExplorationReportPage() {
       <PageHeader
         title="Exploration reports"
         description="Describe what you explored, preview the narrative, refine with instructions, then export a professional PDF."
+      />
+
+      <StepProgress
+        className="mb-6"
+        aria-label="Exploration report steps"
+        steps={EXPLORATION_STEPS}
+        current={step}
+        maxReachable={step}
       />
 
       {step === 'describe' && (

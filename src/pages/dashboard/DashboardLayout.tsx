@@ -7,6 +7,7 @@ import WorkspaceSidebar, { WorkspaceMobileNav } from '../../components/layout/Wo
 const mainLinks = [
   { to: '/dashboard', label: 'Overview', end: true },
   { to: '/dashboard/assistant', label: 'Ask Terra' },
+  { to: '/dashboard/marketplace', label: 'My listings' },
   { to: '/dashboard/subscription', label: 'Subscription' },
   { to: '/dashboard/billing', label: 'Billing' },
   { to: '/dashboard/analytics', label: 'Analytics' },
@@ -14,7 +15,10 @@ const mainLinks = [
   { to: '/dashboard/reports', label: 'My downloads' },
 ]
 
-const quickLinks = [{ to: '/', label: 'Map' }]
+const quickLinks = [
+  { to: '/', label: 'Map' },
+  { to: '/marketplace', label: 'Marketplace' },
+]
 
 export default function DashboardLayout() {
   const { user } = useAuth()
@@ -51,7 +55,7 @@ export default function DashboardLayout() {
 
       <WorkspaceMobileNav
         groups={groups}
-        primaryTos={['/dashboard', '/dashboard/assistant', '/dashboard/subscription', '/downloads']}
+        primaryTos={['/dashboard', '/dashboard/assistant', '/dashboard/marketplace', '/downloads']}
         footerLinks={quickLinks}
       />
 

@@ -1,8 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { authApi } from '../api'
 import { OTP_SMS_VALID_SECONDS, OTP_VALID_SECONDS } from '../constants/otp'
 import { detectOtpChannel, normalizeTzPhone } from '../lib/phone'
 import type { User } from '../types'
+import { clearSessionTimers, markSessionStarted } from './sessionTimeout'
+import { useSessionTimeout } from './useSessionTimeout'
 
 interface AuthTokensResponse {
   access: string
@@ -72,32 +74,57 @@ const AuthContext = createContext<AuthContextType | null>(null)
 function storeSession(data: AuthTokensResponse) {
   localStorage.setItem('access_token', data.access)
   localStorage.setItem('refresh_token', data.refresh)
+  markSessionStarted()
   return data.user
+}
+
+function clearAuthStorage() {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  clearSessionTimers()
+}
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') return
+  const path = window.location.pathname + window.location.search
+  if (path.startsWith('/login') || path.startsWith('/register')) return
+  window.location.assign(`/login?next=${encodeURIComponent(path)}`)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const refreshUser = async () => {
+  const logout = useCallback((redirect = false) => {
+    clearAuthStorage()
+    setUser(null)
+    if (redirect) redirectToLogin()
+  }, [])
+
+  const refreshUser = useCallback(async () => {
     try {
       const { data } = await authApi.me()
       setUser(data)
     } catch {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      clearAuthStorage()
       setUser(null)
     }
-  }
+  }, [])
 
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     if (token) {
       refreshUser().finally(() => setLoading(false))
     } else {
+      clearSessionTimers()
       setLoading(false)
     }
-  }, [])
+  }, [refreshUser])
+
+  useSessionTimeout({
+    enabled: Boolean(user) && !loading,
+    onTimeout: () => logout(true),
+  })
 
   const login = async (emailOrUsername: string, password: string) => {
     const { data } = await authApi.login(emailOrUsername, password)
@@ -138,12 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await login(formData.username, formData.password)
   }
 
-  const logout = () => {
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    setUser(null)
-  }
-
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin'
   const isSuperAdmin = user?.role === 'super_admin'
   const isManager = isAdmin || user?.role === 'mineral_manager'
@@ -162,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerWithOtp,
         loginWithOtp,
         register,
-        logout,
+        logout: () => logout(false),
         refreshUser,
         isAdmin,
         isSuperAdmin,

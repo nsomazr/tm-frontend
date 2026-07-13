@@ -16,8 +16,8 @@ import { formatAreaKm2 } from '../../components/map/mapFormat'
 import { EmptyState, PageHeader, StatCard } from './DashboardUi'
 
 function layerTypeLabel(layerType: string): string {
-  if (layerType === 'polygon' || layerType === 'point') return 'Mineral'
-  if (layerType === 'line') return 'Structures'
+  if (layerType === 'polygon') return 'Polygon'
+  if (layerType === 'point') return 'Point'
   return layerType
 }
 
@@ -89,7 +89,7 @@ export default function DashboardAnalytics() {
     feature_count: number
     area_km2?: number
   }[]
-  const layerList = (hotspots?.layers ?? investor?.layers ?? []) as {
+  const layerList = ((hotspots?.layers ?? investor?.layers ?? []) as {
     name: string
     name_sw?: string
     color: string
@@ -97,9 +97,11 @@ export default function DashboardAnalytics() {
     area_km2?: number
     slug?: string
     layer_type?: string
-  }[]
-  const layerStats = (hotspots?.layer_stats ?? []) as { layer_type: string; count: number }[]
-  const inventory = (investor?.layers ?? []) as {
+  }[]).filter((layer) => layer.layer_type === 'polygon' || layer.layer_type === 'point')
+  const layerStats = ((hotspots?.layer_stats ?? []) as { layer_type: string; count: number }[]).filter(
+    (row) => row.layer_type === 'polygon' || row.layer_type === 'point'
+  )
+  const inventory = ((investor?.layers ?? []) as {
     name: string
     name_sw?: string
     slug: string
@@ -108,7 +110,7 @@ export default function DashboardAnalytics() {
     layer_type: string
     area_km2?: number
     mineral_slug?: string
-  }[]
+  }[]).filter((layer) => layer.layer_type === 'polygon' || layer.layer_type === 'point')
 
   const sortedLayers = useMemo(
     () => [...layerList].sort((a, b) => b.feature_count - a.feature_count),
@@ -242,7 +244,7 @@ export default function DashboardAnalytics() {
           {layerStats.length > 0 && (
             <section className="rounded-2xl bg-app-surface p-4 sm:p-5">
               <h2 className="text-sm font-semibold text-app-text">Map layers</h2>
-              <p className="text-xs text-app-muted mt-0.5 mb-3">Active geometry types on the platform</p>
+              <p className="text-xs text-app-muted mt-0.5 mb-3">Polygon and point layers on the platform</p>
               <LayerTypeGrid items={layerStats} />
             </section>
           )}

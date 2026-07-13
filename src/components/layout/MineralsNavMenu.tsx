@@ -25,7 +25,7 @@ export default function MineralsNavMenu({ className = '' }: MineralsNavMenuProps
   const { data } = useQuery({
     queryKey: ['mineral-catalog-nav', DEFAULT_COUNTRY_CODE],
     queryFn: () => analyticsApi.mineralCatalog(DEFAULT_COUNTRY_CODE).then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60_000,
   })
 
   const minerals = useMemo(

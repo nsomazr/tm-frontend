@@ -87,7 +87,7 @@ function MineralAnalytics({ data }: { data: AdminMineralAnalytics }) {
         {coverage.layer_by_type.length > 0 && (
           <section className="rounded-xl border border-app-border bg-app-surface p-5">
             <h2 className="font-semibold text-app-text mb-1">Layer geometry</h2>
-            <p className="text-sm text-app-text-muted mb-4">Mineral and structure layers on the map.</p>
+            <p className="text-sm text-app-text-muted mb-4">Polygon and point layers on the map.</p>
             <LayerTypeGrid items={coverage.layer_by_type} />
           </section>
         )}

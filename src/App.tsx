@@ -14,11 +14,14 @@ import DashboardBilling from './pages/dashboard/DashboardBilling'
 import DashboardAnalytics from './pages/dashboard/DashboardAnalytics'
 import DashboardTerraAssistant from './pages/dashboard/DashboardTerraAssistant'
 import DashboardReports from './pages/dashboard/DashboardReports'
+import DashboardMarketplacePage from './pages/dashboard/DashboardMarketplacePage'
+import DashboardMarketplaceEditorPage from './pages/dashboard/DashboardMarketplaceEditorPage'
 import ExplorationReportPage from './pages/dashboard/ExplorationReportPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import PaymentCallbackPage from './pages/PaymentCallbackPage'
 import AboutPage from './pages/AboutPage'
+import MarketplacePage from './pages/MarketplacePage'
 import CompleteProfilePage from './pages/CompleteProfilePage'
 import AdminLayout from './pages/admin/AdminLayout'
 import AdminDashboard from './pages/admin/AdminDashboard'
@@ -54,6 +57,7 @@ export default function App() {
         <Route path="maps" element={<MapExplorerPage />} />
         <Route path="subscriptions" element={<SubscriptionsPage />} />
         <Route path="about" element={<AboutPage />} />
+        <Route path="marketplace" element={<MarketplacePage />} />
         <Route path="downloads/:slug/read" element={<ReportArticlePage />} />
         <Route path="downloads/:slug" element={<ReportPreviewPage />} />
         <Route path="downloads" element={<DownloadsPage />} />
@@ -71,6 +75,9 @@ export default function App() {
           <Route path="analytics" element={<DashboardAnalytics />} />
           <Route path="assistant" element={<DashboardTerraAssistant />} />
           <Route path="reports" element={<DashboardReports />} />
+          <Route path="marketplace" element={<DashboardMarketplacePage />} />
+          <Route path="marketplace/new" element={<DashboardMarketplaceEditorPage />} />
+          <Route path="marketplace/:id" element={<DashboardMarketplaceEditorPage />} />
           <Route path="exploration-reports" element={<ExplorationReportPage />} />
         </Route>
         <Route path="login" element={<LoginPage />} />

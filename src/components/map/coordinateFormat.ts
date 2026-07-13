@@ -3,6 +3,16 @@ export type CoordinateDisplayFormat = 'decimal' | 'dms'
 export const COORDINATE_FORMAT_STORAGE_KEY = 'terra-map-coordinate-format'
 export const COORDINATE_FORMAT_CHANGE_EVENT = 'terra-map-coordinate-format-change'
 
+export type LatHemisphere = 'N' | 'S'
+export type LngHemisphere = 'E' | 'W'
+
+export type DmsAxisParts = {
+  degrees: string
+  minutes: string
+  seconds: string
+  hemi: LatHemisphere | LngHemisphere
+}
+
 export function readStoredCoordinateFormat(): CoordinateDisplayFormat {
   if (typeof window === 'undefined') return 'decimal'
   const stored = localStorage.getItem(COORDINATE_FORMAT_STORAGE_KEY)
@@ -15,23 +25,61 @@ export function storeCoordinateFormat(format: CoordinateDisplayFormat) {
   window.dispatchEvent(new CustomEvent(COORDINATE_FORMAT_CHANGE_EVENT, { detail: format }))
 }
 
+export function emptyDmsParts(axis: 'lat' | 'lng'): DmsAxisParts {
+  return {
+    degrees: '',
+    minutes: '',
+    seconds: '',
+    hemi: axis === 'lat' ? 'S' : 'E',
+  }
+}
+
 /** Convert signed decimal degrees to DMS with hemisphere label. */
 export function decimalToDms(decimal: number, axis: 'lat' | 'lng'): string {
+  const parts = decimalToDmsParts(decimal, axis)
+  const secText = Number(parts.seconds).toFixed(1)
+  return `${parts.degrees}° ${parts.minutes}' ${secText}" ${parts.hemi}`
+}
+
+export function decimalToDmsParts(decimal: number, axis: 'lat' | 'lng'): DmsAxisParts {
   const abs = Math.abs(decimal)
   const degrees = Math.floor(abs)
   const minutesTotal = (abs - degrees) * 60
   const minutes = Math.floor(minutesTotal)
   const seconds = (minutesTotal - minutes) * 60
-  const hemi =
-    axis === 'lat'
-      ? decimal >= 0
-        ? 'N'
-        : 'S'
-      : decimal >= 0
-        ? 'E'
-        : 'W'
-  const secText = seconds < 10 ? seconds.toFixed(1) : seconds.toFixed(1)
-  return `${degrees}° ${minutes}' ${secText}" ${hemi}`
+  const hemi: LatHemisphere | LngHemisphere =
+    axis === 'lat' ? (decimal >= 0 ? 'N' : 'S') : decimal >= 0 ? 'E' : 'W'
+  return {
+    degrees: String(degrees),
+    minutes: String(minutes),
+    seconds: seconds.toFixed(1),
+    hemi,
+  }
+}
+
+/** Build signed decimal degrees from separate DMS boxes. */
+export function dmsPartsToDecimal(parts: DmsAxisParts, axis: 'lat' | 'lng'): number | null {
+  const deg = parts.degrees.trim() === '' ? NaN : Number(parts.degrees)
+  const min = parts.minutes.trim() === '' ? 0 : Number(parts.minutes)
+  const sec = parts.seconds.trim() === '' ? 0 : Number(parts.seconds)
+  if (!Number.isFinite(deg) || !Number.isFinite(min) || !Number.isFinite(sec)) return null
+  if (deg < 0 || min < 0 || sec < 0) return null
+  if (min >= 60 || sec >= 60) return null
+
+  const maxDeg = axis === 'lat' ? 90 : 180
+  if (deg > maxDeg) return null
+  if (deg === maxDeg && (min > 0 || sec > 0)) return null
+
+  let value = deg + min / 60 + sec / 3600
+  const hemi = parts.hemi.toUpperCase()
+  if (axis === 'lat') {
+    if (hemi !== 'N' && hemi !== 'S') return null
+    if (hemi === 'S') value = -value
+  } else {
+    if (hemi !== 'E' && hemi !== 'W') return null
+    if (hemi === 'W') value = -value
+  }
+  return clampAxis(value, axis)
 }
 
 export function formatLatLngPair(

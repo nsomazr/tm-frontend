@@ -4,7 +4,16 @@ import {
   lonLatToCrs,
   type CoordinateSystemId,
 } from './coordinateSystems'
-import { parseCoordinateComponent, type CoordinateDisplayFormat } from './coordinateFormat'
+import {
+  dmsPartsToDecimal,
+  emptyDmsParts,
+  parseCoordinateComponent,
+  type CoordinateDisplayFormat,
+  type DmsAxisParts,
+} from './coordinateFormat'
+import CoordinateAxisInput from './CoordinateAxisInput'
+import CoordinateFormatToggle from './CoordinateFormatToggle'
+import { useCoordinateFormatState } from './useCoordinateFormatState'
 import type { ExplorationMode } from './explorationGeometry'
 import type { SavedExploration } from '../../types'
 
@@ -29,9 +38,6 @@ interface ExploreDrawToolProps {
   /** Render inside the unified search bar (no outer chrome / title). */
   embedded?: boolean
 }
-
-const COORD_INPUT_CLASS =
-  'w-full rounded-md border border-app-border bg-app-surface px-2 py-1.5 text-sm map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25'
 
 const MODES: { id: 'point' | 'polygon'; label: string; hint: string }[] = [
   { id: 'point', label: 'Point', hint: 'A single location.' },
@@ -58,11 +64,16 @@ export default function ExploreDrawTool({
   onClose,
   embedded = false,
 }: ExploreDrawToolProps) {
-  const [fieldA, setFieldA] = useState('')
-  const [fieldB, setFieldB] = useState('')
+  const [latDecimal, setLatDecimal] = useState('')
+  const [lngDecimal, setLngDecimal] = useState('')
+  const [latDms, setLatDms] = useState<DmsAxisParts>(() => emptyDmsParts('lat'))
+  const [lngDms, setLngDms] = useState<DmsAxisParts>(() => emptyDmsParts('lng'))
   const [error, setError] = useState<string | null>(null)
   const [savedOpen, setSavedOpen] = useState(true)
   const [savedQuery, setSavedQuery] = useState('')
+  const [formatFromHook, setFormatFromHook] = useCoordinateFormatState()
+  const activeFormat = coordinateFormat ?? formatFromHook
+  const setFormat = setFormatFromHook
 
   const filteredSavedExplorations = useMemo(() => {
     const query = savedQuery.trim().toLowerCase()
@@ -74,18 +85,33 @@ export default function ExploreDrawTool({
   }, [savedExplorations, savedQuery])
 
   const showSavedSearch = savedExplorations.length > 5
+  const isDms = activeFormat === 'dms'
+
+  const clearFields = () => {
+    setLatDecimal('')
+    setLngDecimal('')
+    setLatDms(emptyDmsParts('lat'))
+    setLngDms(emptyDmsParts('lng'))
+    setError(null)
+  }
 
   const handleAdd = () => {
-    const lat = parseCoordinateComponent(fieldA, 'lat')
-    const lng = parseCoordinateComponent(fieldB, 'lng')
+    const lat = isDms
+      ? dmsPartsToDecimal(latDms, 'lat')
+      : parseCoordinateComponent(latDecimal, 'lat')
+    const lng = isDms
+      ? dmsPartsToDecimal(lngDms, 'lng')
+      : parseCoordinateComponent(lngDecimal, 'lng')
     if (lat == null || lng == null) {
-      setError('Enter valid latitude and longitude (decimal or DMS).')
+      setError(
+        isDms
+          ? 'Enter degrees, minutes, seconds, and hemisphere for both axes.'
+          : 'Enter valid latitude and longitude.',
+      )
       return
     }
     onAddPoint(lng, lat)
-    setFieldA('')
-    setFieldB('')
-    setError(null)
+    clearFields()
   }
 
   const body = (
@@ -140,36 +166,50 @@ export default function ExploreDrawTool({
             ))}
           </div>
         )}
-        <p className="text-[11px] leading-snug map-text-muted">
-          {MODES.find((mm) => mm.id === mode)?.hint ?? 'Draw on the map.'} Click the map or enter
-          latitude/longitude below (decimal or DMS).
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] leading-snug map-text-muted">
+            {MODES.find((mm) => mm.id === mode)?.hint ?? 'Draw on the map.'} Click the map or enter
+            coordinates below.
+          </p>
+          <CoordinateFormatToggle
+            value={activeFormat}
+            onChange={setFormat}
+            compact
+            className="shrink-0"
+          />
+        </div>
 
-        <div className="flex items-end gap-1.5">
-          <label className="flex-1">
-            <span className="block text-[10px] uppercase tracking-wide map-text-muted">Latitude</span>
-            <input
-              value={fieldA}
-              onChange={(e) => setFieldA(e.target.value)}
-              inputMode="decimal"
-              placeholder="-6.17 or 6° 10' 12&quot; S"
-              className={COORD_INPUT_CLASS}
+        <div className={`flex gap-1.5 ${isDms ? 'flex-col' : 'items-end'}`}>
+          <div className={`min-w-0 ${isDms ? 'space-y-2' : 'flex flex-1 gap-1.5'}`}>
+            <CoordinateAxisInput
+              axis="lat"
+              label="Latitude"
+              format={activeFormat}
+              decimalValue={latDecimal}
+              onDecimalChange={setLatDecimal}
+              dmsValue={latDms}
+              onDmsChange={setLatDms}
+              compact
+              className={isDms ? '' : 'flex-1'}
             />
-          </label>
-          <label className="flex-1">
-            <span className="block text-[10px] uppercase tracking-wide map-text-muted">Longitude</span>
-            <input
-              value={fieldB}
-              onChange={(e) => setFieldB(e.target.value)}
-              inputMode="decimal"
-              placeholder="35.74 or 35° 44' 24&quot; E"
-              className={COORD_INPUT_CLASS}
+            <CoordinateAxisInput
+              axis="lng"
+              label="Longitude"
+              format={activeFormat}
+              decimalValue={lngDecimal}
+              onDecimalChange={setLngDecimal}
+              dmsValue={lngDms}
+              onDmsChange={setLngDms}
+              compact
+              className={isDms ? '' : 'flex-1'}
             />
-          </label>
+          </div>
           <button
             type="button"
             onClick={handleAdd}
-            className="shrink-0 rounded-md bg-terra-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-terra-700"
+            className={`shrink-0 rounded-md bg-terra-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-terra-700 ${
+              isDms ? 'self-end' : ''
+            }`}
           >
             Add
           </button>
@@ -183,7 +223,7 @@ export default function ExploreDrawTool({
               return (
                 <li key={i} className="flex items-center justify-between gap-2 rounded px-1.5 py-1 text-xs map-text-secondary">
                   <span className="tabular-nums">
-                    {i + 1}. {formatCoordinate(c, c.kind, coordinateFormat)}
+                    {i + 1}. {formatCoordinate(c, c.kind, activeFormat)}
                   </span>
                   <button
                     type="button"

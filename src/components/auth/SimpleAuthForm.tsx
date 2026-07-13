@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import Logo from '../brand/Logo'
 import OtpInput from './OtpInput'
 import PasswordInput from '../ui/PasswordInput'
+import StepProgress from '../ui/StepProgress'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
 import { useTranslation } from '../../i18n/LocaleContext'
@@ -14,6 +15,12 @@ import {
 
 type AuthMode = 'register' | 'login'
 type Step = 'start' | 'otp' | 'password'
+
+const AUTH_STEPS: { id: Step; label: string; short: string }[] = [
+  { id: 'start', label: 'Account', short: 'Email or phone' },
+  { id: 'otp', label: 'Verify', short: 'One-time code' },
+  { id: 'password', label: 'Password', short: 'Sign in' },
+]
 
 interface SimpleAuthFormProps {
   mode: AuthMode
@@ -192,6 +199,13 @@ export default function SimpleAuthForm({
         </Link>
         <h1 className="text-xl font-semibold text-slate-900 mt-4">{title}</h1>
         <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
+        <StepProgress
+          className="mt-5 text-left"
+          aria-label="Sign-in steps"
+          steps={AUTH_STEPS}
+          current={step}
+          maxReachable={step}
+        />
       </div>
 
       <div className="card-flat space-y-4">

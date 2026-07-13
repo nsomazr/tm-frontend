@@ -75,7 +75,7 @@ export default function LayerPanel({
   const layerCount = layers.length
 
   const shellClass = embedded
-    ? 'relative map-chrome rounded-xl text-sm flex flex-col overflow-hidden w-full min-h-0 max-h-full'
+    ? 'relative map-chrome rounded-xl text-sm flex flex-col overflow-hidden w-full max-h-full'
     : 'absolute z-10 map-chrome rounded-xl text-sm flex flex-col overflow-hidden top-[max(0.75rem,env(safe-area-inset-top,0px))] left-[max(0.75rem,env(safe-area-inset-left,0px))] w-[min(18rem,calc(100vw-1.5rem))] max-h-[min(40vh,calc(100%-6rem))] hidden md:flex'
 
   return (
@@ -95,7 +95,7 @@ export default function LayerPanel({
       </button>
 
       {open && (
-        <div className="border-t border-app-border min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain p-1.5 pb-2 space-y-2 scrollbar-pane">
+        <div className="border-t border-app-border max-h-[min(40vh,22rem)] overflow-y-auto overflow-x-hidden overscroll-y-contain p-1.5 pb-2 space-y-2 scrollbar-pane">
           {grouped.map(({ type, layers: typeLayers }) => {
             const allOn = typeAllVisible(type, typeLayers)
             return (

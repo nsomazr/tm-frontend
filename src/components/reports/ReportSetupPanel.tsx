@@ -16,8 +16,8 @@ export default function ReportSetupPanel({
       <header className="report-setup__header">
         <h2 className="report-setup__title">Build your report scope</h2>
         <p className="report-setup__lead">
-          Choose the mineral layer your report is based on, then optionally narrow it to specific
-          regions or districts.
+          Choose the mineral layer your report is based on, then optionally narrow it to admin
+          boundaries or a custom point/polygon (with buffer).
         </p>
       </header>
 
@@ -48,7 +48,8 @@ export default function ReportSetupPanel({
                 <span className="report-setup__optional">Optional</span>
               </div>
               <p className="report-setup__step-desc">
-                Filter to regions, districts, or a point on the map. Skip this to use the full layer area.
+                Filter by regions/districts, or set a point/polygon with an optional buffer (max 20
+                km). Skip to use the full layer area.
               </p>
             </div>
             <div className="report-setup__step-body">

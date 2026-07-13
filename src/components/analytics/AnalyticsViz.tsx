@@ -43,15 +43,20 @@ export function LayerTypeGrid({
   items: { layer_type: string; count: number }[]
 }) {
   const labels: Record<string, string> = {
-    polygon: 'Mineral',
-    point: 'Mineral',
-    line: 'Structures',
+    polygon: 'Polygon',
+    point: 'Point',
   }
 
-  const data = items.map((item) => ({
-    name: labels[item.layer_type] ?? item.layer_type,
-    value: item.count,
-  }))
+  const data = items
+    .filter((item) => item.layer_type === 'polygon' || item.layer_type === 'point')
+    .map((item) => ({
+      name: labels[item.layer_type] ?? item.layer_type,
+      value: item.count,
+    }))
+
+  if (data.length === 0) {
+    return <p className="text-sm text-app-muted">No polygon or point layers yet.</p>
+  }
 
   return (
     <div className="grid lg:grid-cols-2 gap-6 items-center">

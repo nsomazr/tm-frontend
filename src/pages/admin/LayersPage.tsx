@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { clearLayerGeojsonCache } from '../../components/map/mapGeojsonCache'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchAllMapLayers, mapsApi, mineralsApi } from '../../api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchAllMapLayers, fetchAllMinerals, mapsApi, mineralsApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import FileUploadField from '../../components/ui/FileUploadField'
 import UploadProgressBar from '../../components/ui/UploadProgressBar'
@@ -12,16 +12,22 @@ import {
   LAYER_IMPORT_CSV_HINT,
   LAYER_IMPORT_HINT,
 } from '../../lib/layerImportFileType'
+import {
+  SPECIAL_COMMODITY_FALLBACKS,
+  TRACKED_ELEMENT_COMMODITIES,
+} from '../../constants/periodicCommodities'
 import { toast } from '../../components/ui/toast'
 import { ADMIN_LAYERS_KEY, useAdminLayers } from '../../hooks/useAdminLayers'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import {
+  colorInputValue,
   layerDisplayColor,
-  layerFillColor,
   layerStyleWithColor,
   suggestLayerStyle,
 } from '../../components/admin/layerColors'
 import MineralColorPickerModal from '../../components/admin/MineralColorPickerModal'
+import MineralColorReference from '../../components/admin/MineralColorReference'
+import { matchGeologicalColor } from '../../constants/geologicalMineralColors'
 import {
   STRUCTURE_RANK_OPTIONS,
   layerStyleWithStructureRank,
@@ -48,6 +54,11 @@ const LAYER_TYPES = [
   { value: 'line' as const, label: 'Line' },
 ] as const
 
+const NAV_COMMODITY_SLUGS = new Set([
+  ...TRACKED_ELEMENT_COMMODITIES.map((c) => c.slug),
+  ...SPECIAL_COMMODITY_FALLBACKS.map((c) => c.slug),
+])
+
 function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
   qc.invalidateQueries({ queryKey: ['layers'] })
@@ -55,6 +66,8 @@ function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['layer-uploads'] })
   qc.invalidateQueries({ queryKey: ['mineral'] })
   qc.invalidateQueries({ queryKey: ['minerals'] })
+  qc.invalidateQueries({ queryKey: ['mineral-catalog'] })
+  qc.invalidateQueries({ queryKey: ['mineral-catalog-nav'] })
 }
 
 /** Attach the new layer to selected layers' commodities, and/or adopt selected point/line layers. */
@@ -113,6 +126,7 @@ export default function LayersPage() {
   const [newName, setNewName] = useState('')
   const [newNameSw, setNewNameSw] = useState('')
   const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>('polygon')
+  const [newMineralId, setNewMineralId] = useState('')
   const [linkedLayerIds, setLinkedLayerIds] = useState<number[]>([])
   const [newPreview, setNewPreview] = useState(false)
   const [newColor, setNewColor] = useState('#0D9488')
@@ -129,6 +143,20 @@ export default function LayersPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const { data: allLayers = [] } = useAdminLayers()
+  const { data: mineralsList = [] } = useQuery({
+    queryKey: ['minerals', 'all'],
+    queryFn: fetchAllMinerals,
+  })
+
+  const commodityOptions = useMemo(() => {
+    const list = mineralsList.filter((m) => m.is_active)
+    return [...list].sort((a, b) => {
+      const aNav = NAV_COMMODITY_SLUGS.has(a.slug) ? 0 : a.slug === 'general' ? 2 : 1
+      const bNav = NAV_COMMODITY_SLUGS.has(b.slug) ? 0 : b.slug === 'general' ? 2 : 1
+      if (aNav !== bNav) return aNav - bNav
+      return a.name.localeCompare(b.name)
+    })
+  }, [mineralsList])
 
   const importableLayers = allLayers.filter((l) => l.is_active)
   const stackableLayers = allLayers.filter((l) => l.is_active)
@@ -141,15 +169,35 @@ export default function LayersPage() {
   )
 
   const usedLayerColors = useMemo(
-    () => allLayers.map((layer) => layerFillColor(layer.style)).filter(Boolean),
+    () => allLayers.map((layer) => layerDisplayColor(layer)).filter(Boolean),
     [allLayers]
+  )
+
+  const selectedMineral = useMemo(
+    () => commodityOptions.find((m) => String(m.id) === newMineralId) ?? null,
+    [commodityOptions, newMineralId]
+  )
+
+  const colorSuggestion = useMemo(
+    () =>
+      suggestLayerStyle(
+        newName || selectedMineral?.name || '',
+        usedLayerColors,
+        newLayerType,
+        selectedMineral?.color
+      ),
+    [newName, selectedMineral, usedLayerColors, newLayerType]
+  )
+
+  const geologicalMatch = useMemo(
+    () => matchGeologicalColor(newName || selectedMineral?.name || ''),
+    [newName, selectedMineral?.name]
   )
 
   useEffect(() => {
     if (colorTouched) return
-    const suggested = suggestLayerStyle(newName, usedLayerColors, newLayerType)
-    setNewColor(suggested.fill)
-  }, [newName, usedLayerColors, newLayerType, colorTouched])
+    setNewColor(colorSuggestion.fill)
+  }, [colorSuggestion.fill, colorTouched])
 
   useEffect(() => {
     if (structureRankTouched || newLayerType !== 'line') return
@@ -165,7 +213,12 @@ export default function LayersPage() {
   const createLayer = useMutation({
     mutationFn: async () => {
       if (!newName.trim()) throw new Error('Layer name is required')
-      const style = suggestLayerStyle(newName, usedLayerColors, newLayerType)
+      const style = suggestLayerStyle(
+        newName,
+        usedLayerColors,
+        newLayerType,
+        selectedMineral?.color
+      )
       const fill = colorTouched ? newColor : style.fill
       const baseStyle = layerStyleWithColor(
         { fill, stroke: fill, strokeWidth: style.strokeWidth },
@@ -186,6 +239,10 @@ export default function LayersPage() {
         ...(useBufferZone ? { buffer_km: clampBufferKm(newBufferKm) } : { buffer_km: null }),
         heatmap_weight: clampHeatmapWeight(newHeatmapWeight),
       }
+      const mineralId = Number(newMineralId)
+      if (Number.isFinite(mineralId) && mineralId > 0) {
+        payload.mineral = mineralId
+      }
       const res = await mapsApi.createLayer(payload)
       try {
         await persistLinkedLayers(res.data, linkedLayerIds, allLayers)
@@ -205,6 +262,7 @@ export default function LayersPage() {
       })
       setNewName('')
       setNewNameSw('')
+      setNewMineralId('')
       setLinkedLayerIds([])
       setNewPreview(false)
       setColorTouched(false)
@@ -308,7 +366,7 @@ export default function LayersPage() {
     ? `/admin/minerals?layer=${encodeURIComponent(importOutcome.layerSlug)}`
     : '/admin/minerals'
 
-  const canCreate = newName.trim().length > 0
+  const canCreate = newName.trim().length > 0 && !!newMineralId
   const canImport = !!selectedLayerId && !!uploadFile
   const linkedSummary =
     linkedLayerIds.length === 0
@@ -407,49 +465,29 @@ export default function LayersPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-medium text-app-text">Link Layers</span>
-                      <span className="text-xs text-app-text-muted">{linkedSummary}</span>
-                    </div>
-                    {linkableLayers.length === 0 ? (
-                      <p className="mt-1 text-xs text-app-text-muted rounded-xl border border-dashed border-app-border px-3 py-2.5">
-                        No other layers yet. Optional.
-                      </p>
-                    ) : (
-                      <ul className="mt-1 max-h-36 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
-                        {linkableLayers.map((layer) => {
-                          const checked = linkedLayerIds.includes(layer.id)
-                          return (
-                            <li key={layer.id}>
-                              <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-app-subtle/50">
-                                <input
-                                  type="checkbox"
-                                  className="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleLinkedLayer(layer.id)}
-                                />
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full shrink-0 border border-app-border/50"
-                                  style={{ backgroundColor: layerDisplayColor(layer) }}
-                                  aria-hidden
-                                />
-                                <span className="min-w-0 flex-1 text-sm text-app-text truncate">
-                                  {displayName(layer)}
-                                </span>
-                                <span className="text-[10px] uppercase tracking-wide text-app-text-muted">
-                                  {layer.layer_type}
-                                </span>
-                              </label>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
+                  <label className="block min-w-0">
+                    <span className="text-sm font-medium text-app-text">Commodity</span>
+                    <select
+                      value={newMineralId}
+                      onChange={(e) => setNewMineralId(e.target.value)}
+                      className="input mt-1 w-full"
+                    >
+                      <option value="">Select…</option>
+                      {commodityOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.name}
+                          {NAV_COMMODITY_SLUGS.has(option.slug)
+                            ? ''
+                            : option.slug === 'general'
+                              ? ' (shared)'
+                              : ''}
+                        </option>
+                      ))}
+                    </select>
                     <p className="mt-1 text-xs text-app-text-muted">
-                      Optional. Pick any combination, or none.
+                      Controls which mineral appears in the map navbar after you import data.
                     </p>
-                  </div>
+                  </label>
                   <div className="min-w-0">
                     <span className="text-sm font-medium text-app-text">Type</span>
                     <div
@@ -475,12 +513,57 @@ export default function LayersPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-x-4 sm:gap-y-2">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="min-w-0">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium text-app-text">Link Layers</span>
+                    <span className="text-xs text-app-text-muted">{linkedSummary}</span>
+                  </div>
+                  {linkableLayers.length === 0 ? (
+                    <p className="mt-1 text-xs text-app-text-muted rounded-xl border border-dashed border-app-border px-3 py-2.5">
+                      No other layers yet. Optional.
+                    </p>
+                  ) : (
+                    <ul className="mt-1 max-h-36 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
+                      {linkableLayers.map((layer) => {
+                        const checked = linkedLayerIds.includes(layer.id)
+                        return (
+                          <li key={layer.id}>
+                            <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-app-subtle/50">
+                              <input
+                                type="checkbox"
+                                className="checkbox"
+                                checked={checked}
+                                onChange={() => toggleLinkedLayer(layer.id)}
+                              />
+                              <span
+                                className="h-2.5 w-2.5 rounded-full shrink-0 border border-app-border/50"
+                                style={{ backgroundColor: layerDisplayColor(layer) }}
+                                aria-hidden
+                              />
+                              <span className="min-w-0 flex-1 text-sm text-app-text truncate">
+                                {displayName(layer)}
+                              </span>
+                              <span className="text-[10px] uppercase tracking-wide text-app-text-muted">
+                                {layer.layer_type}
+                              </span>
+                            </label>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                  <p className="mt-1 text-xs text-app-text-muted">
+                    Optional. Extra point/line layers to include in this commodity heatmap.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-x-4 sm:gap-y-2">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0">
                     <span className="text-sm font-medium text-app-text shrink-0">Color</span>
                     <input
                       type="color"
-                      value={newColor}
+                      value={colorInputValue(newColor)}
                       onChange={(e) => {
                         setColorTouched(true)
                         setNewColor(e.target.value)
@@ -488,6 +571,12 @@ export default function LayersPage() {
                       className="h-8 w-8 cursor-pointer rounded-md border border-app-border bg-transparent p-0.5 shrink-0"
                       aria-label="Map color"
                     />
+                    <span className="font-mono text-xs text-app-text-muted">{colorInputValue(newColor)}</span>
+                    {!colorTouched && colorSuggestion.sourceLabel && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-terra-500/10 px-2 py-0.5 text-[11px] font-medium text-terra-700 dark:text-terra-300">
+                        Auto · {colorSuggestion.sourceLabel}
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => setColorPickerOpen(true)}
@@ -495,15 +584,15 @@ export default function LayersPage() {
                     >
                       Palette
                     </button>
-                    {colorTouched && (
+                    {colorTouched ? (
                       <button
                         type="button"
                         onClick={() => setColorTouched(false)}
                         className="text-xs text-app-text-muted hover:underline"
                       >
-                        Reset
+                        Use auto
                       </button>
-                    )}
+                    ) : null}
                   </div>
 
                   {newLayerType === 'line' && (
@@ -592,6 +681,23 @@ export default function LayersPage() {
                     />
                     <span>Free map</span>
                   </label>
+                  </div>
+
+                  <MineralColorReference
+                    variant="panel"
+                    layerName={newName || selectedMineral?.name || ''}
+                    usedColors={usedLayerColors}
+                    selectedColor={newColor}
+                    onSelect={(hex) => {
+                      setColorTouched(true)
+                      setNewColor(hex)
+                    }}
+                  />
+                  {!colorTouched && !geologicalMatch && !selectedMineral?.color && (
+                    <p className="text-xs text-app-text-muted">
+                      Type a mineral name or pick a commodity to auto-suggest a map color.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -753,7 +859,7 @@ export default function LayersPage() {
         onClose={() => setColorPickerOpen(false)}
         layerName={newName}
         usedColors={usedLayerColors}
-        selectedColor={newColor}
+        selectedColor={colorInputValue(newColor)}
         onSelect={(hex) => {
           setColorTouched(true)
           setNewColor(hex)

@@ -4,6 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { fetchAllMapLayers, reportsApi, subscriptionsApi } from '../../api'
 import ReportLocationPicker, { type ReportLocationValue } from '../../components/reports/ReportLocationPicker'
+import {
+  drawFromGeometry,
+  explorationReady,
+  geometryFromDraw,
+} from '../../components/map/explorationGeometry'
 import ReportLayerPicker from '../../components/reports/ReportLayerPicker'
 import ReportSetupPanel from '../../components/reports/ReportSetupPanel'
 import type { LayerRegionRef } from '../../components/reports/reportEditorText'
@@ -17,6 +22,7 @@ import {
   saveDraftDocument,
 } from '../../components/reports/reportEditorDraftFile'
 import FileUploadField from '../../components/ui/FileUploadField'
+import StepProgress from '../../components/ui/StepProgress'
 import { toast } from '../../components/ui/toast'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { Report, MapLayer } from '../../types'
@@ -118,59 +124,6 @@ function textToFindings(text: string) {
   )
 }
 
-function ReportStepIndicator({
-  currentStep,
-  maxReachableStep,
-  onStepClick,
-}: {
-  currentStep: EditorStep
-  maxReachableStep: EditorStep
-  onStepClick: (step: EditorStep) => void
-}) {
-  return (
-    <ol className="flex flex-wrap items-center justify-center gap-2 text-xs">
-      {REPORT_STEPS.map((step, index) => {
-        const isActive = step.id === currentStep
-        const isDone = step.id < currentStep
-        const isReachable = step.id <= maxReachableStep
-
-        return (
-          <li key={step.id} className="flex items-center gap-2">
-            {index > 0 && <span className="text-app-text-muted">→</span>}
-            <button
-              type="button"
-              disabled={!isReachable}
-              onClick={() => isReachable && onStepClick(step.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium transition-colors ${
-                isActive
-                  ? 'bg-terra-500/10 text-terra-700 dark:text-terra-300 border border-terra-500/25'
-                  : isDone
-                    ? 'bg-app-subtle text-app-text-secondary border border-app-border hover:border-terra-500/30'
-                    : isReachable
-                      ? 'text-app-text-secondary border border-app-border hover:border-terra-500/30'
-                      : 'text-app-text-muted border border-transparent opacity-60 cursor-not-allowed'
-              }`}
-            >
-              <span
-                className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
-                  isActive
-                    ? 'bg-terra-600 text-white'
-                    : isDone
-                      ? 'bg-terra-600/80 text-white'
-                      : 'bg-app-subtle text-app-text-muted'
-                }`}
-              >
-                {step.id}
-              </span>
-              <span>{step.label}</span>
-            </button>
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
-
 export default function ReportEditorPage() {
   const { slug } = useParams<{ slug: string }>()
   const isNew = !slug || slug === 'new'
@@ -236,6 +189,10 @@ export default function ReportEditorPage() {
     boundingBox: { west: '', south: '', east: '', north: '' },
     boundaryIds: [],
     locationLabel: '',
+    locationMode: 'boundaries',
+    coordinateMode: 'point',
+    drawPoints: [],
+    bufferKm: '',
   })
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [restoredDocumentName, setRestoredDocumentName] = useState<string | null>(null)
@@ -300,7 +257,15 @@ export default function ReportEditorPage() {
           setForm(draft.form)
         }
       }
-      if (draft.location) setLocation(draft.location)
+      if (draft.location) {
+        setLocation({
+          ...draft.location,
+          locationMode: draft.location.locationMode ?? 'boundaries',
+          coordinateMode: draft.location.coordinateMode ?? 'point',
+          drawPoints: draft.location.drawPoints ?? [],
+          bufferKm: draft.location.bufferKm ?? '',
+        })
+      }
       if (draft.contentApproved && draft.reportMode !== 'upload') setContentApproved(true)
       if (draft.documentFileName) setRestoredDocumentName(draft.documentFileName)
 
@@ -402,6 +367,8 @@ export default function ReportEditorPage() {
       allowed_plan_ids: report.allowed_plan_ids ?? [],
       layer_ids: linkedLayerIds,
     })
+    const geom = report.geometry && Object.keys(report.geometry).length > 0 ? report.geometry : null
+    const restoredDraw = drawFromGeometry(geom as { type?: string; coordinates?: unknown } | null)
     setLocation({
       regionId: report.region ? String(report.region) : '',
       centerLat: report.center_lat != null ? String(report.center_lat) : '',
@@ -414,7 +381,18 @@ export default function ReportEditorPage() {
         north: bbox.north != null ? String(bbox.north) : '',
       },
       boundaryIds: report.location_tags?.map((t) => t.id) ?? [],
-      locationLabel: report.location_tags?.map((t) => t.name).join(' · ') ?? '',
+      locationLabel:
+        restoredDraw
+          ? report.buffer_km
+            ? `${restoredDraw.mode === 'point' ? 'Point' : 'Polygon'} · +${report.buffer_km} km buffer`
+            : restoredDraw.mode === 'point'
+              ? 'Custom point'
+              : 'Custom polygon'
+          : report.location_tags?.map((t) => t.name).join(' · ') ?? '',
+      locationMode: restoredDraw ? 'coordinates' : 'boundaries',
+      coordinateMode: restoredDraw?.mode === 'polygon' ? 'polygon' : 'point',
+      drawPoints: restoredDraw?.points ?? [],
+      bufferKm: report.buffer_km != null && report.buffer_km > 0 ? String(report.buffer_km) : '',
     })
 
     if (uploadOnly || isUploadedReport) {
@@ -481,7 +459,19 @@ export default function ReportEditorPage() {
       reportMode === 'upload'
         ? { body: '', findings: '', references: '' }
         : splitReportDocument(form.executive_summary)
-    const storedSummary = references ? `${body}${references}` : body
+    // Keep references in the stored summary (findings live in key_findings).
+    const storedSummary = [body, references].filter((part) => part.trim()).join('') || body
+    const draw =
+      location.locationMode === 'coordinates' &&
+      explorationReady({ mode: location.coordinateMode, points: location.drawPoints })
+        ? { mode: location.coordinateMode, points: location.drawPoints }
+        : null
+    const geometry = draw ? geometryFromDraw(draw) : {}
+    const bufferKm =
+      location.locationMode === 'coordinates' && location.bufferKm.trim()
+        ? Number(location.bufferKm)
+        : null
+
     return {
       title: form.title.trim(),
       mineral: mineralId,
@@ -494,11 +484,13 @@ export default function ReportEditorPage() {
       source_type: reportMode === 'upload' ? 'uploaded' : 'ai_generated',
       allowed_plan_ids: form.allowed_plan_ids,
       layer_ids: form.layer_ids,
-      boundary_ids: location.boundaryIds,
+      boundary_ids: location.locationMode === 'boundaries' ? location.boundaryIds : [],
       center_lat: location.centerLat ? Number(location.centerLat) : null,
       center_lng: location.centerLng ? Number(location.centerLng) : null,
       zoom: location.zoom ? Number(location.zoom) : null,
       bounding_box: bbox,
+      geometry,
+      buffer_km: bufferKm && bufferKm > 0 ? bufferKm : null,
       executive_summary: storedSummary,
       key_findings: textToFindings(findings),
       ...(regeneratePdf ? { regenerate_pdf: true } : {}),
@@ -518,7 +510,14 @@ export default function ReportEditorPage() {
         if (reportMode === 'upload' && documentFile) {
           const fd = new FormData()
           Object.entries(payload).forEach(([key, value]) => {
-            if (key === 'key_findings' || key === 'allowed_plan_ids' || key === 'layer_ids' || key === 'boundary_ids' || key === 'bounding_box') {
+            if (
+              key === 'key_findings' ||
+              key === 'allowed_plan_ids' ||
+              key === 'layer_ids' ||
+              key === 'boundary_ids' ||
+              key === 'bounding_box' ||
+              key === 'geometry'
+            ) {
               fd.append(key, JSON.stringify(value))
             } else if (value !== null && value !== undefined) {
               fd.append(key, String(value))
@@ -538,7 +537,8 @@ export default function ReportEditorPage() {
             key === 'allowed_plan_ids' ||
             key === 'layer_ids' ||
             key === 'boundary_ids' ||
-            key === 'bounding_box'
+            key === 'bounding_box' ||
+            key === 'geometry'
           ) {
             fd.append(key, JSON.stringify(value))
           } else if (value !== null && value !== undefined) {
@@ -768,9 +768,11 @@ export default function ReportEditorPage() {
 
       <div className="card !p-0 overflow-hidden">
         <div className={`px-5 border-b app-divider ${currentStep === 2 ? 'py-3' : 'py-4'}`}>
-          <ReportStepIndicator
-            currentStep={currentStep}
-            maxReachableStep={maxReachableStep}
+          <StepProgress
+            aria-label="Report steps"
+            steps={REPORT_STEPS.map((s) => ({ id: s.id, label: s.label, short: s.hint }))}
+            current={currentStep}
+            maxReachable={maxReachableStep}
             onStepClick={goToStep}
           />
         </div>

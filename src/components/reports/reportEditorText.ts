@@ -707,6 +707,10 @@ export function appendFindingsSection(bodyHtml: string, findingsText: string) {
   return trimmed ? `${trimmed}${section}` : section
 }
 
+export function isReferencesHeading(text: string): boolean {
+  return /^references\b/i.test((text || '').trim())
+}
+
 export function splitReferencesSection(html: string) {
   if (!html.trim()) return { body: '', references: '' }
   const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -719,7 +723,7 @@ export function splitReferencesSection(html: string) {
     const el = node as HTMLElement
     const tag = el.tagName.toLowerCase()
     const text = el.textContent?.trim() ?? ''
-    if ((tag === 'h2' || tag === 'h3') && /^references and sources$/i.test(text)) {
+    if ((tag === 'h2' || tag === 'h3') && isReferencesHeading(text)) {
       splitIndex = i
       break
     }
@@ -731,6 +735,12 @@ export function splitReferencesSection(html: string) {
   const refsDiv = document.createElement('div')
   children.slice(0, splitIndex).forEach((node) => bodyDiv.appendChild(node.cloneNode(true)))
   children.slice(splitIndex).forEach((node) => refsDiv.appendChild(node.cloneNode(true)))
+
+  // Normalize heading label for consistent PDF/article detection.
+  const first = refsDiv.querySelector('h2, h3')
+  if (first && isReferencesHeading(first.textContent || '')) {
+    first.textContent = 'References and Sources'
+  }
 
   return {
     body: bodyDiv.innerHTML.trim(),
@@ -793,12 +803,23 @@ export function splitReportDocument(html: string) {
   children.slice(splitIndex + 1).forEach((node) => afterFindingsDiv.appendChild(node.cloneNode(true)))
 
   const { body: findingsOnly, references } = splitReferencesSection(afterFindingsDiv.innerHTML)
-  const findingsText = filterReportFindingsText(htmlToFindingsText(findingsOnly))
+  const rawFindingLines = htmlToFindingsText(findingsOnly)
+    .split('\n')
+    .map((line) => line.trim().replace(/^[-•]\s*/, ''))
+    .filter(Boolean)
+  const findingsText = filterReportFindings(rawFindingLines).join('\n')
+  const recoveredCitations = rawFindingLines.filter((line) => isCitationLikeFinding(line))
+
+  let resolvedReferences = references.trim()
+  if (!resolvedReferences && recoveredCitations.length) {
+    const items = recoveredCitations.map((line) => `<li>${escapeHtml(line)}</li>`).join('')
+    resolvedReferences = `<h2>References and Sources</h2><ul>${items}</ul>`
+  }
 
   return {
     body: bodyDiv.innerHTML.trim(),
     findings: findingsText,
-    references: references.trim(),
+    references: resolvedReferences,
   }
 }
 

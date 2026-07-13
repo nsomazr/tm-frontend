@@ -58,7 +58,12 @@ import type { AreaInsight, MapLayer, MineralCatalogEntry, MineralHighlightSpec, 
 import type { MineralHeatmapSpec } from '../components/map/mineralHeatmapLayer'
 import { mineralHeatmapZIndex } from '../components/map/mineralHeatmapLayer'
 import { useMediaQuery } from '../hooks/useMediaQuery'
-import { allVisibleLayerIds, defaultVisibleLayerIds } from '../components/map/mapUtils'
+import {
+  LANDING_MAP_LAYER_BATCH,
+  LANDING_MAP_LAYER_ROTATION_MS,
+  defaultVisibleLayerIds,
+  pickRandomVisibleLayerIds,
+} from '../components/map/mapUtils'
 import { layersForCatalogSlug } from '../components/map/catalogMineralLayers'
 import { layerDisplayColor } from '../components/admin/layerColors'
 import { resolveColorHex } from '../lib/mineralColorUtils'
@@ -702,9 +707,26 @@ export default function FullMapPage() {
         return
       }
     }
-    // Free map: every preview layer stays on. Paid: same default (all on).
-    setVisibleLayers(hasFullMapAccess ? defaultVisibleLayerIds(layers) : allVisibleLayerIds(layers))
+    // Paid: all layers on. Free landing map: random batch of ~10 (rotated below).
+    setVisibleLayers(
+      hasFullMapAccess
+        ? defaultVisibleLayerIds(layers)
+        : pickRandomVisibleLayerIds(layers, LANDING_MAP_LAYER_BATCH),
+    )
   }, [mineral, layerIdsKey, hasFullMapAccess, exploreOpen, catalogMineralSlug, layers])
+
+  useEffect(() => {
+    if (hasFullMapAccess || exploreOpen || catalogMineralSlug) return
+    if (layers.length <= LANDING_MAP_LAYER_BATCH) return
+
+    const timer = window.setInterval(() => {
+      setVisibleLayers((prev) =>
+        pickRandomVisibleLayerIds(layers, LANDING_MAP_LAYER_BATCH, prev),
+      )
+    }, LANDING_MAP_LAYER_ROTATION_MS)
+
+    return () => window.clearInterval(timer)
+  }, [hasFullMapAccess, exploreOpen, catalogMineralSlug, layerIdsKey, layers])
 
   const handleBoundaryVisibilityChange = useCallback((next: BoundaryVisibility) => {
     setBoundaryVisibility(next)
@@ -1309,7 +1331,7 @@ export default function FullMapPage() {
         </>
       )}
 
-      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col pt-4 sm:pt-5 box-border">
+      <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col pt-[3.5rem] sm:pt-14 box-border">
         <MapSearchBar
           search={search}
           onSearchChange={(v) => {

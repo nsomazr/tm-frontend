@@ -5,13 +5,25 @@ import MapViewer, { type AdminFitBounds } from '../map/MapViewer'
 import BoundaryVisibilityToggles from '../map/BoundaryVisibilityToggles'
 import { DEFAULT_BOUNDARY_VISIBILITY } from '../map/adminBoundaryStyles'
 import { useMapLabelState } from '../map/usePlaceNamesState'
-import type { ExplorationDraw } from '../map/explorationGeometry'
+import type { ExplorationDraw, ExplorationMode } from '../map/explorationGeometry'
+import {
+  explorationBounds,
+  explorationCentroid,
+  explorationReady,
+} from '../map/explorationGeometry'
 import { parseCoordinateQuery } from '../map/parseCoordinate'
 import { formatLatLngPair, parseCoordinateComponent } from '../map/coordinateFormat'
 import { useCoordinateFormatState } from '../map/useCoordinateFormatState'
 import type { AdminBoundaryAtResponse, MineralSearchInsight } from '../../types'
 import SelectionChipList from './SelectionChipList'
 import SearchPickList from './SearchPickList'
+import {
+  clampReportBufferKm,
+  formatReportBufferKmRange,
+  bufferRadiusToAreaKm2,
+  REPORT_BUFFER_KM_MAX,
+  REPORT_BUFFER_KM_MIN,
+} from '../../constants/reportBufferZone'
 import {
   activeLayerRegions,
   boundariesForLayerCoverage,
@@ -21,6 +33,9 @@ import {
   type LayerRegionRef,
 } from './reportEditorText'
 
+export type ReportLocationMode = 'boundaries' | 'coordinates'
+export type ReportCoordinateMode = 'point' | 'polygon'
+
 export interface ReportLocationValue {
   regionId: string
   centerLat: string
@@ -29,6 +44,11 @@ export interface ReportLocationValue {
   boundingBox: { west: string; south: string; east: string; north: string }
   boundaryIds: number[]
   locationLabel: string
+  locationMode: ReportLocationMode
+  coordinateMode: ReportCoordinateMode
+  drawPoints: [number, number][]
+  /** Empty string = no buffer; otherwise 1–20 km. */
+  bufferKm: string
 }
 
 interface ReportLocationPickerProps {
@@ -205,6 +225,79 @@ function insightToBoundary(item: MineralSearchInsight): BoundaryOption {
   }
 }
 
+function expandBoundsByKm(
+  bounds: { west: number; south: number; east: number; north: number },
+  km: number,
+) {
+  if (km <= 0) return bounds
+  const midLat = (bounds.south + bounds.north) / 2
+  const degLat = km / 111
+  const degLng = km / (111 * Math.max(0.2, Math.cos((midLat * Math.PI) / 180)))
+  return {
+    west: bounds.west - degLng,
+    south: bounds.south - degLat,
+    east: bounds.east + degLng,
+    north: bounds.north + degLat,
+  }
+}
+
+function geometryLocationLabel(
+  mode: ReportCoordinateMode,
+  points: [number, number][],
+  bufferKm: string,
+  coordinateFormat: 'decimal' | 'dms',
+) {
+  const buffer =
+    bufferKm.trim() && Number(bufferKm) > 0
+      ? ` · +${clampReportBufferKm(Number(bufferKm))} km buffer`
+      : ''
+  if (mode === 'point' && points[0]) {
+    return `Point ${formatLatLngPair(points[0][1], points[0][0], coordinateFormat)}${buffer}`
+  }
+  if (mode === 'polygon' && points.length >= 3) {
+    return `Polygon (${points.length} pts)${buffer}`
+  }
+  return buffer ? `Custom area${buffer}` : ''
+}
+
+function publishGeometrySelection(
+  value: ReportLocationValue,
+  onChange: (next: ReportLocationValue) => void,
+  mode: ReportCoordinateMode,
+  points: [number, number][],
+  bufferKm: string,
+  coordinateFormat: 'decimal' | 'dms',
+) {
+  const draw = { mode, points } as ExplorationDraw
+  const ready = explorationReady(draw)
+  const buffer = bufferKm.trim() ? clampReportBufferKm(Number(bufferKm)) : 0
+  const centroid = explorationCentroid(points)
+  let boundingBox = value.boundingBox
+  if (ready) {
+    const raw = explorationBounds(points)
+    if (raw) {
+      const expanded = expandBoundsByKm(raw, buffer)
+      boundingBox = {
+        west: String(expanded.west),
+        south: String(expanded.south),
+        east: String(expanded.east),
+        north: String(expanded.north),
+      }
+    }
+  }
+  onChange({
+    ...value,
+    locationMode: 'coordinates',
+    coordinateMode: mode,
+    drawPoints: points,
+    bufferKm: buffer > 0 ? String(buffer) : '',
+    centerLat: centroid ? String(centroid.lat) : value.centerLat,
+    centerLng: centroid ? String(centroid.lng) : value.centerLng,
+    boundingBox,
+    locationLabel: geometryLocationLabel(mode, points, buffer > 0 ? String(buffer) : '', coordinateFormat),
+  })
+}
+
 function boundsAroundPoint(lat: number, lng: number, span = 0.08): AdminFitBounds {
   return {
     west: lng - span,
@@ -238,6 +331,9 @@ export default function ReportLocationPicker({
   const [mapSearchDebounced, setMapSearchDebounced] = useState('')
   const [adminFitBounds, setAdminFitBounds] = useState<AdminFitBounds | null>(null)
   const [boundaryVisibility, setBoundaryVisibility] = useState(DEFAULT_BOUNDARY_VISIBILITY)
+  const [manualLat, setManualLat] = useState('')
+  const [manualLng, setManualLng] = useState('')
+  const [useBuffer, setUseBuffer] = useState(() => Boolean(value.bufferKm && Number(value.bufferKm) > 0))
   const {
     showBasemapLabels,
     setShowBasemapLabels,
@@ -245,6 +341,10 @@ export default function ReportLocationPicker({
     setShowBoundaryLabels,
   } = useMapLabelState()
   const [coordinateFormat] = useCoordinateFormatState()
+
+  const locationMode = value.locationMode ?? 'boundaries'
+  const coordinateMode = value.coordinateMode ?? 'point'
+  const drawPoints = value.drawPoints ?? []
 
   useEffect(() => {
     const timer = window.setTimeout(() => setMapSearchDebounced(mapSearch.trim()), 280)
@@ -530,6 +630,9 @@ export default function ReportLocationPicker({
       regionId: '',
       boundaryIds: [],
       locationLabel: '',
+      drawPoints: [],
+      bufferKm: '',
+      locationMode: 'boundaries',
     })
   }
 
@@ -599,6 +702,18 @@ export default function ReportLocationPicker({
     mapSearchDebounced.length >= 2 && (mapSearchResults.length > 0 || mapSearchCoord != null)
 
   async function handleMapPoint(lng: number, lat: number) {
+    if (locationMode === 'coordinates') {
+      if (coordinateMode === 'point') {
+        publishGeometrySelection(value, onChange, 'point', [[lng, lat]], value.bufferKm, coordinateFormat)
+        setAdminFitBounds({ ...boundsAroundPoint(lat, lng, 0.06), key: Date.now() })
+      } else {
+        const nextPoints = [...drawPoints, [lng, lat] as [number, number]]
+        publishGeometrySelection(value, onChange, 'polygon', nextPoints, value.bufferKm, coordinateFormat)
+        setAdminFitBounds({ ...boundsAroundPoint(lat, lng, 0.08), key: Date.now() })
+      }
+      return
+    }
+
     try {
       const { data } = await geographyApi.boundariesAt('TZ', lat, lng)
       const leaf = leafFromAt(data)
@@ -630,11 +745,74 @@ export default function ReportLocationPicker({
   }
 
   const explorationDraw: ExplorationDraw | null = useMemo(() => {
+    if (locationMode === 'coordinates' && drawPoints.length > 0) {
+      return { mode: coordinateMode, points: drawPoints }
+    }
     const lat = parseCoordinateComponent(value.centerLat, 'lat')
     const lng = parseCoordinateComponent(value.centerLng, 'lng')
     if (lat == null || lng == null) return null
     return { mode: 'point', points: [[lng, lat]] }
-  }, [value.centerLat, value.centerLng])
+  }, [locationMode, coordinateMode, drawPoints, value.centerLat, value.centerLng])
+
+  const analysisZone = useMemo(() => {
+    if (locationMode !== 'coordinates' || coordinateMode !== 'point') return null
+    if (!useBuffer || !value.bufferKm.trim()) return null
+    const pt = drawPoints[0]
+    if (!pt) return null
+    const km = clampReportBufferKm(Number(value.bufferKm))
+    return {
+      lat: pt[1],
+      lng: pt[0],
+      areaKm2: bufferRadiusToAreaKm2(km),
+      extended: true,
+      focusMode: 'zone' as const,
+    }
+  }, [locationMode, coordinateMode, useBuffer, value.bufferKm, drawPoints])
+
+  function setLocationMode(mode: ReportLocationMode) {
+    setDrawActive(mode === 'coordinates')
+    onChange({
+      ...value,
+      locationMode: mode,
+      locationLabel:
+        mode === 'coordinates'
+          ? geometryLocationLabel(coordinateMode, drawPoints, value.bufferKm, coordinateFormat)
+          : buildLocationLabel(selectedBoundaries, byId),
+    })
+  }
+
+  function setCoordinateMode(mode: ReportCoordinateMode) {
+    const nextPoints = mode === 'point' ? drawPoints.slice(0, 1) : drawPoints
+    publishGeometrySelection(value, onChange, mode, nextPoints, value.bufferKm, coordinateFormat)
+    setDrawActive(true)
+  }
+
+  function addManualCoordinate() {
+    const lat = parseCoordinateComponent(manualLat, 'lat')
+    const lng = parseCoordinateComponent(manualLng, 'lng')
+    if (lat == null || lng == null) return
+    void handleMapPoint(lng, lat)
+    setManualLat('')
+    setManualLng('')
+  }
+
+  function removeDrawPoint(index: number) {
+    const next = drawPoints.filter((_, i) => i !== index)
+    publishGeometrySelection(value, onChange, coordinateMode, next, value.bufferKm, coordinateFormat)
+  }
+
+  function clearCoordinates() {
+    publishGeometrySelection(value, onChange, coordinateMode, [], '', coordinateFormat)
+    setUseBuffer(false)
+    setManualLat('')
+    setManualLng('')
+  }
+
+  function updateBuffer(nextUse: boolean, rawKm: string) {
+    setUseBuffer(nextUse)
+    const km = nextUse ? String(clampReportBufferKm(Number(rawKm) || REPORT_BUFFER_KM_MIN)) : ''
+    publishGeometrySelection(value, onChange, coordinateMode, drawPoints, km, coordinateFormat)
+  }
 
   const locationListItems = useMemo(
     () =>
@@ -690,10 +868,11 @@ export default function ReportLocationPicker({
           onShowBasemapLabelsChange={setShowBasemapLabels}
           showBoundaryLabels={showBoundaryLabels}
           onShowBoundaryLabelsChange={setShowBoundaryLabels}
-          boundariesGeoJson={scopedBoundariesGeoJson}
+          boundariesGeoJson={locationMode === 'boundaries' ? scopedBoundariesGeoJson : null}
           adminFitBounds={adminFitBounds}
           explorationDraw={explorationDraw}
-          drawActive={drawActive}
+          analysisZone={analysisZone}
+          drawActive={drawActive || locationMode === 'coordinates'}
           onDrawPoint={handleMapPoint}
           className="location-scope-map__viewer"
         />
@@ -768,10 +947,22 @@ export default function ReportLocationPicker({
         </div>
         <button
           type="button"
-          className={`location-scope-map__pick ${drawActive ? 'location-scope-map__pick--active' : ''}`}
-          onClick={() => setDrawActive((v) => !v)}
+          className={`location-scope-map__pick ${drawActive || locationMode === 'coordinates' ? 'location-scope-map__pick--active' : ''}`}
+          onClick={() => {
+            if (locationMode === 'coordinates') {
+              setDrawActive(true)
+              return
+            }
+            setDrawActive((v) => !v)
+          }}
         >
-          {drawActive ? 'Click map…' : 'Pick point'}
+          {locationMode === 'coordinates'
+            ? coordinateMode === 'polygon'
+              ? 'Click map to add vertex'
+              : 'Click map to set point'
+            : drawActive
+              ? 'Click map…'
+              : 'Pick point'}
         </button>
       </div>
     </div>
@@ -841,7 +1032,28 @@ export default function ReportLocationPicker({
 
   return (
     <div className="location-scope">
-      {selectedBoundaries.length > 0 && (
+      <div className="location-scope-tabs mb-3" role="tablist" aria-label="Location method">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={locationMode === 'boundaries'}
+          className={`location-scope-tabs__btn ${locationMode === 'boundaries' ? 'location-scope-tabs__btn--active' : ''}`}
+          onClick={() => setLocationMode('boundaries')}
+        >
+          Boundaries
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={locationMode === 'coordinates'}
+          className={`location-scope-tabs__btn ${locationMode === 'coordinates' ? 'location-scope-tabs__btn--active' : ''}`}
+          onClick={() => setLocationMode('coordinates')}
+        >
+          Coordinates
+        </button>
+      </div>
+
+      {locationMode === 'boundaries' && selectedBoundaries.length > 0 && (
         <div className="location-scope__selection">
           <SelectionChipList
             items={selectedBoundaries.map((row) => ({
@@ -866,6 +1078,141 @@ export default function ReportLocationPicker({
           <p className="location-scope-empty__hint">
             Locations are scoped to where your selected layer has mapped data.
           </p>
+        </div>
+      ) : locationMode === 'coordinates' ? (
+        <div className="location-scope__workspace">
+          <div className="location-scope__map">{mapPanel}</div>
+          <div className="location-scope__list space-y-3">
+            <div className="segmented w-full" role="radiogroup" aria-label="Coordinate shape">
+              {(
+                [
+                  { id: 'point' as const, label: 'Point' },
+                  { id: 'polygon' as const, label: 'Polygon' },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={coordinateMode === option.id}
+                  onClick={() => setCoordinateMode(option.id)}
+                  className={`segmented-btn flex-1 px-2 py-1.5 text-sm ${
+                    coordinateMode === option.id ? 'segmented-btn-active' : ''
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-app-border p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">
+                Add coordinates
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block min-w-0">
+                  <span className="block text-[10px] uppercase tracking-wide text-app-muted">Latitude</span>
+                  <input
+                    value={manualLat}
+                    onChange={(e) => setManualLat(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="-6.17"
+                    className="input mt-0.5 w-full text-sm tabular-nums"
+                  />
+                </label>
+                <label className="block min-w-0">
+                  <span className="block text-[10px] uppercase tracking-wide text-app-muted">Longitude</span>
+                  <input
+                    value={manualLng}
+                    onChange={(e) => setManualLng(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="35.74"
+                    className="input mt-0.5 w-full text-sm tabular-nums"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary text-xs w-full"
+                onClick={addManualCoordinate}
+                disabled={
+                  parseCoordinateComponent(manualLat, 'lat') == null ||
+                  parseCoordinateComponent(manualLng, 'lng') == null
+                }
+              >
+                {coordinateMode === 'polygon' ? 'Add vertex' : 'Set point'}
+              </button>
+              <p className="text-[11px] text-app-muted">
+                Or click the map. Polygon needs at least 3 points.
+              </p>
+            </div>
+
+            {drawPoints.length > 0 && (
+              <ul className="max-h-36 overflow-y-auto rounded-xl border border-app-border divide-y app-divider text-xs">
+                {drawPoints.map((pt, index) => (
+                  <li key={`${pt[0]}-${pt[1]}-${index}`} className="flex items-center gap-2 px-3 py-2">
+                    <span className="min-w-0 flex-1 map-text truncate">
+                      {index + 1}. {formatLatLngPair(pt[1], pt[0], coordinateFormat)}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-app-muted hover:text-app-text"
+                      onClick={() => removeDrawPoint(index)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="rounded-xl border border-app-border p-3 space-y-2">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  className="checkbox"
+                  checked={useBuffer}
+                  onChange={(e) =>
+                    updateBuffer(e.target.checked, value.bufferKm || String(REPORT_BUFFER_KM_MIN))
+                  }
+                />
+                <span>Buffer around location</span>
+              </label>
+              {useBuffer && (
+                <label className="flex items-center gap-2">
+                  <span className="text-sm text-app-text shrink-0">Radius</span>
+                  <input
+                    type="number"
+                    min={REPORT_BUFFER_KM_MIN}
+                    max={REPORT_BUFFER_KM_MAX}
+                    step={1}
+                    value={value.bufferKm || REPORT_BUFFER_KM_MIN}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (Number.isFinite(n)) updateBuffer(true, String(n))
+                    }}
+                    onBlur={(e) => {
+                      const n = Number(e.target.value)
+                      if (Number.isFinite(n)) updateBuffer(true, String(clampReportBufferKm(n)))
+                    }}
+                    className="input input-compact w-16 tabular-nums"
+                    aria-label="Buffer radius in kilometers"
+                  />
+                  <span className="text-xs text-app-muted">km ({formatReportBufferKmRange()})</span>
+                </label>
+              )}
+              <p className="text-[11px] text-app-muted">
+                Report covers the selected shape and may extend by this buffer (max {REPORT_BUFFER_KM_MAX}{' '}
+                km).
+              </p>
+            </div>
+
+            {(drawPoints.length > 0 || useBuffer) && (
+              <button type="button" className="btn-secondary text-xs w-full" onClick={clearCoordinates}>
+                Clear coordinates
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <>

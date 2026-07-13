@@ -29,6 +29,10 @@ function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['layer-uploads'] })
   qc.invalidateQueries({ queryKey: ['layer-audit'] })
   qc.invalidateQueries({ queryKey: ['layer-versions'] })
+  qc.invalidateQueries({ queryKey: ['mineral'] })
+  qc.invalidateQueries({ queryKey: ['minerals'] })
+  qc.invalidateQueries({ queryKey: ['mineral-catalog'] })
+  qc.invalidateQueries({ queryKey: ['mineral-catalog-nav'] })
 }
 
 function formatWhen(iso?: string | null) {

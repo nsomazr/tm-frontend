@@ -223,6 +223,10 @@ export interface Report {
   center_lat?: number | null
   center_lng?: number | null
   zoom?: number | null
+  /** Optional GeoJSON Point or Polygon AOI. */
+  geometry?: { type: string; coordinates: unknown } | Record<string, never> | null
+  /** Optional buffer (km) around geometry; max 20. */
+  buffer_km?: number | null
   preview_image: string | null
   price: string
   currency: string
@@ -1021,4 +1025,156 @@ export namespace GeoJSON {
     type: string
     coordinates: unknown
   }
+}
+
+export type MarketplaceListingStatus = 'draft' | 'published' | 'hidden'
+
+export interface MarketplaceListingDocument {
+  id: number
+  title: string
+  file_url: string | null
+  is_public?: boolean
+  created_at: string
+}
+
+export interface MarketplaceListingPublic {
+  id: number
+  slug: string
+  title: string
+  summary: string
+  description?: string
+  geometry?: GeoJSON.Geometry | Record<string, unknown>
+  geometry_type: string | null
+  buffer_km: number | null
+  center_lat: number | null
+  center_lng: number | null
+  bounding_box?: Record<string, number>
+  commodity_labels: string[]
+  show_contact_public?: boolean
+  allow_inquiries?: boolean
+  contact_name?: string
+  contact_email?: string
+  contact_phone?: string
+  documents?: MarketplaceListingDocument[]
+  updated_at: string
+}
+
+export interface MarketplaceListingOwner {
+  id: number
+  slug: string
+  title: string
+  summary: string
+  description: string
+  geometry: GeoJSON.Geometry | Record<string, unknown>
+  buffer_km: number | null
+  center_lat: number | null
+  center_lng: number | null
+  bounding_box: Record<string, number>
+  commodity_labels: string[]
+  status: MarketplaceListingStatus
+  show_on_map: boolean
+  contact_name: string
+  contact_email: string
+  contact_phone: string
+  show_contact_public: boolean
+  allow_inquiries: boolean
+  country: number | null
+  documents: MarketplaceListingDocument[]
+  inquiry_unread_count: number
+  inquiry_count?: number
+  view_count?: number
+  map_click_count?: number
+  document_download_count?: number
+  terra_summary_count?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface MarketplaceOwnerAnalyticsListing {
+  id: number
+  slug: string
+  title: string
+  status: MarketplaceListingStatus
+  show_on_map: boolean
+  views: number
+  map_clicks: number
+  document_downloads: number
+  terra_summaries: number
+  inquiries: number
+  inquiries_unread: number
+  inquiry_rate: number
+  updated_at: string
+}
+
+export interface MarketplaceOwnerAnalytics {
+  totals: {
+    listings: number
+    published: number
+    draft: number
+    hidden: number
+    views: number
+    map_clicks: number
+    document_downloads: number
+    terra_summaries: number
+    inquiries: number
+    inquiries_unread: number
+    views_30d: number
+    map_clicks_30d: number
+    document_downloads_30d: number
+    terra_summaries_30d: number
+    inquiry_rate: number
+  }
+  listings: MarketplaceOwnerAnalyticsListing[]
+  insights: string[]
+}
+
+export interface MarketplaceListingWrite {
+  title: string
+  summary?: string
+  description?: string
+  geometry?: GeoJSON.Geometry | Record<string, unknown> | null
+  buffer_km?: number | null
+  commodity_labels?: string[]
+  status?: MarketplaceListingStatus
+  show_on_map?: boolean
+  contact_name?: string
+  contact_email?: string
+  contact_phone?: string
+  show_contact_public?: boolean
+  allow_inquiries?: boolean
+  country?: number | null
+}
+
+export interface MarketplaceInquiry {
+  id: number
+  listing: number
+  listing_title: string
+  listing_slug: string
+  from_user: number
+  from_username: string
+  message: string
+  contact_email: string
+  is_read: boolean
+  created_at: string
+}
+
+export interface MarketplaceGeoJsonFeature {
+  type: 'Feature'
+  id: number
+  geometry: GeoJSON.Geometry
+  properties: {
+    id: number
+    slug: string
+    title: string
+    summary: string
+    geometry_type: string | null
+    buffer_km: number | null
+    commodity_labels: string[]
+    color: string
+  }
+}
+
+export interface MarketplaceGeoJson {
+  type: 'FeatureCollection'
+  features: MarketplaceGeoJsonFeature[]
 }

@@ -14,7 +14,6 @@ import { usePagination } from '../../hooks/usePagination'
 const LAYER_TYPE_LABELS: Record<string, string> = {
   polygon: 'Polygon',
   point: 'Point',
-  line: 'Line',
 }
 
 type LayerHotspotRow = {
@@ -42,7 +41,7 @@ export default function AdminCoveragePage() {
 
   const layerHotspots = (hotspots?.layer_hotspots ?? []) as LayerHotspotRow[]
   const mineralHotspots = (hotspots?.mineral_hotspots ?? layerHotspots) as LayerHotspotRow[]
-  const layers = (hotspots?.layers ?? investor?.layers ?? []) as {
+  const layers = ((hotspots?.layers ?? investor?.layers ?? []) as {
     slug: string
     name: string
     name_sw?: string
@@ -52,8 +51,10 @@ export default function AdminCoveragePage() {
     area_km2?: number
     mineral_name?: string
     mineral_slug?: string
-  }[]
-  const layerStats = (hotspots?.layer_stats ?? []) as { layer_type: string; count: number }[]
+  }[]).filter((layer) => layer.layer_type === 'polygon' || layer.layer_type === 'point')
+  const layerStats = ((hotspots?.layer_stats ?? []) as { layer_type: string; count: number }[]).filter(
+    (row) => row.layer_type === 'polygon' || row.layer_type === 'point'
+  )
 
   const [selectedLayerSlug, setSelectedLayerSlug] = useState('')
 
@@ -176,7 +177,7 @@ export default function AdminCoveragePage() {
           {layerStats.length > 0 && (
             <section className="rounded-xl bg-app-surface p-5">
               <h2 className="font-semibold text-app-text mb-1">Layer geometry</h2>
-              <p className="text-sm text-app-muted mb-4">Uploaded polygon, point, and line layers.</p>
+              <p className="text-sm text-app-muted mb-4">Uploaded polygon and point layers.</p>
               <LayerTypeGrid items={layerStats} />
             </section>
           )}

@@ -3,11 +3,12 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { geographyApi, mapsApi } from '../../api'
 import {
-  COORDINATE_SYSTEMS,
   coordinateSystemById,
+  defaultCoordinateSystemForCountry,
   storeCoordinateSystem,
   type CoordinateSystemId,
 } from '../../components/map/coordinateSystems'
+import CoordinateSystemList from '../../components/map/CoordinateSystemList'
 import { toast } from '../../components/ui/toast'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { Country } from '../../types'
@@ -47,15 +48,22 @@ export default function AdminMapSettingsPage() {
     onError: () => toast.error('Could not save coordinate system'),
   })
 
-  const active = data?.coordinate_system ?? 'arc1960'
+  const active = data?.coordinate_system ?? defaultCoordinateSystemForCountry(countryCode)
   const current = coordinateSystemById(active as CoordinateSystemId)
   const selectedCountry = countries.find((c) => c.code === countryCode)
+  const countryCenter =
+    selectedCountry?.center_lat != null && selectedCountry?.center_lng != null
+      ? { lat: selectedCountry.center_lat, lng: selectedCountry.center_lng }
+      : null
+  const recommendedDefault = defaultCoordinateSystemForCountry(countryCode)
 
   return (
     <div>
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-app-text">Map settings</h1>
-        <p className="mt-0.5 text-sm text-app-muted">CRS for the public map, per country.</p>
+        <p className="mt-0.5 text-sm text-app-muted">
+          Choose the default CRS for each country. Search by name, EPSG code, or region.
+        </p>
       </div>
 
       <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
@@ -63,79 +71,53 @@ export default function AdminMapSettingsPage() {
           <div>
             <h2 className="font-semibold text-app-text">Coordinate reference system</h2>
             <p className="text-sm text-app-muted mt-0.5">
-              Commonly <strong className="text-app-text-secondary">Arc 1960</strong> or UTM 35S–37S;
-              WGS 84 for GPS.
+              Recommended systems appear first for the selected country. Use WGS 84 UTM for a
+              local projected grid, or any regional datum from the catalog.
             </p>
           </div>
-          <label className="block max-w-xs">
-            <span className="text-xs font-semibold uppercase tracking-wide text-app-muted">Country</span>
-            <select
-              value={countryCode}
-              onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
-              disabled={countriesLoading}
-              className="mt-1.5 w-full rounded-lg border border-app-border bg-app-surface px-3 py-2 text-sm text-app-text"
-            >
-              {countries.map((country) => (
-                <option key={country.code} value={country.code}>
-                  {displayName(country)} ({country.code})
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="block max-w-xs flex-1 min-w-[12rem]">
+              <span className="text-xs font-semibold uppercase tracking-wide text-app-muted">
+                Country
+              </span>
+              <select
+                value={countryCode}
+                onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
+                disabled={countriesLoading}
+                className="mt-1.5 w-full rounded-lg border border-app-border bg-app-surface px-3 py-2 text-sm text-app-text"
+              >
+                {countries.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {displayName(country)} ({country.code})
+                  </option>
+                ))}
+              </select>
+            </label>
+            {active !== recommendedDefault && (
+              <button
+                type="button"
+                disabled={save.isPending}
+                onClick={() => save.mutate(recommendedDefault)}
+                className="btn-secondary text-sm py-2"
+              >
+                Use recommended ({coordinateSystemById(recommendedDefault).label})
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
           <p className="px-5 py-8 text-sm text-app-muted">Loading…</p>
         ) : (
-          <ul className="divide-y divide-app-border/40">
-            {COORDINATE_SYSTEMS.map((crs) => {
-              const selected = active === crs.id
-              return (
-                <li key={crs.id}>
-                  <button
-                    type="button"
-                    disabled={save.isPending}
-                    onClick={() => {
-                      if (crs.id !== active) save.mutate(crs.id)
-                    }}
-                    className={`flex w-full items-start gap-3 px-5 py-4 text-left transition-colors ${
-                      selected
-                        ? 'bg-terra-500/8'
-                        : 'hover:bg-app-subtle/80'
-                    } disabled:opacity-60`}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                        selected
-                          ? 'border-terra-600 bg-terra-600 text-white'
-                          : 'border-app-border-strong bg-app-surface'
-                      }`}
-                      aria-hidden
-                    >
-                      {selected && (
-                        <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
-                          <path d="M2.5 6l2.5 2.5 4.5-5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-medium text-app-text">{crs.label}</span>
-                      <span className="block text-xs text-app-text-muted mt-0.5">
-                        {crs.epsg}
-                        {' · '}
-                        {crs.kind === 'geographic' ? 'Geographic (lat/lon)' : 'Projected (easting/northing)'}
-                      </span>
-                    </span>
-                    {selected && (
-                      <span className="shrink-0 rounded-full bg-terra-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-terra-700 dark:text-terra-300">
-                        Active
-                      </span>
-                    )}
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+          <CoordinateSystemList
+            value={active as CoordinateSystemId}
+            onSelect={(id) => {
+              if (id !== active) save.mutate(id)
+            }}
+            countryCode={countryCode}
+            countryCenter={countryCenter}
+            disabled={save.isPending}
+          />
         )}
 
         <div className="border-t app-divider px-5 py-4 bg-app-subtle/40">

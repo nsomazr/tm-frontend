@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import OtpInput from '../auth/OtpInput'
 import PasswordInput from '../ui/PasswordInput'
+import StepProgress from '../ui/StepProgress'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
 import {
@@ -25,6 +26,13 @@ export interface SubscribeCheckoutPayload {
 }
 
 type AuthStep = 'email' | 'otp' | 'password' | 'payment'
+
+const CHECKOUT_ACCOUNT_STEPS: { id: AuthStep; label: string; short: string }[] = [
+  { id: 'email', label: 'Email', short: 'Your account' },
+  { id: 'otp', label: 'Verify', short: 'Code' },
+  { id: 'password', label: 'Password', short: 'Secure access' },
+  { id: 'payment', label: 'Pay', short: 'Checkout' },
+]
 
 export interface SubscribeCheckoutLabels {
   emailMeCode: string
@@ -319,6 +327,15 @@ export default function SubscribeCheckoutModal({
             ×
           </button>
         </div>
+        {requiresAccount && (
+          <StepProgress
+            className="mb-4"
+            aria-label="Checkout steps"
+            steps={CHECKOUT_ACCOUNT_STEPS}
+            current={step}
+            maxReachable={step}
+          />
+        )}
         {planLabel && step !== 'otp' && (
           <div className="mb-2">
             <p className="text-sm font-medium text-terra-700">{planLabel}</p>

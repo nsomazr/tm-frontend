@@ -53,6 +53,7 @@ interface MapBottomControlsProps {
   staticMap?: boolean
   coordinateSystem: CoordinateSystemId
   onCoordinateSystemChange: (id: CoordinateSystemId) => void
+  countryCenter?: { lat: number; lng: number } | null
   coordinateFormat?: CoordinateDisplayFormat
   onCoordinateFormatChange?: (format: CoordinateDisplayFormat) => void
   showCoordinateSystem?: boolean
@@ -75,14 +76,16 @@ interface MapBottomControlsProps {
   mapRotation?: number
   /** When false, hide the layers toggle/sheet (e.g. top-nav mineral focus mode). */
   showLayersPanel?: boolean
+  totalLayerCount?: number
+  showLayerRotationHint?: boolean
 }
 
 type Panel = 'layers' | 'basemap' | 'legend' | null
 
 const TYPE_ORDER = ['polygon', 'point', 'line']
 
-const SHEET_CLASS_EXTRA = 'max-h-[min(36vh,260px)]'
-const LAYERS_SHEET_CLASS_EXTRA = 'max-h-[min(42vh,320px)]'
+const SHEET_CLASS_EXTRA = 'max-h-[min(42vh,320px)]'
+const LAYERS_SHEET_CLASS_EXTRA = 'max-h-[min(52vh,420px)]'
 
 const DOCK_CARD =
   'map-chrome min-w-0 overflow-hidden rounded-xl border border-app-border-strong bg-app-surface shadow-sm'
@@ -223,6 +226,7 @@ export default function MapBottomControls({
   staticMap = false,
   coordinateSystem,
   onCoordinateSystemChange,
+  countryCenter = null,
   coordinateFormat = 'decimal',
   onCoordinateFormatChange,
   showCoordinateSystem = false,
@@ -244,6 +248,8 @@ export default function MapBottomControls({
   showMapAds = true,
   mapRotation = 0,
   showLayersPanel = true,
+  totalLayerCount,
+  showLayerRotationHint = false,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
   const displayName = useDisplayName()
@@ -308,29 +314,160 @@ export default function MapBottomControls({
   }
 
   const currentBasemap = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
-  // Paid users pick layers (the Layers panel doubles as the legend). Unpaid users
-  // only get a read-only legend of what's shown on the map.
+  // Layers panel for paid users; everyone also gets a read-only legend (with ads below) on desktop.
   const showLayersBtn = hasPaidAccess && layers.length > 0 && showLayersPanel
-  const showLegendBtn = !hasPaidAccess && legendLayers.length > 0
+  const showLegendBtn = legendLayers.length > 0 && !showLayersBtn
+  const sheetOpen = panel != null
+  /** When a sheet is open, hide mid-dock chrome so legend/layers are not squeezed away. */
+  const showMidChrome = !sheetOpen
+  /** Ads stay under the legend/layers sheet for every visitor. */
+  const showDockAds = showMapAds && !assistantOpen
 
   const mobileDockClass = [
     'map-mobile-bottom-dock',
-    showMapAds && !assistantOpen ? 'map-mobile-bottom-dock--with-ad' : '',
-    countryPanelOpen ? 'map-mobile-bottom-dock--expanded' : '',
+    showDockAds ? 'map-mobile-bottom-dock--with-ad' : '',
+    countryPanelOpen && showMidChrome ? 'map-mobile-bottom-dock--expanded' : '',
+    sheetOpen ? 'map-mobile-bottom-dock--sheet-open' : '',
   ]
     .filter(Boolean)
     .join(' ')
 
   const sheetClass =
-    'pointer-events-auto mb-2 overflow-hidden rounded-2xl map-chrome bg-app-surface/95 backdrop-blur-sm'
+    'pointer-events-auto mb-2 shrink-0 overflow-hidden rounded-2xl map-chrome bg-app-surface/95 backdrop-blur-sm'
 
   const renderSheet = (content: ReactNode, tall = false) => (
     <div
-      className={`${sheetClass} ${tall ? LAYERS_SHEET_CLASS_EXTRA : SHEET_CLASS_EXTRA} flex flex-col overflow-hidden`}
+      className={`${sheetClass} ${tall ? LAYERS_SHEET_CLASS_EXTRA : SHEET_CLASS_EXTRA} flex flex-col`}
     >
       {content}
     </div>
   )
+
+  const layersSheet =
+    panel === 'layers' ? (
+      renderSheet(
+        <>
+          <SheetHandle />
+          <p className="shrink-0 px-3 pb-1 text-xs font-semibold map-text">{m.map.layersTitle}</p>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pr-2 scrollbar-pane">
+            {grouped.map(({ type, layers: typeLayers }) => {
+              const allOn = typeLayers.every((l) => visibleLayers.has(l.id))
+              return (
+                <div key={type} className="mb-4 last:mb-0 not-first:pt-4 not-first:border-t not-first:app-divider">
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wide map-text">
+                        {typeLabels[type] || type}
+                        <span className="ml-1 font-normal normal-case tracking-normal text-app-muted">
+                          ({typeLayers.length})
+                        </span>
+                      </span>
+                      {!staticMap && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleLayerType(type, !allOn)}
+                          className="text-xs font-semibold text-terra-700 dark:text-terra-400 whitespace-nowrap"
+                        >
+                          {allOn ? m.map.hideAll : m.map.showAll}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <ul className="space-y-0.5">
+                    {typeLayers.map((layer) => (
+                      <li key={layer.id} className="flex items-center gap-2.5 rounded-lg py-1.5 px-1 active:bg-app-subtle">
+                        <input
+                          type="checkbox"
+                          checked={visibleLayers.has(layer.id)}
+                          disabled={staticMap}
+                          onChange={() => onToggleLayer(layer.id)}
+                          className="checkbox checkbox--sm disabled:opacity-70"
+                        />
+                        <LayerTypeSymbol layer={layer} />
+                        <span className="text-sm font-medium leading-snug map-text min-w-0 break-words">
+                          {displayName(layer)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
+            {layers.length === 0 && (
+              <p className="py-2 text-xs map-text-muted">{m.map.noLayers}</p>
+            )}
+          </div>
+          {mineralHeatmap || mineralHeatmapLoading ? (
+            <div className="shrink-0 border-t app-divider px-3 py-2.5">
+              <MineralHeatmapColorbar
+                embedded
+                spec={mineralHeatmap}
+                loading={mineralHeatmapLoading}
+              />
+            </div>
+          ) : null}
+        </>,
+        true,
+      )
+    ) : null
+
+  const basemapSheet =
+    panel === 'basemap'
+      ? renderSheet(
+          <>
+            <SheetHandle />
+            <p className="shrink-0 px-3 pb-1 text-xs font-semibold map-text">{m.map.basemapLabel}</p>
+            <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
+              {BASEMAPS.map((bm) => (
+                <li key={bm.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onBasemapChange(bm.id)
+                      saveBasemapPreference(bm.id)
+                      setPanel(null)
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
+                      bm.id === basemap
+                        ? 'bg-app-accent-soft font-medium text-terra-800 dark:text-terra-300 ring-1 ring-terra-500/25'
+                        : 'map-text-secondary active:bg-app-subtle'
+                    }`}
+                  >
+                    <BasemapSwatch preview={bm.preview} />
+                    <span className="min-w-0 text-left">
+                      <span className="block text-sm font-medium">{bm.label}</span>
+                      <span className="block truncate text-[11px] map-text-muted">{bm.description}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>,
+        )
+      : null
+
+  const legendSheet =
+    panel === 'legend' && showLegendBtn
+      ? renderSheet(
+          <>
+            <SheetHandle />
+            <p className="shrink-0 px-3 pb-0.5 text-xs font-semibold map-text">
+              {m.map.legendTitle}
+              {legendLayers.length > 0 && (
+                <span className="ml-1.5 text-xs font-normal map-text-muted">({legendLayers.length})</span>
+              )}
+            </p>
+            <LegendPanel
+              layers={legendLayers}
+              embedded
+              sheetMode
+              totalLayerCount={totalLayerCount}
+              showRotationHint={showLayerRotationHint}
+            />
+          </>,
+          true,
+        )
+      : null
 
   return (
     <>
@@ -344,145 +481,114 @@ export default function MapBottomControls({
       )}
 
       <div
-        className={`pointer-events-none absolute inset-x-0 bottom-0 z-40 flex max-h-[min(58vh,calc(100dvh-5rem))] flex-col overflow-y-auto overscroll-y-contain px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden ${mobileDockClass}`}
+        className={`pointer-events-none absolute inset-x-0 bottom-0 z-40 flex max-h-[min(72vh,calc(100dvh-4.5rem))] flex-col justify-end overflow-hidden px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden ${mobileDockClass}`}
       >
-        {panel === 'layers' &&
-          renderSheet(
-            <>
-              <SheetHandle />
-              <p className="shrink-0 px-3 pb-1 text-xs font-semibold map-text">{m.map.layersTitle}</p>
-              <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pr-2 scrollbar-pane">
-                {grouped.map(({ type, layers: typeLayers }) => {
-                  const allOn = typeLayers.every((l) => visibleLayers.has(l.id))
-                  return (
-                    <div key={type} className="mb-4 last:mb-0 not-first:pt-4 not-first:border-t not-first:app-divider">
-                      <div className="mb-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-bold uppercase tracking-wide map-text">
-                            {typeLabels[type] || type}
-                            <span className="ml-1 font-normal normal-case tracking-normal text-app-muted">
-                              ({typeLayers.length})
-                            </span>
-                          </span>
-                          {!staticMap && (
-                          <button
-                            type="button"
-                            onClick={() => onToggleLayerType(type, !allOn)}
-                            className="text-xs font-semibold text-terra-700 dark:text-terra-400 whitespace-nowrap"
-                          >
-                            {allOn ? m.map.hideAll : m.map.showAll}
-                          </button>
-                          )}
-                        </div>
-                      </div>
-                      <ul className="space-y-0.5">
-                        {typeLayers.map((layer) => (
-                          <li key={layer.id} className="flex items-center gap-2.5 rounded-lg py-1.5 px-1 active:bg-app-subtle">
-                            <input
-                              type="checkbox"
-                              checked={visibleLayers.has(layer.id)}
-                              disabled={staticMap}
-                              onChange={() => onToggleLayer(layer.id)}
-                              className="checkbox checkbox--sm disabled:opacity-70"
-                            />
-                            <LayerTypeSymbol layer={layer} />
-                            <span className="text-sm font-medium leading-snug map-text min-w-0 break-words">{displayName(layer)}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )
-                })}
-                {layers.length === 0 && (
-                  <p className="py-2 text-xs map-text-muted">{m.map.noLayers}</p>
-                )}
-              </div>
-              {mineralHeatmap || mineralHeatmapLoading ? (
-                <div className="shrink-0 border-t app-divider px-3 py-2.5">
-                  <MineralHeatmapColorbar
-                    embedded
-                    spec={mineralHeatmap}
-                    loading={mineralHeatmapLoading}
-                  />
-                </div>
-              ) : null}
-            </>,
-            true
-          )}
+        {layersSheet}
+        {basemapSheet}
+        {legendSheet}
 
-        {panel === 'basemap' &&
-          renderSheet(
-            <>
-              <SheetHandle />
-              <p className="shrink-0 px-3 pb-1 text-xs font-semibold map-text">{m.map.basemapLabel}</p>
-              <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
-                {BASEMAPS.map((bm) => (
-                  <li key={bm.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onBasemapChange(bm.id)
-                        saveBasemapPreference(bm.id)
-                        setPanel(null)
-                      }}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
-                        bm.id === basemap
-                          ? 'bg-app-accent-soft font-medium text-terra-800 dark:text-terra-300 ring-1 ring-terra-500/25'
-                          : 'map-text-secondary active:bg-app-subtle'
-                      }`}
-                    >
-                      <BasemapSwatch preview={bm.preview} />
-                      <span className="min-w-0 text-left">
-                        <span className="block text-sm font-medium">{bm.label}</span>
-                        <span className="block truncate text-[11px] map-text-muted">{bm.description}</span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-
-        {panel === 'legend' && showLegendBtn &&
-          renderSheet(
-            <>
-              <SheetHandle />
-              <p className="shrink-0 px-3 pb-0.5 text-xs font-semibold map-text">
-                {m.map.legendTitle}
-                {legendLayers.length > 0 && (
-                  <span className="ml-1.5 text-xs font-normal map-text-muted">({legendLayers.length})</span>
-                )}
-              </p>
-              <LegendPanel layers={legendLayers} embedded sheetMode />
-              {showMapAds && (
-                <div className="shrink-0 px-3 pb-3 pt-2 border-t app-divider">
-                  <AdPlacementSlot placement="map_overlay" compact className="w-full" />
-                </div>
-              )}
-            </>
-          )}
-
-        {showMapAds && !assistantOpen && (
+        {showDockAds && (
           <div className="pointer-events-auto mb-2 shrink-0">
             <AdPlacementSlot placement="map_overlay" compact className="w-full" />
           </div>
         )}
 
-        {hasPaidAccess && countries.length > 0 ? (
-          <div className="pointer-events-auto mb-2 flex flex-col gap-2">
-            <div className="grid grid-cols-2 gap-2 items-stretch">
-              <div
-                className={`${DOCK_CARD} flex h-11 items-stretch ${countryPanelOpen ? 'ring-2 ring-terra-500/35 border-terra-500/40' : ''}`}
-              >
-                <button
-                  type="button"
-                  aria-expanded={countryPanelOpen}
-                  className="flex h-full w-full items-center justify-between gap-1.5 px-2.5 text-left text-xs font-semibold map-text"
-                  onClick={toggleCountryPanel}
+        {showMidChrome &&
+          (hasPaidAccess && countries.length > 0 ? (
+            <div className="pointer-events-auto mb-2 flex shrink-0 flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2 items-stretch">
+                <div
+                  className={`${DOCK_CARD} flex h-11 items-stretch ${countryPanelOpen ? 'ring-2 ring-terra-500/35 border-terra-500/40' : ''}`}
                 >
-                  <span className="truncate">{m.map.boundaryCountryLabel}</span>
-                  <ChevronToggle open={countryPanelOpen} />
-                </button>
+                  <button
+                    type="button"
+                    aria-expanded={countryPanelOpen}
+                    className="flex h-full w-full items-center justify-between gap-1.5 px-2.5 text-left text-xs font-semibold map-text"
+                    onClick={toggleCountryPanel}
+                  >
+                    <span className="truncate">{m.map.boundaryCountryLabel}</span>
+                    <ChevronToggle open={countryPanelOpen} />
+                  </button>
+                </div>
+                <TerraAssistantLauncher
+                  open={assistantOpen}
+                  onToggle={handleAssistantToggle}
+                  onClose={onAssistantClose}
+                  areaInsight={areaInsight}
+                  insightLoading={insightLoading}
+                  hasPaidAccess={hasPaidAccess}
+                  mapContext={assistantMapContext}
+                  mapSnapshot={mapSnapshot}
+                  getMapSnapshot={getMapSnapshot}
+                  onRefreshInsight={onRefreshInsight}
+                  refreshInsightPending={refreshInsightPending}
+                  onExploreSimilarArea={onExploreSimilarArea}
+                  insightLoadingTerrainView={insightLoadingTerrainView}
+                  className="min-w-0 h-full w-full"
+                  fullWidthButton
+                  countryPanelOpen={countryPanelOpen}
+                  mobileDockAdVisible={showDockAds}
+                />
+              </div>
+              {countryPanelOpen && (
+                <div className={`${DOCK_CARD} max-h-[min(36vh,280px)] overflow-y-auto px-1.5 pb-1.5 pt-0.5`}>
+                  <CountryBoundaryPanel
+                    countries={countries}
+                    countryCode={countryCode}
+                    onCountryChange={onCountryChange}
+                    availableBoundaryLevels={availableBoundaryLevels}
+                    boundaryVisibility={boundaryVisibility}
+                    onBoundaryVisibilityChange={onBoundaryVisibilityChange}
+                    showBasemapLabels={showBasemapLabels}
+                    onShowBasemapLabelsChange={onShowBasemapLabelsChange}
+                    showBoundaryLabels={showBoundaryLabels}
+                    onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
+                    boundaryFocus={boundaryFocus}
+                    onClearBoundaryFocus={onClearBoundaryFocus}
+                    villagesLoading={villagesLoading}
+                    villagesError={villagesError}
+                    lockedBoundaryLevels={lockedBoundaryLevels}
+                    compact
+                    className="p-0"
+                  />
+                </div>
+              )}
+            </div>
+          ) : !hasPaidAccess ? (
+            <div className="pointer-events-auto mb-1.5 shrink-0">
+              <TerraAssistantLauncher
+                open={assistantOpen}
+                onToggle={handleAssistantToggle}
+                onClose={onAssistantClose}
+                areaInsight={areaInsight}
+                insightLoading={insightLoading}
+                hasPaidAccess={hasPaidAccess}
+                mapContext={assistantMapContext}
+                mapSnapshot={mapSnapshot}
+                getMapSnapshot={getMapSnapshot}
+                onRefreshInsight={onRefreshInsight}
+                refreshInsightPending={refreshInsightPending}
+                onExploreSimilarArea={onExploreSimilarArea}
+                insightLoadingTerrainView={insightLoadingTerrainView}
+                fullWidthButton
+              />
+            </div>
+          ) : (
+            <div className="pointer-events-auto mb-2 grid shrink-0 grid-cols-2 gap-2">
+              <div className="map-chrome min-w-0 rounded-xl p-2">
+                <span className="mb-1.5 block px-0.5 text-[11px] font-semibold uppercase tracking-wide map-text-muted">
+                  {m.map.boundaryLayersTitle}
+                </span>
+                <BoundaryVisibilityToggles
+                  availableLevels={[]}
+                  value={boundaryVisibility}
+                  onChange={onBoundaryVisibilityChange}
+                  showBasemapLabels={showBasemapLabels}
+                  onShowBasemapLabelsChange={onShowBasemapLabelsChange}
+                  showBoundaryLabels={showBoundaryLabels}
+                  onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
+                  compact
+                />
               </div>
               <TerraAssistantLauncher
                 open={assistantOpen}
@@ -498,106 +604,27 @@ export default function MapBottomControls({
                 refreshInsightPending={refreshInsightPending}
                 onExploreSimilarArea={onExploreSimilarArea}
                 insightLoadingTerrainView={insightLoadingTerrainView}
-                className="min-w-0 h-full w-full"
+                className="min-w-0 self-start"
                 fullWidthButton
-                countryPanelOpen={countryPanelOpen}
-                mobileDockAdVisible={showMapAds && !assistantOpen}
               />
             </div>
-            {countryPanelOpen && (
-              <div className={`${DOCK_CARD} px-1.5 pb-1.5 pt-0.5`}>
-                <CountryBoundaryPanel
-                  countries={countries}
-                  countryCode={countryCode}
-                  onCountryChange={onCountryChange}
-                  availableBoundaryLevels={availableBoundaryLevels}
-                  boundaryVisibility={boundaryVisibility}
-                  onBoundaryVisibilityChange={onBoundaryVisibilityChange}
-                  showBasemapLabels={showBasemapLabels}
-                  onShowBasemapLabelsChange={onShowBasemapLabelsChange}
-                  showBoundaryLabels={showBoundaryLabels}
-                  onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
-                  boundaryFocus={boundaryFocus}
-                  onClearBoundaryFocus={onClearBoundaryFocus}
-                  villagesLoading={villagesLoading}
-                  villagesError={villagesError}
-                  lockedBoundaryLevels={lockedBoundaryLevels}
-                  compact
-                  className="p-0"
-                />
-              </div>
-            )}
-          </div>
-        ) : !hasPaidAccess ? (
-          <div className="pointer-events-auto mb-1.5">
-            <TerraAssistantLauncher
-              open={assistantOpen}
-              onToggle={handleAssistantToggle}
-              onClose={onAssistantClose}
-              areaInsight={areaInsight}
-              insightLoading={insightLoading}
-              hasPaidAccess={hasPaidAccess}
-              mapContext={assistantMapContext}
-              mapSnapshot={mapSnapshot}
-              getMapSnapshot={getMapSnapshot}
-              onRefreshInsight={onRefreshInsight}
-              refreshInsightPending={refreshInsightPending}
-              onExploreSimilarArea={onExploreSimilarArea}
-              insightLoadingTerrainView={insightLoadingTerrainView}
-              fullWidthButton
-            />
-          </div>
-        ) : (
-          <div className="pointer-events-auto mb-2 grid grid-cols-2 gap-2">
-            <div className="map-chrome min-w-0 rounded-xl p-2">
-              <span className="block text-[11px] font-semibold uppercase tracking-wide map-text-muted px-0.5 mb-1.5">
-                {m.map.boundaryLayersTitle}
-              </span>
-              <BoundaryVisibilityToggles
-                availableLevels={[]}
-                value={boundaryVisibility}
-                onChange={onBoundaryVisibilityChange}
-                showBasemapLabels={showBasemapLabels}
-                onShowBasemapLabelsChange={onShowBasemapLabelsChange}
-                showBoundaryLabels={showBoundaryLabels}
-                onShowBoundaryLabelsChange={onShowBoundaryLabelsChange}
-                compact
-              />
-            </div>
-            <TerraAssistantLauncher
-              open={assistantOpen}
-              onToggle={handleAssistantToggle}
-              onClose={onAssistantClose}
-              areaInsight={areaInsight}
-              insightLoading={insightLoading}
-              hasPaidAccess={hasPaidAccess}
-              mapContext={assistantMapContext}
-              mapSnapshot={mapSnapshot}
-              getMapSnapshot={getMapSnapshot}
-              onRefreshInsight={onRefreshInsight}
-              refreshInsightPending={refreshInsightPending}
-              onExploreSimilarArea={onExploreSimilarArea}
-              insightLoadingTerrainView={insightLoadingTerrainView}
-              className="min-w-0 self-start"
-              fullWidthButton
-            />
-          </div>
-        )}
+          ))}
 
-        {showCoordinateSystem && (
-          <div className="pointer-events-auto mb-1.5 map-chrome overflow-hidden rounded-xl">
+        {showMidChrome && showCoordinateSystem && (
+          <div className="pointer-events-auto mb-1.5 shrink-0 map-chrome overflow-hidden rounded-xl">
             <CoordinateSystemPicker
               value={coordinateSystem}
               onChange={onCoordinateSystemChange}
               countryCode={countryCode}
+              countryCenter={countryCenter}
               coordinateFormat={coordinateFormat}
               onCoordinateFormatChange={onCoordinateFormatChange}
             />
           </div>
         )}
 
-        {panel !== 'layers' && (mineralHeatmap || mineralHeatmapLoading) && (
-          <div className="pointer-events-none mb-1.5">
+        {showMidChrome && (mineralHeatmap || mineralHeatmapLoading) && (
+          <div className="pointer-events-none mb-1.5 shrink-0">
             <MineralHeatmapColorbar
               embedded
               spec={mineralHeatmap}
@@ -607,42 +634,42 @@ export default function MapBottomControls({
           </div>
         )}
 
-        <div className="pointer-events-auto sticky bottom-0 z-10 shrink-0 bg-gradient-to-t from-app-bg/95 via-app-bg/80 to-transparent pt-1">
+        <div className="pointer-events-auto z-10 shrink-0">
           <div className={`${DOCK_CARD} flex h-11 w-full items-center gap-1 p-1`}>
-          <MapZoomControls
-            onZoomIn={onZoomIn}
-            onZoomOut={onZoomOut}
-            onResetView={onResetView}
-            compact
-          />
-          <MapCompass rotationRad={mapRotation} compact className="pointer-events-auto shrink-0" />
-          <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {showLayersBtn && (
-            <ToolbarButton
-              active={panel === 'layers'}
-              onClick={() => togglePanel('layers')}
-              icon={<LayersIcon className="h-4 w-4" />}
-              label={m.map.layersShort}
-              badge={layers.length}
+            <MapZoomControls
+              onZoomIn={onZoomIn}
+              onZoomOut={onZoomOut}
+              onResetView={onResetView}
+              compact
             />
-            )}
-            <ToolbarButton
-              active={panel === 'basemap'}
-              onClick={() => togglePanel('basemap')}
-              icon={<MapIcon className="h-4 w-4" />}
-              label={currentBasemap.label}
-              adornment={<BasemapSwatch preview={currentBasemap.preview} size="xs" />}
-            />
-            {showLegendBtn && (
-            <ToolbarButton
-              active={panel === 'legend'}
-              onClick={() => togglePanel('legend')}
-              icon={<LegendIcon className="h-4 w-4" />}
-              label={m.map.legendTitle}
-              badge={legendLayers.length}
-            />
-            )}
-          </nav>
+            <MapCompass rotationRad={mapRotation} compact className="pointer-events-auto shrink-0" />
+            <nav className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {showLayersBtn && (
+                <ToolbarButton
+                  active={panel === 'layers'}
+                  onClick={() => togglePanel('layers')}
+                  icon={<LayersIcon className="h-4 w-4" />}
+                  label={m.map.layersShort}
+                  badge={layers.length}
+                />
+              )}
+              <ToolbarButton
+                active={panel === 'basemap'}
+                onClick={() => togglePanel('basemap')}
+                icon={<MapIcon className="h-4 w-4" />}
+                label={currentBasemap.label}
+                adornment={<BasemapSwatch preview={currentBasemap.preview} size="xs" />}
+              />
+              {showLegendBtn && (
+                <ToolbarButton
+                  active={panel === 'legend'}
+                  onClick={() => togglePanel('legend')}
+                  icon={<LegendIcon className="h-4 w-4" />}
+                  label={m.map.legendTitle}
+                  badge={legendLayers.length}
+                />
+              )}
+            </nav>
           </div>
         </div>
       </div>

@@ -14,7 +14,7 @@ import Polygon from 'ol/geom/Polygon'
 import { fromLonLat, toLonLat, transformExtent } from 'ol/proj'
 import ScaleLine from 'ol/control/ScaleLine'
 import { defaults as defaultControls } from 'ol/control'
-import { defaults as defaultInteractions } from 'ol/interaction'
+import { defaults as defaultInteractions, DragRotate, PinchRotate } from 'ol/interaction'
 import 'ol/ol.css'
 import type { AreaInsight, Country, CountryFocus, MapLayer, MineralHighlightSpec } from '../../types'
 import { mapsApi } from '../../api'
@@ -27,7 +27,6 @@ import MapZoomControls from './MapZoomControls'
 import MapCompass from './MapCompass'
 import MapCoordinateReadout from './MapCoordinateReadout'
 import MineralHeatmapColorbar from './MineralHeatmapColorbar'
-import AdPlacementSlot from '../ads/AdPlacementSlot'
 import { registerCoordinateProjections } from './coordinateSystems'
 import { useCoordinateSystemState } from './useCoordinateSystemState'
 import { useCoordinateFormatState } from './useCoordinateFormatState'
@@ -59,6 +58,7 @@ import Heatmap from 'ol/layer/Heatmap'
 import { loadLayerGeojson } from './mapGeojsonCache'
 import { syncMineralHeatmapLayer, MINERAL_HEATMAP_Z_INDEX, type MineralHeatmapSpec } from './mineralHeatmapLayer'
 import { syncMineralHeatmapContours } from './mineralHeatmapContours'
+import { pickRandomVisibleLayerIds } from './mapUtils'
 import { useTranslation } from '../../i18n/LocaleContext'
 import {
   boundaryLabelZoom,
@@ -268,7 +268,7 @@ function countryFitPadding(mobile: boolean, chrome: CountryFitChrome = {}): [num
   return [top, right, bottom, left]
 }
 
-const BASE_MIN_ZOOM_MOBILE = 4
+const BASE_MIN_ZOOM_MOBILE = 5
 const BASE_MIN_ZOOM_DESKTOP = 5
 
 function lockMinZoomToCurrentView(map: OlMap) {
@@ -385,8 +385,20 @@ function userDrawStyles(role: string): Style {
 
 /** Build OL features (WGS84 -> map projection) for a user exploration draw. */
 function buildUserDrawFeatures(draw: ExplorationDraw): Feature[] {
-  const coords = draw.points.map(([lng, lat]) => fromLonLat([lng, lat]))
   const features: Feature[] = []
+
+  const addPolygonRing = (ring: [number, number][]) => {
+    if (ring.length < 3) return
+    const coords = ring.map(([lng, lat]) => fromLonLat([lng, lat]))
+    const closed = [...coords, coords[0]]
+    features.push(new Feature({ geometry: new Polygon([closed]), role: 'polygon' }))
+  }
+
+  for (const ring of draw.polygons || []) {
+    addPolygonRing(ring)
+  }
+
+  const coords = draw.points.map(([lng, lat]) => fromLonLat([lng, lat]))
 
   if (draw.mode === 'polygon' && coords.length >= 3) {
     const ring = [...coords, coords[0]]
@@ -603,7 +615,7 @@ export default function MapViewer({
   const visibleLayers = useMemo(() => {
     const base = externalVisible ?? internalVisible
     if (staticMap && layers.length > 0 && base.size === 0) {
-      return new Set(layers.map((layer) => layer.id))
+      return pickRandomVisibleLayerIds(layers)
     }
     return base
   }, [externalVisible, internalVisible, staticMap, layers])
@@ -889,11 +901,15 @@ export default function MapViewer({
       ],
       view: new View({
         center: TANZANIA_CENTER,
-        zoom: mobile ? 5 : 6.5,
+        zoom: mobile ? 5.5 : 6.5,
         minZoom: mobile ? BASE_MIN_ZOOM_MOBILE : BASE_MIN_ZOOM_DESKTOP,
         maxZoom: 18,
         extent: TANZANIA_EXTENT,
-        constrainOnlyCenter: true,
+        // Mobile: keep the whole viewport inside Tanzania (no peeking at neighbors).
+        // Desktop: only constrain the center so edge padding stays flexible.
+        constrainOnlyCenter: !mobile,
+        enableRotation: false,
+        constrainRotation: true,
       }),
       controls: defaultControls({ zoom: false, attribution: false }).extend([
         new ScaleLine({ units: 'metric', bar: true, text: true, minWidth: 120 }),
@@ -903,6 +919,23 @@ export default function MapViewer({
         pinchRotate: false,
         altShiftDragRotate: false,
       }),
+    })
+
+    // Belt-and-suspenders: strip any rotate interactions defaults may still include.
+    map
+      .getInteractions()
+      .getArray()
+      .slice()
+      .forEach((interaction) => {
+        if (interaction instanceof PinchRotate || interaction instanceof DragRotate) {
+          map.removeInteraction(interaction)
+        }
+      })
+
+    const view = map.getView()
+    view.setRotation(0)
+    view.on('change:rotation', () => {
+      if (view.getRotation() !== 0) view.setRotation(0)
     })
 
     fitCountryView(map, countryFocusRef.current, mobile, false, countryFitChromeRef.current)
@@ -1239,15 +1272,18 @@ export default function MapViewer({
     const map = mapInstance.current
     if (!map || !countryFocus) return
 
+    const view = map.getView()
     const extent = boundsToExtent(countryFocus.bounds)
-    map.getView().set('extent', extent)
+    const mobile = isMobileRef.current
+    view.set('extent', extent)
+    view.setRotation(0)
 
     if (!analysisZone && !adminFitBounds) {
       programmaticMoveRef.current = true
-      fitCountryView(map, countryFocus, isMobileRef.current, true, countryFitChromeRef.current)
+      fitCountryView(map, countryFocus, mobile, true, countryFitChromeRef.current)
       window.setTimeout(() => {
         programmaticMoveRef.current = false
-      }, isMobileRef.current ? 650 : 900)
+      }, mobile ? 650 : 900)
     }
   }, [countryFocus, analysisZone, adminFitBounds])
 
@@ -1933,7 +1969,7 @@ export default function MapViewer({
               onReorder={reorderLayers}
               allowReorder={allowReorder || editable}
               layersLocked={staticMap}
-              className="pointer-events-auto min-h-0 flex-1 overflow-hidden"
+              className="pointer-events-auto w-full shrink-0 overflow-hidden"
             />
           )}
           <MineralHeatmapColorbar
@@ -1942,18 +1978,6 @@ export default function MapViewer({
             loading={mineralHeatmapLoading}
             className="pointer-events-none shrink-0 w-full"
           />
-          {showMapAds && (
-            <AdPlacementSlot
-              placement="map_overlay"
-              compact
-              className="pointer-events-auto w-full shrink-0"
-            />
-          )}
-        </div>
-      )}
-      {!minimalChrome && !isMobile && showMapAds && !(showLayerPanel && layers.length > 0) && !mineralHeatmap?.points?.length && (
-        <div className="map-left-dock map-left-dock--ads-only absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex flex-col pointer-events-none overflow-hidden">
-          <AdPlacementSlot placement="map_overlay" compact className="pointer-events-auto w-full" />
         </div>
       )}
       {!minimalChrome && !isMobile && (
@@ -1978,11 +2002,14 @@ export default function MapViewer({
           lockedBoundaryLevels={lockedBoundaryLevels}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
+          countryCenter={countryFocus?.center ?? null}
           coordinateFormat={coordinateFormat}
           onCoordinateFormatChange={setCoordinateFormat}
           hasPaidAccess={hasPaidAccess}
           showCoordinateSystem={showCoordinateSystem && hasPaidAccess}
           showMapAds={showMapAds}
+          totalLayerCount={layers.length}
+          showLayerRotationHint={staticMap}
         />
       )}
       {isMobile && !minimalChrome && (
@@ -2016,6 +2043,7 @@ export default function MapViewer({
           staticMap={staticMap}
           coordinateSystem={coordinateSystem}
           onCoordinateSystemChange={setCoordinateSystem}
+          countryCenter={countryFocus?.center ?? null}
           coordinateFormat={coordinateFormat}
           onCoordinateFormatChange={setCoordinateFormat}
           showCoordinateSystem={showCoordinateSystem && hasPaidAccess}
@@ -2036,6 +2064,8 @@ export default function MapViewer({
           mineralHeatmapLoading={mineralHeatmapLoading}
           showMapAds={showMapAds}
           mapRotation={mapRotation}
+          totalLayerCount={layers.length}
+          showLayerRotationHint={staticMap}
         />
       )}
     </div>

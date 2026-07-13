@@ -3,16 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 import { mapsApi } from '../../api'
 import {
   COORDINATE_SYSTEM_CHANGE_EVENT,
-  COORDINATE_SYSTEMS,
   type CoordinateSystemId,
   coordinateSystemStorageKey,
+  isCoordinateSystemId,
   readStoredCoordinateSystem,
   storeCoordinateSystem,
 } from './coordinateSystems'
-
-function isCoordinateSystemId(value: string): value is CoordinateSystemId {
-  return COORDINATE_SYSTEMS.some((c) => c.id === value)
-}
 
 export function useCoordinateSystemState(countryCode = 'TZ') {
   const normalizedCountry = countryCode.toUpperCase()

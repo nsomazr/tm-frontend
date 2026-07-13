@@ -97,8 +97,8 @@ export function PlanPriceAmount({
   const { currency, rate, rateLoading, rateError } = usePricingCurrency()
 
   const amountClass =
-    size === 'lg' ? 'text-4xl font-bold text-slate-900' : 'text-sm font-medium text-slate-700 tabular-nums'
-  const currencyClass = size === 'lg' ? 'text-slate-500 ml-1' : 'text-slate-500 ml-1 text-xs'
+    size === 'lg' ? 'text-4xl font-bold text-app-text' : 'text-sm font-medium text-app-secondary tabular-nums'
+  const currencyClass = size === 'lg' ? 'text-app-muted ml-1' : 'text-app-muted ml-1 text-xs'
 
   if (amountTzs <= 0) {
     return (
@@ -111,11 +111,11 @@ export function PlanPriceAmount({
 
   if (currency === 'USD') {
     if (rateLoading) {
-      return <span className={`${amountClass} text-slate-400 ${className}`}>…</span>
+      return <span className={`${amountClass} text-app-muted ${className}`}>…</span>
     }
     if (rateError || rate == null) {
       return (
-        <span className={`${size === 'lg' ? 'text-base' : 'text-xs'} text-slate-500 ${className}`}>
+        <span className={`${size === 'lg' ? 'text-base' : 'text-xs'} text-app-muted ${className}`}>
           USD unavailable
         </span>
       )
@@ -143,7 +143,7 @@ export function CheckoutPriceHint({ amountTzs }: { amountTzs: number }) {
   if (currency !== 'USD' || amountTzs <= 0) return null
 
   return (
-    <p className="text-xs text-slate-500 mt-0.5">
+    <p className="text-xs text-app-muted mt-0.5">
       {rateLoading ? labels.liveRateHint : rateError ? labels.rateUnavailable : labels.liveRateHint}
     </p>
   )

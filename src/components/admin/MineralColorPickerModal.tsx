@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import MineralColorReference from './MineralColorReference'
+import { colorInputValue } from './layerColors'
 import { normalizeHex } from '../../lib/mineralColorUtils'
 
 interface MineralColorPickerModalProps {
@@ -92,12 +93,12 @@ export default function MineralColorPickerModal({
             <span>Custom</span>
             <input
               type="color"
-              value={selected}
+              value={colorInputValue(selected)}
               onChange={(e) => onSelect(e.target.value)}
               className="h-8 w-10 cursor-pointer rounded-md border border-app-border bg-transparent p-0.5"
               aria-label="Custom color"
             />
-            <span className="font-mono text-xs text-app-text-muted">{selected}</span>
+            <span className="font-mono text-xs text-app-text-muted">{colorInputValue(selected)}</span>
           </label>
           <button type="button" onClick={onClose} className="btn-primary text-sm">
             Done

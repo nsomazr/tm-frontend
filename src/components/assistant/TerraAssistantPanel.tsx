@@ -7,6 +7,7 @@ import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { AreaInsight, AssistantCredits, AssistantMessage, AerialAccess, SimilarAreaRecommendation } from '../../types'
 import AssistantMessageContent from './AssistantMessageContent'
+import InsightGenerationLoader from './InsightGenerationLoader'
 import TerraInsightExportControls from './TerraInsightExportControls'
 import RelatedReportsPanel from '../reports/RelatedReportsPanel'
 import { SendArrowIcon, TerraAssistantAvatar } from './AssistantIcons'
@@ -709,10 +710,11 @@ export default function TerraAssistantPanel({
         } ${isFillLayout ? 'bg-gradient-to-b from-app-subtle/30 to-transparent max-w-2xl mx-auto w-full' : ''}`}
       >
         {loading ? (
-          <div className={`flex items-center gap-2 text-sm map-text-muted justify-center ${isCompact ? 'py-4' : 'py-8'}`}>
-            <div className="h-4 w-4 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
-            {loadingTerrainView ? m.map.analyzingTerrainView : ta.generating}
-          </div>
+          <InsightGenerationLoader
+            variant={loadingTerrainView ? 'terrain' : 'insight'}
+            compact={isCompact}
+            mobileSheet={mobileSheet}
+          />
         ) : (
           <>
             {messages.map((msg, i) => {
@@ -807,13 +809,7 @@ export default function TerraAssistantPanel({
         )}
 
         {sending && (
-          <div className="flex gap-2.5 justify-start">
-            <TerraAssistantAvatar className="h-7 w-7 mt-0.5" />
-            <div className="rounded-2xl rounded-bl-md bg-app-surface px-3.5 py-2.5 text-xs map-text-muted flex items-center gap-2 shadow-sm">
-              <div className="h-3 w-3 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
-              {ta.thinking}
-            </div>
-          </div>
+          <InsightGenerationLoader variant="thinking" compact mobileSheet={mobileSheet} />
         )}
 
         {!loading && showThreadUpgrade && (

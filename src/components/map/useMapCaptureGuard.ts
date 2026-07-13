@@ -12,7 +12,7 @@ function isCaptureShortcut(e: KeyboardEvent): boolean {
   const shift = e.shiftKey
   const key = e.key.toLowerCase()
 
-  if (e.key === 'PrintScreen') return true
+  if (e.key === 'PrintScreen' || e.code === 'PrintScreen') return true
 
   // macOS region/window/fullscreen screenshots
   if (meta && shift && ['3', '4', '5'].includes(key)) return true
@@ -20,6 +20,7 @@ function isCaptureShortcut(e: KeyboardEvent): boolean {
   // Snipping tool / browser save-page-as-image shortcuts
   if (shift && (meta || ctrl) && key === 's') return true
 
+  // Common capture / print / copy shortcuts over the map
   if ((meta || ctrl) && (key === 'p' || key === 'c')) return true
 
   return false
@@ -47,6 +48,7 @@ export function useMapCaptureGuard(
     const onContextMenu = (e: MouseEvent) => {
       if (!eventInside(container, e.target)) return
       e.preventDefault()
+      notify()
     }
 
     const onClipboard = (e: ClipboardEvent) => {
@@ -73,7 +75,7 @@ export function useMapCaptureGuard(
       e.stopPropagation()
       notify()
 
-      if (e.key === 'PrintScreen' && navigator.clipboard?.writeText) {
+      if ((e.key === 'PrintScreen' || e.code === 'PrintScreen') && navigator.clipboard?.writeText) {
         void navigator.clipboard.writeText('').catch(() => {})
       }
     }

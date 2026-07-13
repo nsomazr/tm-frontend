@@ -6,6 +6,7 @@ import { ADMIN_LAYERS_KEY, useAdminLayers } from '../../hooks/useAdminLayers'
 import { useAuth } from '../../auth/AuthContext'
 import CommodityLayersPanel from '../../components/admin/CommodityLayersPanel'
 import {
+  colorInputValue,
   layerDisplayColor,
   layerStyleWithColor,
 } from '../../components/admin/layerColors'
@@ -119,6 +120,8 @@ function CommodityEditor({
       qc.invalidateQueries({ queryKey: ['mineral'] })
       qc.invalidateQueries({ queryKey: ['minerals'] })
       qc.invalidateQueries({ queryKey: ['minerals', 'all'] })
+      qc.invalidateQueries({ queryKey: ['mineral-catalog'] })
+      qc.invalidateQueries({ queryKey: ['mineral-catalog-nav'] })
       toast.success('Layer updated')
       onClose()
     },
@@ -207,7 +210,7 @@ function CommodityEditor({
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <input
                 type="color"
-                value={color}
+                value={colorInputValue(color)}
                 onChange={(e) => setColor(e.target.value)}
                 className="h-8 w-8 cursor-pointer rounded-md border border-app-border bg-transparent p-0.5 shrink-0"
                 aria-label="Map color"

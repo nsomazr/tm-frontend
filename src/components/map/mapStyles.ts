@@ -13,13 +13,12 @@ import {
 
 export type MapColorTheme = 'light' | 'dark'
 
-function pointTriangleImage(fill: string, radius: number, strokeWidth = 2) {
+function pointTriangleImage(fill: string, radius: number) {
   return new RegularShape({
     points: 3,
     radius,
     angle: 0,
     fill: new Fill({ color: fill }),
-    stroke: new Stroke({ color: '#ffffff', width: strokeWidth }),
   })
 }
 
@@ -152,7 +151,7 @@ export function buildHighlightStyle(layer: MapLayer, basemap: BasemapId, feature
 
   if (layer.layer_type === 'point') {
     return new Style({
-      image: pointTriangleImage(fill, 10, 3),
+      image: pointTriangleImage(fill, 10),
     })
   }
 

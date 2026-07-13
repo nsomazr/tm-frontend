@@ -75,23 +75,23 @@ function FaqItem({ q, a }: { q: string; a: string }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between gap-4 py-4 text-left font-medium text-slate-900 hover:text-terra-700 transition-colors"
+        className="w-full flex items-center justify-between gap-4 py-4 text-left font-medium text-app-text hover:text-terra-700 dark:hover:text-terra-400 transition-colors"
       >
         {q}
-        <span className="text-slate-400 shrink-0 text-lg leading-none">{open ? '−' : '+'}</span>
+        <span className="text-app-muted shrink-0 text-lg leading-none">{open ? '−' : '+'}</span>
       </button>
-      {open && <p className="pb-4 text-sm text-slate-600 leading-relaxed">{a}</p>}
+      {open && <p className="pb-4 text-sm text-app-secondary leading-relaxed">{a}</p>}
     </div>
   )
 }
 
 function PlanFeatureList({ items }: { items: string[] }) {
   return (
-    <ul className="mt-6 space-y-2.5 text-sm text-slate-600 flex-1">
+    <ul className="mt-6 space-y-2.5 text-sm text-app-secondary flex-1">
       {items.map((feature) => (
         <li key={feature} className="flex items-start gap-2.5">
           <svg
-            className="mt-0.5 h-4 w-4 shrink-0 text-terra-600"
+            className="mt-0.5 h-4 w-4 shrink-0 text-terra-600 dark:text-terra-400"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -132,12 +132,12 @@ function PricingCard({
 }) {
   return (
     <article
-      className={`relative flex min-w-[17rem] max-w-[20rem] flex-col rounded-2xl border bg-white p-6 shadow-sm snap-center shrink-0 sm:min-w-0 sm:max-w-none sm:shrink ${
+      className={`relative flex min-w-[17rem] max-w-[20rem] flex-col rounded-2xl border bg-app-surface p-6 shadow-sm snap-center shrink-0 sm:min-w-0 sm:max-w-none sm:shrink ${
         highlighted
           ? 'border-terra-500 ring-2 ring-terra-500/80 shadow-md'
           : muted
-            ? 'border-slate-200'
-            : 'border-slate-200 hover:border-slate-300'
+            ? 'border-app-border'
+            : 'border-app-border hover:border-app-border-strong'
       }`}
     >
       {badge && (
@@ -145,14 +145,16 @@ function PricingCard({
           {badge}
         </span>
       )}
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <p className="mt-1.5 min-h-[2.75rem] text-sm leading-snug text-slate-500">{description}</p>
-      <div className="mt-5 border-b border-slate-100 pb-5">
+      <h2 className="text-lg font-semibold text-app-text">{title}</h2>
+      <p className="mt-1.5 min-h-[2.75rem] text-sm leading-snug text-app-muted">{description}</p>
+      <div className="mt-5 border-b app-divider pb-5">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           {price}
-          {priceSuffix && <span className="text-sm text-slate-400">/ {priceSuffix}</span>}
+          {priceSuffix && <span className="text-sm text-app-muted">/ {priceSuffix}</span>}
         </div>
-        {priceNote && <p className="mt-1.5 text-xs font-medium text-terra-700">{priceNote}</p>}
+        {priceNote && (
+          <p className="mt-1.5 text-xs font-medium text-terra-700 dark:text-terra-400">{priceNote}</p>
+        )}
       </div>
       <PlanFeatureList items={features} />
       <div className="mt-6 pt-2">{cta}</div>
@@ -368,10 +370,10 @@ function SubscriptionsPageContent() {
         <AdPlacementSlot placement="subscriptions_banner" />
       </div>
 
-      <section className="py-12 sm:py-16 bg-slate-50/80">
+      <section className="py-12 sm:py-16 bg-app-subtle/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           {usingFallbackPlans && !isLoading && (
-            <div className="mb-8 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 text-center">
+            <div className="mb-8 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 px-4 py-3 text-sm text-amber-900 dark:text-amber-200 text-center">
               {isError ? p.plansApiUnavailable : p.noPlans}
             </div>
           )}
@@ -514,7 +516,7 @@ function SubscriptionsPageContent() {
       <section className="py-16 sm:py-20">
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-10">
-            <h2 className="text-2xl font-bold text-slate-900">{p.faqTitle}</h2>
+            <h2 className="text-2xl font-bold text-app-text">{p.faqTitle}</h2>
           </div>
           <div className="card-flat">
             {p.faq.map((item) => (

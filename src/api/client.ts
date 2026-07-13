@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { LOCALE_STORAGE_KEY } from '../i18n/LocaleContext'
+import { clearSessionTimers, touchSessionActivity } from '../auth/sessionTimeout'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8085/api/v1'
 
@@ -11,6 +12,7 @@ export const api = axios.create({
 function clearAuthTokens() {
   localStorage.removeItem('access_token')
   localStorage.removeItem('refresh_token')
+  clearSessionTimers()
 }
 
 function redirectToLogin() {
@@ -24,6 +26,7 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+    touchSessionActivity()
   }
   const locale = localStorage.getItem(LOCALE_STORAGE_KEY)
   if (locale === 'en' || locale === 'sw') {
@@ -55,6 +58,7 @@ api.interceptors.response.use(
         if (data.refresh) {
           localStorage.setItem('refresh_token', data.refresh)
         }
+        touchSessionActivity()
         original.headers.Authorization = `Bearer ${data.access}`
         return api(original)
       } catch {

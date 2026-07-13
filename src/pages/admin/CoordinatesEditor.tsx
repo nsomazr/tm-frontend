@@ -24,7 +24,10 @@ import ListPagination from '../../components/ui/ListPagination'
 import { toast } from '../../components/ui/toast'
 import LayerBulkImportPanel from '../../components/admin/LayerBulkImportPanel'
 import { layerDisplayColor } from '../../components/admin/layerColors'
-import { parseCoordinateComponent } from '../../components/map/coordinateFormat'
+import { parseCoordinateComponent, dmsPartsToDecimal, emptyDmsParts, type DmsAxisParts } from '../../components/map/coordinateFormat'
+import CoordinateAxisInput from '../../components/map/CoordinateAxisInput'
+import CoordinateFormatToggle from '../../components/map/CoordinateFormatToggle'
+import { useCoordinateFormatState } from '../../components/map/useCoordinateFormatState'
 import { usePagination } from '../../hooks/usePagination'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapFeature, MapLayer } from '../../types'
@@ -119,10 +122,13 @@ function boundsFromFeatures(features: MapFeature[]): AdminFitBounds | null {
 export default function CoordinatesEditor() {
   const qc = useQueryClient()
   const displayName = useDisplayName()
+  const [coordinateFormat, setCoordinateFormat] = useCoordinateFormatState()
   const [selectedLayerId, setSelectedLayerId] = useState<number | null>(null)
   const [drawPoints, setDrawPoints] = useState<[number, number][]>([])
   const [manualLat, setManualLat] = useState('')
   const [manualLng, setManualLng] = useState('')
+  const [manualLatDms, setManualLatDms] = useState<DmsAxisParts>(() => emptyDmsParts('lat'))
+  const [manualLngDms, setManualLngDms] = useState<DmsAxisParts>(() => emptyDmsParts('lng'))
   const [mapRefreshKey, setMapRefreshKey] = useState(0)
 
   const [boundaryVisibility, setBoundaryVisibility] = useState<BoundaryVisibility>(
@@ -172,6 +178,8 @@ export default function CoordinatesEditor() {
     setDrawPoints([])
     setManualLat('')
     setManualLng('')
+    setManualLatDms(emptyDmsParts('lat'))
+    setManualLngDms(emptyDmsParts('lng'))
     clearLayerGeojsonCache()
     setMapRefreshKey((key) => key + 1)
   }, [selectedLayerId])
@@ -191,13 +199,25 @@ export default function CoordinatesEditor() {
   )
 
   const addManualPoint = () => {
-    const lat = parseCoordinateComponent(manualLat, 'lat')
-    const lng = parseCoordinateComponent(manualLng, 'lng')
+    const isDms = coordinateFormat === 'dms'
+    const lat = isDms
+      ? dmsPartsToDecimal(manualLatDms, 'lat')
+      : parseCoordinateComponent(manualLat, 'lat')
+    const lng = isDms
+      ? dmsPartsToDecimal(manualLngDms, 'lng')
+      : parseCoordinateComponent(manualLng, 'lng')
     if (lat == null || lng == null) return
     addDrawPoint(lng, lat)
     setManualLat('')
     setManualLng('')
+    setManualLatDms(emptyDmsParts('lat'))
+    setManualLngDms(emptyDmsParts('lng'))
   }
+
+  const canAddManual =
+    coordinateFormat === 'dms'
+      ? Boolean(manualLatDms.degrees.trim() && manualLngDms.degrees.trim())
+      : Boolean(manualLat.trim() && manualLng.trim())
 
   const createFeature = useMutation({
     mutationFn: () => {
@@ -388,35 +408,48 @@ export default function CoordinatesEditor() {
             </div>
 
             <div className="rounded-xl border border-app-border bg-app-surface p-4 sm:p-5">
-              <h2 className="font-semibold text-app-text mb-1">{ADD_LABELS[drawMode]}</h2>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-semibold text-app-text">{ADD_LABELS[drawMode]}</h2>
+                <CoordinateFormatToggle
+                  value={coordinateFormat}
+                  onChange={setCoordinateFormat}
+                  compact
+                />
+              </div>
               <p className="text-xs text-app-text-muted mb-4">{ADD_HINTS[drawMode]}</p>
 
-              <div className="grid sm:grid-cols-[1fr_1fr_auto] gap-3 mb-3 items-end">
-                <label>
-                  <span className="text-xs text-app-text-muted">Latitude</span>
-                  <input
-                    value={manualLat}
-                    onChange={(e) => setManualLat(e.target.value)}
-                    className="input mt-1"
-                    placeholder="-6.5 or 6° 30' 0&quot; S"
-                    inputMode="decimal"
-                  />
-                </label>
-                <label>
-                  <span className="text-xs text-app-text-muted">Longitude</span>
-                  <input
-                    value={manualLng}
-                    onChange={(e) => setManualLng(e.target.value)}
-                    className="input mt-1"
-                    placeholder="34.8 or 34° 48' 0&quot; E"
-                    inputMode="decimal"
-                  />
-                </label>
+              <div
+                className={`mb-3 grid gap-3 items-end ${
+                  coordinateFormat === 'dms'
+                    ? 'grid-cols-1'
+                    : 'sm:grid-cols-[1fr_1fr_auto]'
+                }`}
+              >
+                <CoordinateAxisInput
+                  axis="lat"
+                  label="Latitude"
+                  format={coordinateFormat}
+                  decimalValue={manualLat}
+                  onDecimalChange={setManualLat}
+                  dmsValue={manualLatDms}
+                  onDmsChange={setManualLatDms}
+                />
+                <CoordinateAxisInput
+                  axis="lng"
+                  label="Longitude"
+                  format={coordinateFormat}
+                  decimalValue={manualLng}
+                  onDecimalChange={setManualLng}
+                  dmsValue={manualLngDms}
+                  onDmsChange={setManualLngDms}
+                />
                 <button
                   type="button"
                   onClick={addManualPoint}
-                  disabled={!manualLat || !manualLng}
-                  className="btn-secondary text-sm"
+                  disabled={!canAddManual}
+                  className={`btn-secondary text-sm ${
+                    coordinateFormat === 'dms' ? 'justify-self-end' : ''
+                  }`}
                 >
                   Add vertex
                 </button>

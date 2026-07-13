@@ -92,11 +92,22 @@ export function matchGeologicalColor(layerName: string): GeologicalColorEntry | 
   if (!layerName.trim()) return null
   const slug = slugifyName(layerName)
   const lower = layerName.toLowerCase()
+  const tokens = lower.split(/[^a-z0-9]+/).filter(Boolean)
+
   for (const entry of GEOLOGICAL_MINERAL_COLORS) {
     if (slug === entry.slug) return entry
+  }
+
+  for (const entry of GEOLOGICAL_MINERAL_COLORS) {
     for (const alias of entry.aliases) {
+      const aliasLower = alias.toLowerCase()
       const aliasSlug = slugifyName(alias)
-      if (lower.includes(alias) || (aliasSlug && slug.includes(aliasSlug))) {
+      // Element symbols (Au, Li, U) must match a whole token, not a substring.
+      if (aliasLower.length <= 2) {
+        if (tokens.includes(aliasLower)) return entry
+        continue
+      }
+      if (lower.includes(aliasLower) || (aliasSlug && slug.includes(aliasSlug))) {
         return entry
       }
     }

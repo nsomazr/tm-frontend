@@ -25,6 +25,11 @@ import type {
   User,
   UserSubscription,
   MyReport,
+  MarketplaceGeoJson,
+  MarketplaceInquiry,
+  MarketplaceListingOwner,
+  MarketplaceListingPublic,
+  MarketplaceListingWrite,
 } from '../types'
 
 export type OtpPurpose = 'register' | 'login'
@@ -613,6 +618,55 @@ export const analyticsApi = {
         ? { exploration_geometry: payload.explorationGeometry }
         : {}),
     }, { responseType: 'blob' }),
+}
+
+export const marketplaceApi = {
+  listings: (params?: Record<string, string | number>) =>
+    api.get<MarketplaceListingPublic[]>('/marketplace/listings/', { params }),
+  geojson: (params?: Record<string, string | number>) =>
+    api.get<MarketplaceGeoJson>('/marketplace/listings/geojson/', { params }),
+  detail: (slug: string) =>
+    api.get<MarketplaceListingPublic>(`/marketplace/listings/${slug}/`),
+  inquire: (slug: string, data: { message: string; contact_email?: string }) =>
+    api.post<MarketplaceInquiry>(`/marketplace/listings/${slug}/inquiries/`, data),
+  trackEvent: (
+    slug: string,
+    kind: 'map_click' | 'document_download' | 'terra_summary',
+  ) => api.post<{ ok: boolean }>(`/marketplace/listings/${slug}/events/`, { kind }),
+  summarizeDocument: (slug: string, docId: number) =>
+    api.post<{
+      summary: string
+      ai_model?: string
+      document_id: number
+      document_title: string
+      assistant_credits?: import('../types').AssistantCredits
+      detail?: string
+      requires_subscription?: boolean
+    }>(`/marketplace/listings/${slug}/documents/${docId}/summarize/`),
+  myAnalytics: () =>
+    api.get<import('../types').MarketplaceOwnerAnalytics>('/marketplace/my/analytics/'),
+  myListings: () => api.get<MarketplaceListingOwner[]>('/marketplace/my/listings/'),
+  myListing: (id: number) =>
+    api.get<MarketplaceListingOwner>(`/marketplace/my/listings/${id}/`),
+  createListing: (data: MarketplaceListingWrite) =>
+    api.post<MarketplaceListingOwner>('/marketplace/my/listings/', data),
+  updateListing: (id: number, data: Partial<MarketplaceListingWrite>) =>
+    api.patch<MarketplaceListingOwner>(`/marketplace/my/listings/${id}/`, data),
+  deleteListing: (id: number) => api.delete(`/marketplace/my/listings/${id}/`),
+  uploadDocument: (id: number, form: FormData) =>
+    api.post(`/marketplace/my/listings/${id}/documents/`, form),
+  deleteDocument: (id: number, docId: number) =>
+    api.delete(`/marketplace/my/listings/${id}/documents/${docId}/`),
+  parseGeometry: (form: FormData) =>
+    api.post<{
+      geometry: { type: string; coordinates: unknown; geometries?: unknown }
+      filename: string
+      feature_count?: number
+      geometry_type?: string
+    }>('/marketplace/parse-geometry/', form),
+  myInquiries: () => api.get<MarketplaceInquiry[]>('/marketplace/my/inquiries/'),
+  markInquiryRead: (id: number) =>
+    api.post<MarketplaceInquiry>(`/marketplace/my/inquiries/${id}/read/`),
 }
 
 export const adsApi = {

@@ -35,11 +35,14 @@ interface MapRightDockProps {
   lockedBoundaryLevels?: BoundaryLevelKey[]
   coordinateSystem: CoordinateSystemId
   onCoordinateSystemChange: (id: CoordinateSystemId) => void
+  countryCenter?: { lat: number; lng: number } | null
   coordinateFormat?: CoordinateDisplayFormat
   onCoordinateFormatChange?: (format: CoordinateDisplayFormat) => void
   hasPaidAccess?: boolean
   showCoordinateSystem?: boolean
   showMapAds?: boolean
+  totalLayerCount?: number
+  showLayerRotationHint?: boolean
 }
 
 export default function MapRightDock({
@@ -63,11 +66,14 @@ export default function MapRightDock({
   lockedBoundaryLevels = [],
   coordinateSystem,
   onCoordinateSystemChange,
+  countryCenter = null,
   coordinateFormat = 'decimal',
   onCoordinateFormatChange,
   hasPaidAccess = false,
   showCoordinateSystem = false,
   showMapAds = true,
+  totalLayerCount,
+  showLayerRotationHint = false,
 }: MapRightDockProps) {
   const { m } = useTranslation()
   const current = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
@@ -119,6 +125,7 @@ export default function MapRightDock({
             value={coordinateSystem}
             onChange={onCoordinateSystemChange}
             countryCode={countryCode}
+            countryCenter={countryCenter}
             coordinateFormat={coordinateFormat}
             onCoordinateFormatChange={onCoordinateFormatChange}
           />
@@ -127,14 +134,20 @@ export default function MapRightDock({
       <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
         <BasemapSwitcher value={basemap} onChange={onBasemapChange} embedded current={current} />
       </div>
-      {/* Paid users get the interactive LayerPanel (which doubles as the legend);
-          unpaid users only get this read-only legend. */}
-      {!hasPaidAccess && layers.length > 0 && (
+      {/* Legend + ads for every visitor (paid/unpaid, signed in or out).
+          Paid users still get the interactive LayerPanel on the left. */}
+      {layers.length > 0 && (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
-          <LegendPanel layers={layers} embedded defaultOpen />
+          <LegendPanel
+            layers={layers}
+            embedded
+            defaultOpen
+            totalLayerCount={totalLayerCount}
+            showRotationHint={showLayerRotationHint}
+          />
         </div>
       )}
-      {!hasPaidAccess && showMapAds && (
+      {showMapAds && (
         <AdPlacementSlot
           placement="map_overlay"
           countryCode={countryCode}

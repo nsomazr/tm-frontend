@@ -45,6 +45,7 @@ function HeaderNav({ className, showMinerals }: { className?: string; showMinera
   const { m } = useTranslation()
   const links = [
     { to: '/', label: m.nav.map },
+    { to: '/marketplace', label: m.nav.marketplace },
     { to: '/about', label: m.nav.about },
     { to: '/subscriptions', label: m.nav.pricing },
     { to: '/downloads', label: m.nav.reports },
@@ -67,25 +68,27 @@ export default function Layout() {
   const location = useLocation()
   const { hasFullMapAccess } = useAuth()
   const isMapPage = location.pathname === '/' || location.pathname === '/maps'
+  const isMarketplacePage = location.pathname === '/marketplace'
+  const isFullscreenPage = isMapPage || isMarketplacePage
   const isWorkspace =
     location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin')
-  const desktopControlsClass = isMapPage ? 'hidden lg:flex' : 'hidden md:flex'
-  const mobileMenuClass = isMapPage ? 'lg:hidden' : 'md:hidden'
+  const desktopControlsClass = isFullscreenPage ? 'hidden lg:flex' : 'hidden md:flex'
+  const mobileMenuClass = isFullscreenPage ? 'lg:hidden' : 'md:hidden'
   const showMineralsNav = isMapPage && hasFullMapAccess
 
   const header = (
-    <header className={`app-header w-full max-w-[100vw] overflow-x-clip ${isMapPage ? 'map-page-header shrink-0' : ''}`}>
+    <header className={`app-header w-full max-w-[100vw] overflow-x-clip ${isFullscreenPage ? 'map-page-header shrink-0' : ''}`}>
       <div
         className={`w-full flex items-center gap-1.5 sm:gap-4 min-w-0 ${
-          isMapPage ? 'px-2 sm:px-6' : 'max-w-7xl mx-auto px-3 sm:px-6'
-        } ${isMapPage ? 'h-12 md:h-16' : 'h-16'}`}
+          isFullscreenPage ? 'px-2 sm:px-6' : 'max-w-7xl mx-auto px-3 sm:px-6'
+        } ${isFullscreenPage ? 'h-12 md:h-16' : 'h-16'}`}
       >
         <Link to="/" className="shrink-0 flex items-center">
-          <Logo variant="icon" className={`${isMapPage ? 'h-8 w-8 sm:h-9 sm:w-9' : 'h-10 w-10'} md:hidden`} />
+          <Logo variant="icon" className={`${isFullscreenPage ? 'h-8 w-8 sm:h-9 sm:w-9' : 'h-10 w-10'} md:hidden`} />
           <Logo variant="wordmark" className="hidden md:block h-11 w-auto" />
         </Link>
         <HeaderNav
-          className={`hidden items-center gap-1 flex-1 justify-center min-w-0 ${isMapPage ? 'lg:flex' : 'md:flex'}`}
+          className={`hidden items-center gap-1 flex-1 justify-center min-w-0 ${isFullscreenPage ? 'lg:flex' : 'md:flex'}`}
           showMinerals={showMineralsNav}
         />
         <div className={`ml-auto items-center gap-1 sm:gap-2 shrink-0 ${desktopControlsClass}`}>
@@ -94,14 +97,14 @@ export default function Layout() {
           <UserMenu />
         </div>
         <div className={`ml-auto flex shrink-0 items-center gap-1.5 ${mobileMenuClass}`}>
-          {isMapPage && <ThemeToggle compact />}
+          {isFullscreenPage && <ThemeToggle compact />}
           <MobileMenu />
         </div>
       </div>
     </header>
   )
 
-  if (isMapPage || isWorkspace) {
+  if (isFullscreenPage || isWorkspace) {
     return (
       <div className="h-[100dvh] w-full max-w-[100vw] flex flex-col overflow-hidden bg-app-bg">
         {header}
