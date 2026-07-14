@@ -74,7 +74,20 @@ export default function MapInsightsPanel({
                         style={{ backgroundColor: mineral.color }}
                       />
                       <span>{displayName(mineral)}</span>
-                      <span className="text-slate-400 text-xs ml-auto">{mineral.count} {m.map.zones}</span>
+                      <span className="text-slate-400 text-xs ml-auto">
+                        {mineral.occurrence_count != null || mineral.polygon_count != null
+                          ? [
+                              mineral.occurrence_count
+                                ? `${mineral.occurrence_count} pts`
+                                : null,
+                              mineral.polygon_count
+                                ? `${mineral.polygon_count} ${m.map.zones}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ') || `${mineral.count} ${m.map.zones}`
+                          : `${mineral.count} ${m.map.zones}`}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -82,6 +95,17 @@ export default function MapInsightsPanel({
             ) : (
               <p className="text-slate-500 text-xs">{m.map.noMappedZones}</p>
             )}
+
+            {insight!.structure_orientations?.dominant_trend_label ? (
+              <div className="flex flex-wrap gap-1.5">
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700">
+                  {m.map.structureTrendTitle}: {insight.structure_orientations.dominant_trend_label}
+                  {insight.structure_orientations.mean_trend_deg != null
+                    ? ` · ${Math.round(insight.structure_orientations.mean_trend_deg)}°`
+                    : ''}
+                </span>
+              </div>
+            ) : null}
 
             {insight!.ai_insight ? (
               <div className="pt-2 border-t border-slate-100">

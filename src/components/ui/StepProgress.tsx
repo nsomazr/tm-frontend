@@ -4,11 +4,15 @@ export type StepProgressItem = {
   short?: string
 }
 
+export type StepConnector = 'arrow' | 'or'
+
 interface StepProgressProps<T extends number | string = number> {
   steps: StepProgressItem[]
   current: T
   /** Highest step the user may jump to (inclusive). Defaults to current. */
   maxReachable?: T
+  /** Connector between steps. Length should be steps.length - 1. Defaults to arrows. */
+  connectors?: StepConnector[]
   onStepClick?: (id: T) => void
   className?: string
   'aria-label'?: string
@@ -18,29 +22,60 @@ function stepOrder(steps: StepProgressItem[], id: number | string): number {
   return steps.findIndex((s) => s.id === id)
 }
 
+/** Build alternative groups from consecutive `or` connectors. */
+function alternativeGroups(
+  steps: StepProgressItem[],
+  connectors: StepConnector[],
+): Map<string, Set<string>> {
+  const groups = new Map<string, Set<string>>()
+  const ensure = (id: string) => {
+    if (!groups.has(id)) groups.set(id, new Set([id]))
+    return groups.get(id)!
+  }
+
+  for (let i = 0; i < connectors.length; i++) {
+    if (connectors[i] !== 'or') continue
+    const a = String(steps[i].id)
+    const b = String(steps[i + 1].id)
+    const merged = new Set([...ensure(a), ...ensure(b)])
+    for (const id of merged) groups.set(id, merged)
+  }
+  return groups
+}
+
 export default function StepProgress<T extends number | string = number>({
   steps,
   current,
   maxReachable,
+  connectors,
   onStepClick,
   className = '',
   'aria-label': ariaLabel = 'Progress',
 }: StepProgressProps<T>) {
   const currentIdx = stepOrder(steps, current)
   const reachableIdx = stepOrder(steps, maxReachable ?? current)
+  const resolvedConnectors: StepConnector[] =
+    connectors ?? Array.from({ length: Math.max(0, steps.length - 1) }, () => 'arrow')
+  const altGroups = alternativeGroups(steps, resolvedConnectors)
+  const currentKey = String(current)
+  const currentAltGroup = altGroups.get(currentKey)
 
   return (
     <nav className={className} aria-label={ariaLabel}>
       <ol className="flex items-start justify-between gap-1 sm:gap-2">
         {steps.map((item, index) => {
+          const itemKey = String(item.id)
           const itemIdx = index
           const active = item.id === current
-          const done = itemIdx < currentIdx
-          const reachable = itemIdx <= reachableIdx
+          const inCurrentAltGroup = currentAltGroup?.has(itemKey) ?? false
+          // Alternative siblings are never "done" when another path is active.
+          const done = itemIdx < currentIdx && !inCurrentAltGroup
+          const reachable = itemIdx <= reachableIdx || inCurrentAltGroup
           const clickable = Boolean(onStepClick) && reachable && !active
+          const connector = index < steps.length - 1 ? resolvedConnectors[index] ?? 'arrow' : null
 
           return (
-            <li key={String(item.id)} className="flex min-w-0 flex-1 items-start">
+            <li key={itemKey} className="flex min-w-0 flex-1 items-start">
               <div className="flex min-w-0 flex-1 flex-col items-center text-center">
                 <button
                   type="button"
@@ -90,7 +125,16 @@ export default function StepProgress<T extends number | string = number>({
                   </p>
                 ) : null}
               </div>
-              {index < steps.length - 1 && (
+              {connector === 'or' ? (
+                <div
+                  className="mt-4 flex shrink-0 items-center px-1 sm:px-2"
+                  aria-hidden
+                >
+                  <span className="rounded-full bg-app-subtle px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-app-muted ring-1 ring-app-border">
+                    or
+                  </span>
+                </div>
+              ) : connector === 'arrow' ? (
                 <div
                   className={`mt-4 flex shrink-0 items-center px-1 sm:px-2 ${
                     done ? 'text-terra-600' : 'text-app-muted/50'
@@ -105,7 +149,7 @@ export default function StepProgress<T extends number | string = number>({
                     />
                   </svg>
                 </div>
-              )}
+              ) : null}
             </li>
           )
         })}

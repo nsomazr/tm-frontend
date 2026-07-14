@@ -67,6 +67,7 @@ export const sw: Messages = {
     resetView: 'Weka upya mwonekano wa ramani',
     compassNorth: 'Dira — kaskazini juu',
     directionInsightTitle: 'Mwelekeo kutoka kituo cha uchambuzi',
+    structureTrendTitle: 'Mwelekeo wa miundo',
     geologyInsightTitle: 'Rejea ya geo',
     terrainInsightTitle: 'Mwinuko na mandhari',
     visualInsightTitle: 'Uchunguzi wa mtazamo wa ramani',

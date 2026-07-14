@@ -65,6 +65,7 @@ export const en = {
     resetView: 'Reset map view',
     compassNorth: 'Compass — north is up',
     directionInsightTitle: 'Direction from analysis center',
+    structureTrendTitle: 'Structural trend',
     geologyInsightTitle: 'Geo reference',
     terrainInsightTitle: 'Terrain & elevation',
     visualInsightTitle: 'Map view observations',

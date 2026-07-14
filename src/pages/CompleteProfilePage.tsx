@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { authApi } from '../api'
-import Logo from '../components/brand/Logo'
+import AuthShell from '../components/auth/AuthShell'
 
 export default function CompleteProfilePage() {
   const { user, refreshUser, loading: authLoading } = useAuth()
@@ -31,8 +31,9 @@ export default function CompleteProfilePage() {
 
   if (authLoading) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
+      <div className="auth-shell relative flex min-h-[100dvh] items-center justify-center">
+        <div className="auth-shell__atmosphere" aria-hidden />
+        <div className="relative z-[1] h-8 w-8 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
       </div>
     )
   }
@@ -76,60 +77,76 @@ export default function CompleteProfilePage() {
   }
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Logo variant="icon" className="h-14 w-14 mx-auto" />
-          <h1 className="text-xl font-semibold text-slate-900 mt-4">Finish your profile</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            One quick step, then you are ready to explore Terra Meta.
+    <AuthShell mode="profile">
+      <div className="auth-form w-full">
+        <header className="mb-6">
+          <h2 className="auth-form__title">Finish your profile</h2>
+          <p className="auth-form__subtitle mt-1.5">
+            One quick step, then you’re ready to explore Terra Meta.
           </p>
-        </div>
+        </header>
 
-        <form onSubmit={handleSubmit} className="card-flat space-y-3">
-          {error && (
-            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={form.first_name}
-              onChange={(e) => update('first_name', e.target.value)}
-              placeholder="First name"
-              className="input"
-              required
-            />
-            <input
-              value={form.last_name}
-              onChange={(e) => update('last_name', e.target.value)}
-              placeholder="Last name"
-              className="input"
-              required
-            />
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {error ? (
+            <p className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+              {error}
+            </p>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="block">
+              <span className="auth-form__label">First name</span>
+              <input
+                value={form.first_name}
+                onChange={(e) => update('first_name', e.target.value)}
+                placeholder="First name"
+                className="input mt-1.5"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="auth-form__label">Last name</span>
+              <input
+                value={form.last_name}
+                onChange={(e) => update('last_name', e.target.value)}
+                placeholder="Last name"
+                className="input mt-1.5"
+                required
+              />
+            </label>
           </div>
-          <input
-            value={form.username}
-            onChange={(e) => update('username', e.target.value)}
-            placeholder="Username"
-            className="input"
-            required
-          />
-          <input
-            value={form.organization}
-            onChange={(e) => update('organization', e.target.value)}
-            placeholder="Organization (optional)"
-            className="input"
-          />
-          <input
-            value={form.phone}
-            onChange={(e) => update('phone', e.target.value)}
-            placeholder="Phone (optional)"
-            className="input"
-          />
-          <button type="submit" disabled={saving} className="btn-primary w-full">
+          <label className="block">
+            <span className="auth-form__label">Username</span>
+            <input
+              value={form.username}
+              onChange={(e) => update('username', e.target.value)}
+              placeholder="Username"
+              className="input mt-1.5"
+              required
+            />
+          </label>
+          <label className="block">
+            <span className="auth-form__label">Organization</span>
+            <input
+              value={form.organization}
+              onChange={(e) => update('organization', e.target.value)}
+              placeholder="Optional"
+              className="input mt-1.5"
+            />
+          </label>
+          <label className="block">
+            <span className="auth-form__label">Phone</span>
+            <input
+              value={form.phone}
+              onChange={(e) => update('phone', e.target.value)}
+              placeholder="Optional"
+              className="input mt-1.5"
+            />
+          </label>
+          <button type="submit" disabled={saving} className="btn-primary mt-1 w-full">
             {saving ? 'Saving…' : 'Continue to Terra Meta'}
           </button>
         </form>
       </div>
-    </div>
+    </AuthShell>
   )
 }

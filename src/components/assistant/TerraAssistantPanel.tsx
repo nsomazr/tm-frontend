@@ -726,6 +726,7 @@ export default function TerraAssistantPanel({
                   insight?.terrain_context?.summary_lines?.length ||
                   insight?.visual_observations ||
                   insight?.direction_insights?.summary_lines?.length ||
+                  insight?.structure_orientations?.summary_lines?.length ||
                   insight?.geological_context?.summary_lines?.length
                 )
 
@@ -774,6 +775,13 @@ export default function TerraAssistantPanel({
                               embedded
                               title={m.map.directionInsightTitle}
                               lines={insight.direction_insights.summary_lines}
+                            />
+                          ) : null}
+                          {insight?.structure_orientations?.summary_lines?.length ? (
+                            <SupplementaryInsightBlock
+                              embedded
+                              title={m.map.structureTrendTitle}
+                              lines={insight.structure_orientations.summary_lines}
                             />
                           ) : null}
                           {insight?.geological_context?.summary_lines?.length ? (

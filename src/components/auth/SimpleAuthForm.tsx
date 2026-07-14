@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import Logo from '../brand/Logo'
 import OtpInput from './OtpInput'
 import PasswordInput from '../ui/PasswordInput'
-import StepProgress from '../ui/StepProgress'
 import { formatOtpCountdown } from '../../constants/otp'
 import { useOtpTimers } from '../../hooks/useOtpTimers'
 import { useTranslation } from '../../i18n/LocaleContext'
@@ -15,12 +13,6 @@ import {
 
 type AuthMode = 'register' | 'login'
 type Step = 'start' | 'otp' | 'password'
-
-const AUTH_STEPS: { id: Step; label: string; short: string }[] = [
-  { id: 'start', label: 'Account', short: 'Email or phone' },
-  { id: 'otp', label: 'Verify', short: 'One-time code' },
-  { id: 'password', label: 'Password', short: 'Sign in' },
-]
 
 interface SimpleAuthFormProps {
   mode: AuthMode
@@ -69,16 +61,14 @@ export default function SimpleAuthForm({
   const canSendOtp = detectedChannel != null
 
   const otpDestination =
-    otpChannel === 'sms'
-      ? formatTzPhoneDisplay(identifier)
-      : emailForOtp
+    otpChannel === 'sms' ? formatTzPhoneDisplay(identifier) : emailForOtp
 
   const requireIdentifier = () => {
     if (!identifier.trim()) {
       setLocalError(
         isLogin
           ? 'Enter your email, phone, or username'
-          : 'Enter your email address or mobile number'
+          : 'Enter your email address or mobile number',
       )
       return false
     }
@@ -124,7 +114,7 @@ export default function SimpleAuthForm({
       setLocalError(
         otpChannel === 'sms'
           ? 'Enter the 6-digit code from your SMS'
-          : 'Enter the 6-digit code from your email'
+          : 'Enter the 6-digit code from your email',
       )
       return
     }
@@ -171,12 +161,12 @@ export default function SimpleAuthForm({
   const subtitle =
     step === 'start'
       ? isLogin
-        ? 'Email, phone, username, or code'
-        : 'Use your email or Tanzania mobile number'
+        ? 'Email, phone, or username'
+        : 'Email or Tanzania mobile number'
       : step === 'otp'
         ? otpChannel === 'sms'
-          ? `We sent a code to ${otpDestination}`
-          : `We sent a code to ${emailForOtp}`
+          ? `Code sent to ${otpDestination}`
+          : `Code sent to ${emailForOtp}`
         : mode === 'register'
           ? 'Choose a password for your account'
           : 'Enter your password'
@@ -191,54 +181,48 @@ export default function SimpleAuthForm({
         : 'Email me a code'
 
   return (
-    <div className="w-full max-w-sm">
-      <div className="text-center mb-8">
-        <Link to="/" className="inline-block">
-          <Logo variant="icon" className="h-16 w-16 mx-auto md:hidden" />
-          <Logo variant="wordmark" className="hidden md:block h-20 w-auto mx-auto" />
-        </Link>
-        <h1 className="text-xl font-semibold text-slate-900 mt-4">{title}</h1>
-        <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
-        <StepProgress
-          className="mt-5 text-left"
-          aria-label="Sign-in steps"
-          steps={AUTH_STEPS}
-          current={step}
-          maxReachable={step}
-        />
-      </div>
+    <div className="auth-form w-full">
+      <header className="mb-6">
+        <h2 className="auth-form__title">{title}</h2>
+        <p className="auth-form__subtitle mt-1.5">{subtitle}</p>
+      </header>
 
-      <div className="card-flat space-y-4">
-        {displayError && (
-          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{displayError}</p>
-        )}
+      <div className="space-y-4">
+        {displayError ? (
+          <p className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {displayError}
+          </p>
+        ) : null}
 
         {step === 'start' && (
-          <div className="space-y-3">
-            <input
-              type="text"
-              inputMode={detectedChannel === 'sms' ? 'tel' : 'email'}
-              placeholder={isLogin ? 'Email, phone, or username' : 'Email or mobile (07XXXXXXXX)'}
-              value={identifier}
-              onChange={(e) => {
-                setIdentifier(e.target.value)
-                setLocalError('')
-              }}
-              className="input"
-              required
-              autoFocus
-              autoComplete={isLogin ? 'username' : 'email'}
-            />
-            {isLogin && identifier.trim() && !isEmail && detectedChannel !== 'sms' && (
-              <p className="text-xs text-slate-500 -mt-1">
-                Username account. Use password sign-in below.
-              </p>
-            )}
-            {detectedChannel === 'sms' && (
-              <p className="text-xs text-slate-500 -mt-1">
-                We&apos;ll send a one-time code by SMS to this number.
-              </p>
-            )}
+          <div className="space-y-4">
+            <label className="block">
+              <span className="auth-form__label">
+                {isLogin ? 'Account' : 'Email or mobile'}
+              </span>
+              <input
+                type="text"
+                inputMode={detectedChannel === 'sms' ? 'tel' : 'email'}
+                placeholder={isLogin ? 'Email, phone, or username' : 'Email or mobile (07XXXXXXXX)'}
+                value={identifier}
+                onChange={(e) => {
+                  setIdentifier(e.target.value)
+                  setLocalError('')
+                }}
+                className="input mt-1.5"
+                required
+                autoFocus
+                autoComplete={isLogin ? 'username' : 'email'}
+              />
+            </label>
+
+            {isLogin && identifier.trim() && !isEmail && detectedChannel !== 'sms' ? (
+              <p className="text-xs text-app-muted">Username account — use password sign-in below.</p>
+            ) : null}
+            {detectedChannel === 'sms' ? (
+              <p className="text-xs text-app-muted">We’ll text a one-time code to this number.</p>
+            ) : null}
+
             <button
               type="button"
               onClick={handleSendOtp}
@@ -248,6 +232,11 @@ export default function SimpleAuthForm({
             >
               {otpButtonLabel}
             </button>
+
+            <div className="auth-form__or" aria-hidden>
+              <span>or</span>
+            </div>
+
             <button
               type="button"
               onClick={handlePasswordStep}
@@ -262,19 +251,23 @@ export default function SimpleAuthForm({
         {step === 'otp' && (
           <form onSubmit={handleVerifyOtp} className="space-y-5">
             <OtpInput value={code} onChange={setCode} disabled={loading} />
-            {expiresIn > 0 && (
-              <p className="text-sm text-slate-600 text-center tabular-nums">
+            {expiresIn > 0 ? (
+              <p className="text-center text-sm tabular-nums text-app-text-secondary">
                 {m.auth.otpExpiresIn.replace('{time}', formatOtpCountdown(expiresIn))}
               </p>
-            )}
+            ) : null}
 
-            <button type="submit" disabled={loading || code.length !== 6} className="btn-primary w-full">
+            <button
+              type="submit"
+              disabled={loading || code.length !== 6}
+              className="btn-primary w-full"
+            >
               {loading ? 'Verifying…' : mode === 'register' ? 'Create account' : 'Sign in'}
             </button>
 
-            <div className="text-center space-y-1">
+            <div className="text-center">
               {resendIn > 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-app-muted">
                   {m.auth.resendAvailableIn.replace('{seconds}', String(resendIn))}
                 </p>
               ) : (
@@ -282,7 +275,7 @@ export default function SimpleAuthForm({
                   type="button"
                   onClick={handleResendOtp}
                   disabled={loading}
-                  className="text-sm font-medium text-terra-600 hover:text-terra-700 hover:underline"
+                  className="text-sm font-medium text-terra-700 hover:underline dark:text-terra-300"
                 >
                   {m.auth.resendCode}
                 </button>
@@ -296,7 +289,7 @@ export default function SimpleAuthForm({
                 setCode('')
                 setOtpChannel(null)
               }}
-              className="text-sm text-slate-500 hover:text-slate-700 w-full"
+              className="w-full text-sm text-app-muted transition-colors hover:text-app-text"
             >
               ← Back
             </button>
@@ -305,34 +298,40 @@ export default function SimpleAuthForm({
 
         {step === 'password' && (
           <form onSubmit={handlePassword} className="space-y-4">
-            <p className="text-sm text-slate-600 text-center truncate">
-              {normalizeIdentifier(identifier, isEmail)}
-            </p>
-            <PasswordInput
-              placeholder={mode === 'register' ? 'Create password (min 8 chars)' : 'Password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={isLogin ? undefined : 8}
-              autoFocus
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
-            />
+            <div className="rounded-xl bg-app-subtle/80 px-3.5 py-2.5 text-center">
+              <p className="truncate text-sm font-medium text-app-text">
+                {normalizeIdentifier(identifier, isEmail)}
+              </p>
+            </div>
+            <label className="block">
+              <span className="auth-form__label">Password</span>
+              <PasswordInput
+                className="mt-1.5"
+                placeholder={mode === 'register' ? 'Create password (min 8 chars)' : 'Password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={isLogin ? undefined : 8}
+                autoFocus
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              />
+            </label>
             <button type="submit" disabled={loading} className="btn-primary w-full">
               {loading ? 'Please wait…' : mode === 'register' ? 'Create account' : 'Sign in'}
             </button>
             <button
               type="button"
               onClick={() => setStep('start')}
-              className="text-sm text-slate-500 hover:text-slate-700 w-full"
+              className="w-full text-sm text-app-muted transition-colors hover:text-app-text"
             >
               ← Back
             </button>
           </form>
         )}
 
-        <p className="text-sm text-center text-slate-500 pt-1">
+        <p className="pt-2 text-center text-sm text-app-muted">
           {footerLink.text}{' '}
-          <Link to={footerLink.to} className="text-terra-600 font-medium">
+          <Link to={footerLink.to} className="font-semibold text-terra-700 hover:underline dark:text-terra-300">
             {footerLink.label}
           </Link>
         </p>

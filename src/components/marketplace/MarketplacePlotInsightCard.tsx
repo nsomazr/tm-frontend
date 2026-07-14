@@ -135,6 +135,23 @@ export default function MarketplacePlotInsightCard({
                 <span className="rounded-full bg-app-subtle px-2 py-0.5 text-[11px] text-app-text-secondary">
                   Relief {Math.round(terrain.relief_m)} m
                 </span>
+                {insight.structure_orientations?.dominant_trend_label ? (
+                  <span className="rounded-full bg-app-subtle px-2 py-0.5 text-[11px] text-app-text-secondary">
+                    Trend {insight.structure_orientations.dominant_trend_label}
+                    {insight.structure_orientations.mean_trend_deg != null
+                      ? ` · ${Math.round(insight.structure_orientations.mean_trend_deg)}°`
+                      : ''}
+                  </span>
+                ) : null}
+              </div>
+            ) : insight.structure_orientations?.dominant_trend_label ? (
+              <div className="flex shrink-0 flex-wrap gap-1.5">
+                <span className="rounded-full bg-app-subtle px-2 py-0.5 text-[11px] text-app-text-secondary">
+                  Trend {insight.structure_orientations.dominant_trend_label}
+                  {insight.structure_orientations.mean_trend_deg != null
+                    ? ` · ${Math.round(insight.structure_orientations.mean_trend_deg)}°`
+                    : ''}
+                </span>
               </div>
             ) : null}
 
@@ -155,10 +172,22 @@ export default function MarketplacePlotInsightCard({
                       />
                       <span className="min-w-0 flex-1 truncate font-medium">{displayName(mineral)}</span>
                       <span className="shrink-0 text-app-muted">
-                        {mineral.count}
-                        {mineral.area_km2 != null && mineral.area_km2 > 0
-                          ? ` · ${formatAreaKm2(mineral.area_km2)}`
-                          : ''}
+                        {[
+                          mineral.occurrence_count
+                            ? `${mineral.occurrence_count} pts`
+                            : null,
+                          mineral.polygon_count
+                            ? `${mineral.polygon_count} areas`
+                            : null,
+                          !mineral.occurrence_count && !mineral.polygon_count
+                            ? String(mineral.count)
+                            : null,
+                          mineral.area_km2 != null && mineral.area_km2 > 0
+                            ? formatAreaKm2(mineral.area_km2)
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </span>
                     </li>
                   ))}

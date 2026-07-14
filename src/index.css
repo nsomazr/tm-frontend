@@ -5418,3 +5418,190 @@
     @apply from-terra-300 via-terra-400 to-gold-400;
   }
 }
+
+/* ——— Auth pages ——— */
+.auth-shell {
+  font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  color: var(--color-app-text);
+}
+
+.auth-shell__atmosphere {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 55% at 12% 18%, rgba(22, 163, 74, 0.16), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 88% 82%, rgba(15, 118, 110, 0.12), transparent 50%),
+    linear-gradient(165deg, #eef6f1 0%, #f4f7fa 42%, #e8f0ec 100%);
+}
+
+.dark .auth-shell__atmosphere {
+  background:
+    radial-gradient(ellipse 80% 55% at 12% 18%, rgba(34, 197, 94, 0.12), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 88% 82%, rgba(45, 212, 191, 0.08), transparent 50%),
+    linear-gradient(165deg, #121412 0%, #141414 50%, #101612 100%);
+}
+
+.auth-shell__brand {
+  margin: 1.25rem 0 1.25rem 1.25rem;
+  border-radius: 1.75rem;
+  background:
+    linear-gradient(155deg, #0b3d2e 0%, #0f766e 48%, #14532d 100%);
+  color: #fff;
+  box-shadow: 0 18px 50px -28px rgba(15, 72, 52, 0.55);
+  animation: auth-brand-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-shell__orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(28px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.auth-shell__orb--a {
+  width: 16rem;
+  height: 16rem;
+  top: -3rem;
+  right: -2rem;
+  background: rgba(74, 222, 128, 0.45);
+  animation: auth-orb-drift 12s ease-in-out infinite alternate;
+}
+
+.auth-shell__orb--b {
+  width: 18rem;
+  height: 18rem;
+  bottom: -4rem;
+  left: -3rem;
+  background: rgba(45, 212, 191, 0.35);
+  animation: auth-orb-drift 14s ease-in-out infinite alternate-reverse;
+}
+
+.auth-shell__eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.auth-shell__headline {
+  font-family: Fraunces, Georgia, 'Times New Roman', serif;
+  font-size: clamp(2rem, 2.6vw, 2.65rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.auth-shell__support {
+  font-size: 1rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.auth-shell__mobile-kicker {
+  font-family: Fraunces, Georgia, 'Times New Roman', serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-app-text);
+}
+
+.auth-shell__panel {
+  animation: auth-panel-in 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  border-radius: 1.5rem;
+  border: 1px solid var(--color-app-border);
+  background: color-mix(in srgb, var(--color-app-surface) 92%, transparent);
+  padding: 1.5rem 1.35rem 1.35rem;
+  box-shadow: 0 16px 40px -28px rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+@media (min-width: 640px) {
+  .auth-shell__panel {
+    padding: 1.85rem 1.75rem 1.55rem;
+  }
+}
+
+.auth-form__title {
+  font-family: Fraunces, Georgia, 'Times New Roman', serif;
+  font-size: 1.7rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-app-text);
+}
+
+.auth-form__subtitle {
+  font-size: 0.925rem;
+  line-height: 1.45;
+  color: var(--color-app-text-muted);
+}
+
+.auth-form__label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-app-text-muted);
+}
+
+.auth-form__or {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-app-text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.auth-form__or::before,
+.auth-form__or::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: var(--color-app-border-strong);
+}
+
+@keyframes auth-brand-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes auth-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes auth-orb-drift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(18px, -14px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-shell__brand,
+  .auth-shell__panel,
+  .auth-shell__orb--a,
+  .auth-shell__orb--b {
+    animation: none;
+  }
+}

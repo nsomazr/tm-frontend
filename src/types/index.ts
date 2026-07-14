@@ -714,6 +714,26 @@ export interface DirectionInsights {
   summary_lines: string[]
 }
 
+export interface StructureOrientations {
+  dominant_trend: string
+  dominant_trend_label: string
+  mean_trend_deg?: number | null
+  count_with_orientation: number
+  property_count?: number
+  geometry_count?: number
+  bins: Record<string, number>
+  by_mineral?: {
+    slug: string
+    name: string
+    count: number
+    bins: Record<string, number>
+    dominant_trend: string
+    dominant_trend_label: string
+    dominant_count: number
+  }[]
+  summary_lines: string[]
+}
+
 export interface TerrainContext {
   elevation_m: number
   relief_m: number
@@ -754,9 +774,13 @@ export interface AreaInsight {
     name_sw?: string
     color: string
     count: number
+    occurrence_count?: number
+    polygon_count?: number
     area_km2?: number
   }[]
   feature_count: number
+  occurrence_count?: number
+  polygon_count?: number
   labels: string[]
   has_mapped_data?: boolean
   ai_insight: string | null
@@ -774,6 +798,7 @@ export interface AreaInsight {
   assistant_credits?: AssistantCredits | null
   top_regions?: { region: string; count: number; area_km2?: number }[]
   direction_insights?: DirectionInsights | null
+  structure_orientations?: StructureOrientations | null
   geological_context?: GeologicalContext | null
   terrain_context?: TerrainContext | null
   basemap?: string | null

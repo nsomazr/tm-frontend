@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { safeReturnPath } from '../utils/safeRedirect'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import AuthShell from '../components/auth/AuthShell'
 import SimpleAuthForm from '../components/auth/SimpleAuthForm'
-import CompanyCredit from '../components/brand/CompanyCredit'
 
 function authErrorMessage(err: unknown, fallback: string) {
   const data = (err as { response?: { data?: Record<string, unknown> } })?.response?.data
@@ -22,7 +22,7 @@ export default function LoginPage() {
   const nextParam = new URLSearchParams(location.search).get('next')
   const from = safeReturnPath(
     (location.state as { from?: string })?.from ?? nextParam,
-    '/dashboard'
+    '/dashboard',
   )
 
   const [error, setError] = useState('')
@@ -77,19 +77,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4 py-12">
-      <div>
-        <SimpleAuthForm
-          mode="login"
-          loading={loading}
-          error={error}
-          onSendOtp={handleSendOtp}
-          onVerifyOtp={handleVerifyOtp}
-          onPassword={handlePassword}
-          footerLink={{ text: 'No account?', to: '/register', label: 'Create one' }}
-        />
-        <CompanyCredit className="text-center mt-8" />
-      </div>
-    </div>
+    <AuthShell mode="login">
+      <SimpleAuthForm
+        mode="login"
+        loading={loading}
+        error={error}
+        onSendOtp={handleSendOtp}
+        onVerifyOtp={handleVerifyOtp}
+        onPassword={handlePassword}
+        footerLink={{ text: 'No account?', to: '/register', label: 'Create one' }}
+      />
+    </AuthShell>
   )
 }
