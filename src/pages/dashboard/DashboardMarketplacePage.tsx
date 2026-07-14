@@ -246,7 +246,7 @@ export default function DashboardMarketplacePage() {
         <StatCard
           label="Listings"
           value={String(totals?.listings ?? listings.length)}
-          hint={`${totals?.published ?? 0} published · ${totals?.on_map ?? 0} on map`}
+          hint={`${totals?.published ?? 0} published · ${listings.filter((l) => l.show_on_map).length} on map`}
         />
         <StatCard
           label="Views"
