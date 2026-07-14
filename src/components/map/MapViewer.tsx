@@ -258,7 +258,8 @@ interface CountryFitChrome {
 /** Padding [top, right, bottom, left] that keeps the country centered in the visible map area. */
 function countryFitPadding(mobile: boolean, chrome: CountryFitChrome = {}): [number, number, number, number] {
   if (mobile) {
-    return [96, 12, 176, 12]
+    // Extra chrome room + inset so country overview reads clearly zoomed out on phones.
+    return [112, 22, 200, 22]
   }
 
   const top = 104
@@ -268,7 +269,7 @@ function countryFitPadding(mobile: boolean, chrome: CountryFitChrome = {}): [num
   return [top, right, bottom, left]
 }
 
-const BASE_MIN_ZOOM_MOBILE = 5
+const BASE_MIN_ZOOM_MOBILE = 4.5
 const BASE_MIN_ZOOM_DESKTOP = 5
 
 function lockMinZoomToCurrentView(map: OlMap) {
@@ -277,7 +278,7 @@ function lockMinZoomToCurrentView(map: OlMap) {
   if (zoom != null && Number.isFinite(zoom)) {
     // Never lock above a country overview — protects against premature moveend
     // while still zoomed into an inspection (would trap the camera on a polygon fill).
-    const ceiling = map.getSize()?.[0] && map.getSize()![0] < 768 ? 6.5 : 7.5
+    const ceiling = map.getSize()?.[0] && map.getSize()![0] < 768 ? 5.75 : 7.5
     view.setMinZoom(Math.min(zoom, ceiling))
   }
 }
@@ -307,7 +308,8 @@ function fitCountryView(
   view.cancelAnimations()
   view.fit(extent, {
     padding,
-    maxZoom: mobile ? 6 : Math.min(focus.default_zoom + 1.5, 7),
+    // Cap mobile overview so more of the country stays in view under chrome.
+    maxZoom: mobile ? 5.05 : Math.min(focus.default_zoom + 1.5, 7),
     duration,
     callback: () => {
       lockMinZoomToCurrentView(map)
@@ -901,7 +903,7 @@ export default function MapViewer({
       ],
       view: new View({
         center: TANZANIA_CENTER,
-        zoom: mobile ? 5.5 : 6.5,
+        zoom: mobile ? 4.75 : 6.5,
         minZoom: mobile ? BASE_MIN_ZOOM_MOBILE : BASE_MIN_ZOOM_DESKTOP,
         maxZoom: 18,
         extent: TANZANIA_EXTENT,
