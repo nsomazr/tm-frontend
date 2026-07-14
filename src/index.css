@@ -5527,23 +5527,12 @@
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.01em;
-  text-decoration: none;
-  transition: color 160ms ease, opacity 160ms ease;
-}
-
-.auth-shell__back--brand {
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.auth-shell__back--brand:hover {
-  color: #fff;
-}
-
-.auth-shell__back--form {
   color: var(--color-app-text-muted);
+  text-decoration: none;
+  transition: color 160ms ease;
 }
 
-.auth-shell__back--form:hover {
+.auth-shell__back:hover {
   color: var(--color-app-text);
 }
 

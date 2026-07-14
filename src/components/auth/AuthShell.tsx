@@ -57,10 +57,10 @@ function ContourPattern({ className = '' }: { className?: string }) {
   )
 }
 
-function BackToMapLink({ className = '' }: { className?: string }) {
+function BackToMapLink() {
   const { m } = useTranslation()
   return (
-    <Link to="/" className={`auth-shell__back ${className}`}>
+    <Link to="/" className="auth-shell__back">
       <span aria-hidden>←</span>
       {m.auth.backToMap}
     </Link>
@@ -96,12 +96,9 @@ export default function AuthShell({ children, mode = 'login' }: AuthShellProps) 
           <div className="auth-shell__orb auth-shell__orb--a" aria-hidden />
           <div className="auth-shell__orb auth-shell__orb--b" aria-hidden />
 
-          <div className="relative z-[1] space-y-4">
-            <Link to="/" className="inline-flex w-fit items-center">
-              <Logo variant="wordmark" className="auth-shell__logo h-10 w-auto brightness-0 invert xl:h-11" />
-            </Link>
-            <BackToMapLink className="auth-shell__back--brand" />
-          </div>
+          <Link to="/" className="relative z-[1] inline-flex w-fit items-center">
+            <Logo variant="wordmark" className="auth-shell__logo h-10 w-auto brightness-0 invert xl:h-11" />
+          </Link>
 
           <div className="relative z-[1] max-w-md space-y-3 auth-shell__intro">
             <p className="auth-shell__eyebrow">Mineral intelligence</p>
@@ -113,15 +110,14 @@ export default function AuthShell({ children, mode = 'login' }: AuthShellProps) 
         </aside>
 
         <section className="auth-shell__form-col relative flex min-h-0 flex-col justify-center overflow-y-auto">
-          <div className="mx-auto mb-4 flex w-full max-w-[24rem] shrink-0 items-center justify-between gap-3 lg:justify-end">
-            <Link to="/" className="inline-flex items-center lg:hidden">
-              <Logo variant="wordmark" className="h-9 w-auto" />
-            </Link>
-            <BackToMapLink className="auth-shell__back--form ml-auto" />
-          </div>
-
-          <div className="mx-auto mb-4 w-full max-w-[24rem] shrink-0 text-center lg:hidden">
-            <p className="auth-shell__mobile-kicker">{headline}</p>
+          <div className="mx-auto mb-5 w-full max-w-[24rem] shrink-0">
+            <BackToMapLink />
+            <div className="mt-4 text-center lg:hidden">
+              <Link to="/" className="inline-flex items-center">
+                <Logo variant="wordmark" className="h-9 w-auto" />
+              </Link>
+              <p className="auth-shell__mobile-kicker mt-3">{headline}</p>
+            </div>
           </div>
 
           <div className="auth-shell__panel mx-auto w-full max-w-[24rem] shrink-0">{children}</div>
