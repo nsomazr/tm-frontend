@@ -9,6 +9,7 @@ export function canExploreMineral(
   if (!quota) return false
   if (quota.unlimited) return true
   if (quota.explored_slugs?.includes(normalized)) return true
+  if (quota.remaining == null && quota.limit == null) return true
   return (quota.remaining ?? 0) > 0
 }
 

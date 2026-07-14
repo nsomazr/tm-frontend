@@ -1,15 +1,24 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { subscriptionsApi } from '../../api'
+import { useMapEntitlements } from '../../hooks/useMapEntitlements'
+import {
+  formatMineralExplorationLimit,
+  mineralExplorationSummary,
+} from '../../lib/mineralExploration'
 import { EmptyState, PageHeader } from './DashboardUi'
 
 export default function DashboardSubscription() {
+  const { mineralExploration, canSaveExplorations } = useMapEntitlements()
   const { data: subscription, isLoading } = useQuery({
     queryKey: ['my-subscription'],
     queryFn: () => subscriptionsApi.me().then((r) => r.data).catch(() => null),
   })
 
   const plan = subscription?.is_active ? subscription.plan_detail : null
+  const showsHeatmapExploration =
+    !!plan &&
+    (plan.max_explorable_minerals == null || (plan.max_explorable_minerals ?? 0) > 0)
 
   return (
     <>
@@ -54,6 +63,30 @@ export default function DashboardSubscription() {
                       : `${plan.included_assistant_credits ?? (plan.billing_cycle === 'annual' ? 5000 : 3000)} included per month`}
                 </dd>
               </div>
+              {showsHeatmapExploration ? (
+                <div>
+                  <dt className="text-app-text-muted text-xs uppercase tracking-wide">
+                    Heatmap exploration
+                  </dt>
+                  <dd className="font-medium text-app-text mt-0.5">
+                    {mineralExploration
+                      ? mineralExploration.unlimited
+                        ? mineralExplorationSummary(mineralExploration)
+                        : `${mineralExploration.used} of ${formatMineralExplorationLimit(mineralExploration.limit)} minerals this month`
+                      : `Up to ${formatMineralExplorationLimit(plan.max_explorable_minerals)} minerals / month`}
+                  </dd>
+                </div>
+              ) : null}
+              {canSaveExplorations ? (
+                <div>
+                  <dt className="text-app-text-muted text-xs uppercase tracking-wide">
+                    Map exploration areas
+                  </dt>
+                  <dd className="font-medium text-app-text mt-0.5">
+                    Draw, explore, and save areas on the map
+                  </dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-app-text-muted text-xs uppercase tracking-wide">Report downloads</dt>
                 <dd className="font-medium text-app-text mt-0.5">

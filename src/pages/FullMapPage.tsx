@@ -187,8 +187,10 @@ function mineralColorFromVisibleLayers(
 }
 
 export default function FullMapPage() {
-  const { hasFullMapAccess, canSaveExplorations, mineralExploration, refreshUser } =
+  const { hasFullMapAccess, canSaveExplorations, isManager, mineralExploration, refreshUser } =
     useMapEntitlements()
+  /** Drawn AOI explore is a Plus/Pro (and staff) entitlement. */
+  const canExploreAreas = canSaveExplorations || isManager
   const queryClient = useQueryClient()
   const { m } = useTranslation()
   const displayName = useDisplayName()
@@ -556,10 +558,13 @@ export default function FullMapPage() {
   }, [layersList, hasFullMapAccess])
 
   const activeHeatmapSlug = useMemo(() => {
-    if (!hasFullMapAccess || exploreOpen) return null
+    if (!hasFullMapAccess) return null
+    // Starter (and unpaid) lose heatmap while drawing; Plus/Pro keep concentration overlays
+    // on the map during AOI exploration.
+    if (exploreOpen && !canExploreAreas) return null
     const slug = catalogMineralSlug ?? soleVisibleMineralSlug(visibleLayers, layers)
     return isHeatmapMineralSlug(slug) ? slug : null
-  }, [hasFullMapAccess, exploreOpen, catalogMineralSlug, visibleLayers, layers])
+  }, [hasFullMapAccess, exploreOpen, canExploreAreas, catalogMineralSlug, visibleLayers, layers])
 
   const heatmapLayerList = useMemo(
     () => (activeHeatmapSlug ? layersForHeatmapSlug(activeHeatmapSlug, layers) : []),
@@ -659,6 +664,7 @@ export default function FullMapPage() {
 
   const handleExploreOpenChange = useCallback(
     (open: boolean) => {
+      if (open && !canExploreAreas) return
       if (open) {
         layersBeforeExploreRef.current = new Set(visibleLayers)
         setVisibleLayers(new Set())
@@ -672,8 +678,14 @@ export default function FullMapPage() {
       }
       setExploreOpen(open)
     },
-    [visibleLayers]
+    [canExploreAreas, visibleLayers]
   )
+
+  useEffect(() => {
+    if (exploreOpen && !canExploreAreas) {
+      handleExploreOpenChange(false)
+    }
+  }, [exploreOpen, canExploreAreas, handleExploreOpenChange])
 
   const handleLoadExploration = useCallback(
     (mode: ExplorationMode, points: [number, number][]) => {
@@ -1339,7 +1351,7 @@ export default function FullMapPage() {
             if (v.trim().length >= 2) setPanelDismissed(false)
           }}
           searchEnabled={hasFullMapAccess}
-          exploreEnabled={hasFullMapAccess}
+          exploreEnabled={canExploreAreas}
           exploreOpen={exploreOpen}
           onExploreOpenChange={handleExploreOpenChange}
           explorePanel={
@@ -1440,7 +1452,7 @@ export default function FullMapPage() {
             showCoordinateSystem={false}
             showCoordinateReadout={hasFullMapAccess}
             explorationDraw={explorationDraw}
-            drawActive={exploreOpen && hasFullMapAccess}
+            drawActive={exploreOpen && canExploreAreas}
             onDrawPoint={addDrawPoint}
           />
           )}
