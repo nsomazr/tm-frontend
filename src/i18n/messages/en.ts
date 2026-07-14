@@ -37,6 +37,7 @@ export const en = {
     resendCode: 'Resend code',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
+    backToMap: 'Back to map',
   },
   map: {
     searchPlaceholder: 'Search minerals, regions, or coordinates…',

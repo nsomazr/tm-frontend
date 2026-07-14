@@ -39,6 +39,7 @@ export const sw: Messages = {
     resendCode: 'Tuma tena msimbo',
     showPassword: 'Onyesha nenosiri',
     hidePassword: 'Ficha nenosiri',
+    backToMap: 'Rudi kwenye ramani',
   },
   map: {
     searchPlaceholder: 'Tafuta madini, mikoa, au kuratibu…',

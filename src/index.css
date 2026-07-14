@@ -5520,6 +5520,33 @@
   color: rgba(255, 255, 255, 0.78);
 }
 
+.auth-shell__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: color 160ms ease, opacity 160ms ease;
+}
+
+.auth-shell__back--brand {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.auth-shell__back--brand:hover {
+  color: #fff;
+}
+
+.auth-shell__back--form {
+  color: var(--color-app-text-muted);
+}
+
+.auth-shell__back--form:hover {
+  color: var(--color-app-text);
+}
+
 .auth-shell__form-col {
   padding: 1rem;
 }
