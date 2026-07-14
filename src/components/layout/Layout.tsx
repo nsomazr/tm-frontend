@@ -69,12 +69,24 @@ export default function Layout() {
   const { hasFullMapAccess } = useAuth()
   const isMapPage = location.pathname === '/' || location.pathname === '/maps'
   const isMarketplacePage = location.pathname === '/marketplace'
+  const isAuthPage =
+    location.pathname === '/login' ||
+    location.pathname === '/register' ||
+    location.pathname === '/complete-profile'
   const isFullscreenPage = isMapPage || isMarketplacePage
   const isWorkspace =
     location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin')
   const desktopControlsClass = isFullscreenPage ? 'hidden lg:flex' : 'hidden md:flex'
   const mobileMenuClass = isFullscreenPage ? 'lg:hidden' : 'md:hidden'
   const showMineralsNav = isMapPage && hasFullMapAccess
+
+  if (isAuthPage) {
+    return (
+      <div className="h-[100dvh] w-full max-w-[100vw] overflow-hidden bg-app-bg">
+        <Outlet />
+      </div>
+    )
+  }
 
   const header = (
     <header className={`app-header w-full max-w-[100vw] overflow-x-clip ${isFullscreenPage ? 'map-page-header shrink-0' : ''}`}>
