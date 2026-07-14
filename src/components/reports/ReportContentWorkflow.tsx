@@ -3,7 +3,7 @@ import ReportDraftPreview from './ReportDraftPreview'
 import ReportFullEditor from './ReportFullEditor'
 import ReportStageBar, { type ReportStageView } from './ReportStageBar'
 import type { ReportContentMode } from './ReportContentModeTabs'
-import { mergeReportDocument, hasSubstantiveDraftContent, isDraftEffectivelyEmpty, isFullRegeneratePrompt, stripAiReportPreamble, stripMarkdownHorizontalRulesFromHtml } from './reportEditorText'
+import { mergeReportDocument, mergeRefinedReportHtml, hasSubstantiveDraftContent, isDraftEffectivelyEmpty, isFullRegeneratePrompt, stripAiReportPreamble, stripMarkdownHorizontalRulesFromHtml } from './reportEditorText'
 import { stripReportChangeHighlights } from './reportEditorChanges'
 import ReportGenerationProgress from './ReportGenerationProgress'
 import ReportPromptDock from './ReportPromptDock'
@@ -130,12 +130,15 @@ export default function ReportContentWorkflow({
     })
     if (!applied) return
 
-    const merged = stripAiReportPreamble(
+    const appliedDoc = stripAiReportPreamble(
       stripReportChangeHighlights(
         mergeReportDocument(applied.executiveSummary, applied.keyFindings),
       ),
     )
-    onExecutiveSummaryChange(merged)
+    const merged = useRefine
+      ? mergeRefinedReportHtml(executiveSummary, appliedDoc)
+      : appliedDoc
+    onExecutiveSummaryChange(stripMarkdownHorizontalRulesFromHtml(merged))
 
     if (!title.trim() && !useRefine && prompt.trim()) {
       const suggested = suggestedTitleFromPrompt(prompt, assistantMetadata)

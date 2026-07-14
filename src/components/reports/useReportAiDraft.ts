@@ -212,8 +212,12 @@ export function useReportAiDraft(metadata: ReportWritingMetadata) {
       setMessages([{ role: 'user', content: prompt }])
     }
 
-    const { body, findings } = splitReportDocument(metadata.currentExecutiveSummary)
+    const { body, findings, references } = splitReportDocument(metadata.currentExecutiveSummary)
     const findingsPlain = findings || htmlToFindingsText(metadata.currentKeyFindings)
+    // Keep References in the refine payload so the model (and later merge) can preserve them.
+    const currentSummaryForModel = forceGenerate
+      ? ''
+      : [body, references].filter((part) => part.trim()).join('') || metadata.currentExecutiveSummary
 
     const fd = new FormData()
     fd.append('title', metadata.title)
@@ -223,7 +227,7 @@ export function useReportAiDraft(metadata: ReportWritingMetadata) {
     fd.append('context_text', '')
     fd.append('instruction', prompt)
     fd.append('enable_web_search', enableWebSearch ? 'true' : 'false')
-    fd.append('current_executive_summary', forceGenerate ? '' : body)
+    fd.append('current_executive_summary', currentSummaryForModel)
     fd.append('current_key_findings', forceGenerate ? '' : findingsPlain)
     fd.append('messages', JSON.stringify(refine ? history : []))
     if (options.contextFile) {
@@ -243,8 +247,23 @@ export function useReportAiDraft(metadata: ReportWritingMetadata) {
       }
 
       const rawSummary = stripLeakedJson(data.executive_summary || '')
+      let executiveSummary = normalizeBody(rawSummary)
+
+      // Guarantee a References section remains on search-backed drafts when possible.
+      if (enableWebSearch && webSearch?.used) {
+        const { references: hasRefs } = splitReportDocument(executiveSummary)
+        if (!hasRefs.trim() && references.trim()) {
+          executiveSummary = `${executiveSummary}${references}`
+        }
+      } else if (refine && references.trim()) {
+        const { references: hasRefs } = splitReportDocument(executiveSummary)
+        if (!hasRefs.trim()) {
+          executiveSummary = `${executiveSummary}${references}`
+        }
+      }
+
       const draft: ReportAiDraft = {
-        executiveSummary: normalizeBody(rawSummary),
+        executiveSummary,
         keyFindings: normalizeFindings(data.key_findings),
         modelUsed: data.model_used,
         assistantReply: stripLeakedJson(data.assistant_reply || '') || 'Draft ready for your review.',

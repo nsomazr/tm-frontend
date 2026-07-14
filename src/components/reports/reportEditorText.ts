@@ -711,6 +711,121 @@ export function isReferencesHeading(text: string): boolean {
   return /^references\b/i.test((text || '').trim())
 }
 
+function normalizeSectionKey(heading: string) {
+  return heading.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+type ReportSectionBlock = {
+  heading: string | null
+  html: string
+}
+
+/** Split report HTML into heading-led sections for refine merging. */
+export function parseReportSections(html: string): ReportSectionBlock[] {
+  if (!html.trim()) return []
+  const source = looksLikeHtml(html) ? html : plainTextToHtml(html)
+  const doc = new DOMParser().parseFromString(source, 'text/html')
+  const sections: ReportSectionBlock[] = []
+  let current: ReportSectionBlock | null = null
+
+  for (const node of Array.from(doc.body.childNodes)) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement
+      const tag = el.tagName.toLowerCase()
+      const text = el.textContent?.trim() ?? ''
+      if ((tag === 'h2' || tag === 'h3') && text) {
+        if (current) sections.push(current)
+        current = { heading: text, html: el.outerHTML }
+        continue
+      }
+      const piece = el.outerHTML
+      if (!current) current = { heading: null, html: piece }
+      else current.html += piece
+      continue
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent?.trim()
+      if (!text) continue
+      const piece = `<p>${escapeHtml(text)}</p>`
+      if (!current) current = { heading: null, html: piece }
+      else current.html += piece
+    }
+  }
+  if (current) sections.push(current)
+  return sections
+}
+
+/**
+ * Apply a refine response onto the existing draft by section heading.
+ * Unchanged sections stay; referenced Sources are kept unless the incoming draft replaces them.
+ */
+export function mergeRefinedReportHtml(currentHtml: string, incomingHtml: string): string {
+  const currentClean = stripAiReportPreamble(stripMarkdownHorizontalRulesFromHtml(currentHtml))
+  const incomingClean = stripAiReportPreamble(stripMarkdownHorizontalRulesFromHtml(incomingHtml))
+  if (!currentClean.trim()) return incomingClean
+  if (!incomingClean.trim()) return currentClean
+
+  const currentSections = parseReportSections(currentClean)
+  const incomingSections = parseReportSections(incomingClean)
+  const incomingHasHeadings = incomingSections.some((section) => section.heading)
+
+  // Short freeform reply with no section structure should not wipe the draft.
+  if (!incomingHasHeadings) {
+    const incomingWords = plainWordCount(incomingClean)
+    const currentWords = plainWordCount(currentClean)
+    if (incomingWords < Math.max(80, currentWords * 0.35)) {
+      return currentClean
+    }
+    return incomingClean
+  }
+
+  const order: string[] = []
+  const map = new Map<string, ReportSectionBlock>()
+  let preambleKey: string | null = null
+
+  for (const [index, section] of currentSections.entries()) {
+    const key = section.heading
+      ? normalizeSectionKey(section.heading)
+      : `__preamble_${index}`
+    if (!section.heading) preambleKey = key
+    order.push(key)
+    map.set(key, section)
+  }
+
+  const incomingHasRefs = incomingSections.some(
+    (section) => section.heading && isReferencesHeading(section.heading),
+  )
+
+  for (const section of incomingSections) {
+    if (!section.heading) continue
+    const key = normalizeSectionKey(section.heading)
+    if (!map.has(key)) {
+      const refsIndex = order.findIndex((item) => item.startsWith('references'))
+      if (refsIndex >= 0) order.splice(refsIndex, 0, key)
+      else order.push(key)
+    }
+    map.set(key, section)
+  }
+
+  if (!incomingHasRefs) {
+    const currentRefs = currentSections.find(
+      (section) => section.heading && isReferencesHeading(section.heading),
+    )
+    if (currentRefs?.heading) {
+      const key = normalizeSectionKey(currentRefs.heading)
+      map.set(key, currentRefs)
+      if (!order.includes(key)) order.push(key)
+    }
+  }
+
+  // Keep current preamble only if incoming didn't supply structured content from the top.
+  if (preambleKey && !map.has(preambleKey)) {
+    // already gone
+  }
+
+  return order.map((key) => map.get(key)?.html ?? '').filter(Boolean).join('')
+}
+
 export function splitReferencesSection(html: string) {
   if (!html.trim()) return { body: '', references: '' }
   const doc = new DOMParser().parseFromString(html, 'text/html')
