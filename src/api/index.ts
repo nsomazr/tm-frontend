@@ -123,6 +123,7 @@ export const mapsApi = {
     api.get<PaginatedResponse<LayerVersion>>('/maps/versions/', { params }),
   uploads: (params?: Record<string, string | number>) =>
     api.get<PaginatedResponse<LayerUpload>>('/maps/uploads/', { params }),
+  upload: (id: number) => api.get<LayerUpload>(`/maps/uploads/${id}/`),
   savedExplorations: () =>
     api
       .get<SavedExploration[] | PaginatedResponse<SavedExploration>>('/maps/saved-explorations/')

@@ -3,6 +3,7 @@ import { useTranslation } from '../../i18n/LocaleContext'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapLayer } from '../../types'
 import LayerTypeSymbol from './LayerTypeSymbol'
+import { compareLayersBottomToTop, sortLayersTopToBottom } from '../admin/layerOrder'
 
 interface LayerPanelProps {
   layers: MapLayer[]
@@ -52,12 +53,12 @@ export default function LayerPanel({
       map.get(t)!.push(layer)
     }
     for (const list of map.values()) {
-      list.sort((a, b) => a.z_index - b.z_index)
+      list.sort(compareLayersBottomToTop)
     }
     return TYPE_ORDER.filter((t) => map.has(t)).map((t) => ({ type: t, layers: map.get(t)! }))
   }, [layers])
 
-  const sorted = [...layers].sort((a, b) => b.z_index - a.z_index)
+  const sorted = sortLayersTopToBottom(layers)
 
   const handleDrop = (targetIndex: number) => {
     if (!onReorder || dragIndex === null || dragIndex === targetIndex) return

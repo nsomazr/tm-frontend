@@ -12,7 +12,15 @@ import {
   explorationReady,
 } from '../map/explorationGeometry'
 import { parseCoordinateQuery } from '../map/parseCoordinate'
-import { formatLatLngPair, parseCoordinateComponent } from '../map/coordinateFormat'
+import {
+  dmsPartsToDecimal,
+  emptyDmsParts,
+  formatLatLngPair,
+  parseCoordinateComponent,
+  type DmsAxisParts,
+} from '../map/coordinateFormat'
+import CoordinateAxisInput from '../map/CoordinateAxisInput'
+import CoordinateFormatToggle from '../map/CoordinateFormatToggle'
 import { useCoordinateFormatState } from '../map/useCoordinateFormatState'
 import type { AdminBoundaryAtResponse, MineralSearchInsight } from '../../types'
 import SelectionChipList from './SelectionChipList'
@@ -333,6 +341,9 @@ export default function ReportLocationPicker({
   const [boundaryVisibility, setBoundaryVisibility] = useState(DEFAULT_BOUNDARY_VISIBILITY)
   const [manualLat, setManualLat] = useState('')
   const [manualLng, setManualLng] = useState('')
+  const [latDms, setLatDms] = useState<DmsAxisParts>(() => emptyDmsParts('lat'))
+  const [lngDms, setLngDms] = useState<DmsAxisParts>(() => emptyDmsParts('lng'))
+  const [coordinateError, setCoordinateError] = useState<string | null>(null)
   const [useBuffer, setUseBuffer] = useState(() => Boolean(value.bufferKm && Number(value.bufferKm) > 0))
   const {
     showBasemapLabels,
@@ -340,7 +351,8 @@ export default function ReportLocationPicker({
     showBoundaryLabels,
     setShowBoundaryLabels,
   } = useMapLabelState()
-  const [coordinateFormat] = useCoordinateFormatState()
+  const [coordinateFormat, setCoordinateFormat] = useCoordinateFormatState()
+  const isDms = coordinateFormat === 'dms'
 
   const locationMode = value.locationMode ?? 'boundaries'
   const coordinateMode = value.coordinateMode ?? 'point'
@@ -787,13 +799,27 @@ export default function ReportLocationPicker({
     setDrawActive(true)
   }
 
-  function addManualCoordinate() {
-    const lat = parseCoordinateComponent(manualLat, 'lat')
-    const lng = parseCoordinateComponent(manualLng, 'lng')
-    if (lat == null || lng == null) return
-    void handleMapPoint(lng, lat)
+  function clearManualCoordinateFields() {
     setManualLat('')
     setManualLng('')
+    setLatDms(emptyDmsParts('lat'))
+    setLngDms(emptyDmsParts('lng'))
+    setCoordinateError(null)
+  }
+
+  function addManualCoordinate() {
+    const lat = isDms ? dmsPartsToDecimal(latDms, 'lat') : parseCoordinateComponent(manualLat, 'lat')
+    const lng = isDms ? dmsPartsToDecimal(lngDms, 'lng') : parseCoordinateComponent(manualLng, 'lng')
+    if (lat == null || lng == null) {
+      setCoordinateError(
+        isDms
+          ? 'Enter degrees, minutes, seconds, and hemisphere for both axes.'
+          : 'Enter valid latitude and longitude.',
+      )
+      return
+    }
+    void handleMapPoint(lng, lat)
+    clearManualCoordinateFields()
   }
 
   function removeDrawPoint(index: number) {
@@ -804,8 +830,7 @@ export default function ReportLocationPicker({
   function clearCoordinates() {
     publishGeometrySelection(value, onChange, coordinateMode, [], '', coordinateFormat)
     setUseBuffer(false)
-    setManualLat('')
-    setManualLng('')
+    clearManualCoordinateFields()
   }
 
   function updateBuffer(nextUse: boolean, rawKm: string) {
@@ -1106,45 +1131,72 @@ export default function ReportLocationPicker({
             </div>
 
             <div className="rounded-xl border border-app-border p-3 space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">
-                Add coordinates
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block min-w-0">
-                  <span className="block text-[10px] uppercase tracking-wide text-app-muted">Latitude</span>
-                  <input
-                    value={manualLat}
-                    onChange={(e) => setManualLat(e.target.value)}
-                    inputMode="decimal"
-                    placeholder="-6.17"
-                    className="input mt-0.5 w-full text-sm tabular-nums"
-                  />
-                </label>
-                <label className="block min-w-0">
-                  <span className="block text-[10px] uppercase tracking-wide text-app-muted">Longitude</span>
-                  <input
-                    value={manualLng}
-                    onChange={(e) => setManualLng(e.target.value)}
-                    inputMode="decimal"
-                    placeholder="35.74"
-                    className="input mt-0.5 w-full text-sm tabular-nums"
-                  />
-                </label>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-app-muted">
+                  Add coordinates
+                </p>
+                <CoordinateFormatToggle
+                  value={coordinateFormat}
+                  onChange={setCoordinateFormat}
+                  compact
+                  className="shrink-0"
+                />
+              </div>
+              <div className={isDms ? 'space-y-2' : 'grid grid-cols-2 gap-2'}>
+                <CoordinateAxisInput
+                  axis="lat"
+                  label="Latitude"
+                  format={coordinateFormat}
+                  decimalValue={manualLat}
+                  onDecimalChange={(next) => {
+                    setManualLat(next)
+                    setCoordinateError(null)
+                  }}
+                  dmsValue={latDms}
+                  onDmsChange={(next) => {
+                    setLatDms(next)
+                    setCoordinateError(null)
+                  }}
+                  compact
+                />
+                <CoordinateAxisInput
+                  axis="lng"
+                  label="Longitude"
+                  format={coordinateFormat}
+                  decimalValue={manualLng}
+                  onDecimalChange={(next) => {
+                    setManualLng(next)
+                    setCoordinateError(null)
+                  }}
+                  dmsValue={lngDms}
+                  onDmsChange={(next) => {
+                    setLngDms(next)
+                    setCoordinateError(null)
+                  }}
+                  compact
+                />
               </div>
               <button
                 type="button"
                 className="btn-secondary text-xs w-full"
                 onClick={addManualCoordinate}
                 disabled={
-                  parseCoordinateComponent(manualLat, 'lat') == null ||
-                  parseCoordinateComponent(manualLng, 'lng') == null
+                  isDms
+                    ? dmsPartsToDecimal(latDms, 'lat') == null ||
+                      dmsPartsToDecimal(lngDms, 'lng') == null
+                    : parseCoordinateComponent(manualLat, 'lat') == null ||
+                      parseCoordinateComponent(manualLng, 'lng') == null
                 }
               >
                 {coordinateMode === 'polygon' ? 'Add vertex' : 'Set point'}
               </button>
-              <p className="text-[11px] text-app-muted">
-                Or click the map. Polygon needs at least 3 points.
-              </p>
+              {coordinateError ? (
+                <p className="text-[11px] text-red-600">{coordinateError}</p>
+              ) : (
+                <p className="text-[11px] text-app-muted">
+                  Or click the map. Polygon needs at least 3 points.
+                </p>
+              )}
             </div>
 
             {drawPoints.length > 0 && (

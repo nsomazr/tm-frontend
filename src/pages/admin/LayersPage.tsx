@@ -70,6 +70,19 @@ function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ['mineral-catalog-nav'] })
 }
 
+/** Wait until a background Celery import finishes so the minerals navbar can refresh. */
+async function waitForLayerUpload(uploadId: number, timeoutMs = 180_000) {
+  const started = Date.now()
+  for (;;) {
+    const { data } = await mapsApi.upload(uploadId)
+    if (data.status === 'completed' || data.status === 'failed') return data
+    if (Date.now() - started > timeoutMs) {
+      return data
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1500))
+  }
+}
+
 /** Attach the new layer to selected layers' commodities, and/or adopt selected point/line layers. */
 async function persistLinkedLayers(
   created: MapLayer,
@@ -296,28 +309,46 @@ export default function LayersPage() {
     onSuccess: async (res) => {
       setUploadProgress(null)
       const layerId = selectedLayerId
+      let upload = res.data
       const layerSlug =
-        res.data?.layer_slug ||
+        upload?.layer_slug ||
         allLayers.find((l) => String(l.id) === layerId)?.slug ||
         ''
       const layerName =
-        res.data?.layer_name ||
+        upload?.layer_name ||
         allLayers.find((l) => String(l.id) === layerId)?.name ||
         layerId
-      const filename = uploadFile?.name ?? res.data?.filename ?? 'file'
+      const filename = uploadFile?.name ?? upload?.filename ?? 'file'
 
-      invalidateLayerQueries(qc)
       setUploadFile(null)
 
-      if (res.data?.status === 'failed') {
+      if (upload?.status === 'pending' || upload?.status === 'processing') {
+        toast.info('Import started', {
+          description: `Processing ${filename} for "${layerName}"…`,
+        })
+        try {
+          upload = await waitForLayerUpload(upload.id)
+        } catch {
+          invalidateLayerQueries(qc)
+          setImportOutcome(null)
+          toast.info('Import is still processing', {
+            description: 'Refresh the map in a moment if the layer or minerals menu is not updated yet.',
+          })
+          return
+        }
+      }
+
+      invalidateLayerQueries(qc)
+
+      if (upload?.status === 'failed') {
         setImportOutcome(null)
         toast.error('Import failed', {
-          description: res.data.error_message || 'The upload could not be processed.',
+          description: upload.error_message || 'The upload could not be processed.',
         })
         return
       }
 
-      if (res.data?.status === 'completed') {
+      if (upload?.status === 'completed') {
         clearLayerGeojsonCache()
         const previousCount =
           allLayers.find((l) => String(l.id) === layerId)?.feature_count ?? 0
@@ -340,7 +371,7 @@ export default function LayersPage() {
             ? `Added ${addedCount.toLocaleString()} features (${featureCount.toLocaleString()} total) in "${layerName}".`
             : `Imported ${featureCount.toLocaleString()} features into "${layerName}".`
         toast.success('Upload successful', {
-          description: importDescription,
+          description: `${importDescription} It will appear in the minerals menu on the map.`,
           action: {
             label: 'Configure in Commodities',
             onClick: () => navigate(commoditiesPath),
@@ -350,8 +381,8 @@ export default function LayersPage() {
       }
 
       setImportOutcome(null)
-      toast.info('Import started', {
-        description: `Processing ${filename} for "${layerName}". Refresh in a moment if features do not appear.`,
+      toast.info('Import still running', {
+        description: `Processing ${filename} for "${layerName}". Refresh the map shortly if it is not listed yet.`,
       })
     },
     onError: (err: Error) => {
@@ -485,7 +516,8 @@ export default function LayersPage() {
                       ))}
                     </select>
                     <p className="mt-1 text-xs text-app-text-muted">
-                      Controls which mineral appears in the map navbar after you import data.
+                      Dedicated commodities appear by name in the map minerals menu after import.
+                      Layers on General (shared) each appear under their layer name.
                     </p>
                   </label>
                   <div className="min-w-0">

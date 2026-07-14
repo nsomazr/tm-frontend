@@ -56,27 +56,23 @@ export default function AdminMapSettingsPage() {
       ? { lat: selectedCountry.center_lat, lng: selectedCountry.center_lng }
       : null
   const recommendedDefault = defaultCoordinateSystemForCountry(countryCode)
+  const recommendedLabel = coordinateSystemById(recommendedDefault).label
+  const countryName = selectedCountry ? displayName(selectedCountry) : countryCode
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-app-text">Map settings</h1>
-        <p className="mt-0.5 text-sm text-app-muted">
-          Choose the default CRS for each country. Search by name, EPSG code, or region.
+    <div className="mx-auto max-w-4xl space-y-6">
+      <header className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-app-text">Map settings</h1>
+        <p className="max-w-2xl text-sm leading-relaxed text-app-muted">
+          Set the default coordinate reference system per country. Build a WGS 84 UTM zone, or
+          pick from the recommended and regional catalog.
         </p>
-      </div>
+      </header>
 
-      <section className="rounded-xl border border-app-border bg-app-surface overflow-hidden">
-        <div className="border-b app-divider px-5 py-4 space-y-3">
-          <div>
-            <h2 className="font-semibold text-app-text">Coordinate reference system</h2>
-            <p className="text-sm text-app-muted mt-0.5">
-              Recommended systems appear first for the selected country. Use WGS 84 UTM for a
-              local projected grid, or any regional datum from the catalog.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="block max-w-xs flex-1 min-w-[12rem]">
+      <section className="overflow-hidden rounded-2xl border border-app-border bg-app-surface shadow-sm">
+        <div className="border-b app-divider bg-gradient-to-br from-app-subtle/90 to-app-surface px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <label className="block min-w-0 flex-1 sm:max-w-xs">
               <span className="text-xs font-semibold uppercase tracking-wide text-app-muted">
                 Country
               </span>
@@ -84,7 +80,7 @@ export default function AdminMapSettingsPage() {
                 value={countryCode}
                 onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
                 disabled={countriesLoading}
-                className="mt-1.5 w-full rounded-lg border border-app-border bg-app-surface px-3 py-2 text-sm text-app-text"
+                className="mt-1.5 w-full rounded-xl border border-app-border bg-app-surface px-3 py-2.5 text-sm text-app-text"
               >
                 {countries.map((country) => (
                   <option key={country.code} value={country.code}>
@@ -93,21 +89,34 @@ export default function AdminMapSettingsPage() {
                 ))}
               </select>
             </label>
-            {active !== recommendedDefault && (
-              <button
-                type="button"
-                disabled={save.isPending}
-                onClick={() => save.mutate(recommendedDefault)}
-                className="btn-secondary text-sm py-2"
-              >
-                Use recommended ({coordinateSystemById(recommendedDefault).label})
-              </button>
-            )}
+
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <div className="rounded-xl border border-app-border bg-app-surface px-3.5 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">
+                  Active CRS
+                </p>
+                <p className="mt-0.5 truncate text-sm font-semibold text-app-text" title={current.label}>
+                  {current.label}
+                </p>
+                <p className="text-xs tabular-nums text-app-muted">{current.epsg}</p>
+              </div>
+              {active !== recommendedDefault ? (
+                <button
+                  type="button"
+                  disabled={save.isPending}
+                  onClick={() => save.mutate(recommendedDefault)}
+                  className="btn-secondary text-sm"
+                  title={recommendedLabel}
+                >
+                  Use recommended
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
 
         {isLoading ? (
-          <p className="px-5 py-8 text-sm text-app-muted">Loading…</p>
+          <p className="px-5 py-10 text-sm text-app-muted sm:px-6">Loading coordinate systems…</p>
         ) : (
           <CoordinateSystemList
             value={active as CoordinateSystemId}
@@ -117,30 +126,23 @@ export default function AdminMapSettingsPage() {
             countryCode={countryCode}
             countryCenter={countryCenter}
             disabled={save.isPending}
+            className="pt-4"
           />
         )}
 
-        <div className="border-t app-divider px-5 py-4 bg-app-subtle/40">
-          <p className="text-xs text-app-text-muted">
-            Current selection for{' '}
-            <span className="font-medium text-app-text-secondary">
-              {selectedCountry ? displayName(selectedCountry) : countryCode}
-            </span>
-            :{' '}
-            <span className="font-medium text-app-text-secondary">{current.label}</span>
-            {' '}({current.epsg})
-          </p>
-          <p className="text-xs text-app-text-muted mt-2">
-            Applies immediately. Explore entry stays WGS84; labels use this CRS.
+        <div className="border-t app-divider bg-app-subtle/40 px-5 py-4 sm:px-6">
+          <p className="text-xs leading-relaxed text-app-text-muted">
+            Selection for <span className="font-medium text-app-text-secondary">{countryName}</span>{' '}
+            applies immediately. Explore entry stays WGS 84; coordinate labels use this CRS.
           </p>
         </div>
       </section>
 
-      <p className="mt-4 text-sm text-app-muted">
-        <Link to="/maps" className="text-terra-600 dark:text-terra-400 hover:underline">
+      <p className="text-sm text-app-muted">
+        <Link to="/maps" className="font-medium text-terra-600 hover:underline dark:text-terra-400">
           Open map
-        </Link>
-        {' '}to verify labels.
+        </Link>{' '}
+        to verify labels.
       </p>
     </div>
   )

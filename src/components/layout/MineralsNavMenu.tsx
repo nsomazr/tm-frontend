@@ -22,16 +22,25 @@ export default function MineralsNavMenu({ className = '' }: MineralsNavMenuProps
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ['mineral-catalog-nav', DEFAULT_COUNTRY_CODE],
     queryFn: () => analyticsApi.mineralCatalog(DEFAULT_COUNTRY_CODE).then((r) => r.data),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   })
 
   const minerals = useMemo(
-    () => (data?.minerals ?? []).filter((entry: MineralCatalogEntry) => entry.is_mapped),
+    () =>
+      (data?.minerals ?? []).filter(
+        (entry: MineralCatalogEntry) => entry.is_mapped && entry.slug !== 'general',
+      ),
     [data?.minerals],
   )
+
+  useEffect(() => {
+    if (!open) return
+    void refetch()
+  }, [open, refetch])
 
   const selectedEntry = useMemo(
     () => minerals.find((entry) => entry.slug === selectedSlug) ?? null,

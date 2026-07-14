@@ -719,7 +719,7 @@ export default function FullMapPage() {
         return
       }
     }
-    // Paid: all layers on. Free landing map: random batch of ~10 (rotated below).
+    // Paid: all layers on. Free landing map: random batch of ~15 (rotated below).
     setVisibleLayers(
       hasFullMapAccess
         ? defaultVisibleLayerIds(layers)

@@ -59,6 +59,7 @@ import { loadLayerGeojson } from './mapGeojsonCache'
 import { syncMineralHeatmapLayer, MINERAL_HEATMAP_Z_INDEX, type MineralHeatmapSpec } from './mineralHeatmapLayer'
 import { syncMineralHeatmapContours } from './mineralHeatmapContours'
 import { pickRandomVisibleLayerIds } from './mapUtils'
+import { sortLayersBottomToTop, stackIndicesBottomToTop } from '../admin/layerOrder'
 import { useTranslation } from '../../i18n/LocaleContext'
 import {
   boundaryLabelZoom,
@@ -320,9 +321,9 @@ function fitCountryView(
   }
 }
 
-function layerOlZIndex(layer: MapLayer) {
+function layerOlZIndex(stackRank: number) {
   // Above admin boundary overlays (3100–3400), below analysis/hover (4500+).
-  return 3600 + layer.z_index
+  return 3600 + stackRank
 }
 
 function villageLabelsVisible(
@@ -1465,7 +1466,8 @@ export default function MapViewer({
     const map = mapInstance.current
     if (!map || mapEpoch === 0) return
 
-    const sorted = [...layers].sort((a, b) => a.z_index - b.z_index)
+    const sorted = sortLayersBottomToTop(layers)
+    const stackRanks = stackIndicesBottomToTop(layers)
     const nextIds = new Set(sorted.map((layer) => layer.id))
 
     vectorLayersRef.current.forEach((vectorLayer, id) => {
@@ -1481,11 +1483,12 @@ export default function MapViewer({
     sorted.forEach((layer) => {
       layerMetaRef.current.set(layer.id, layer)
       const existing = vectorLayersRef.current.get(layer.id)
+      const stackRank = stackRanks.get(layer.id) ?? layer.z_index
 
       if (existing && layerIsOnMap(map, existing)) {
         existing.setStyle(styleFn(layer))
         existing.setVisible(visibleLayers.has(layer.id))
-        existing.setZIndex(layerOlZIndex(layer))
+        existing.setZIndex(layerOlZIndex(stackRank))
         const source = existing.getSource()
         if (source && source.getFeatures().length === 0) {
           populateLayerSource(layer.id, layer, source)
@@ -1503,7 +1506,7 @@ export default function MapViewer({
         source,
         style: styleFn(layer),
         visible: visibleLayers.has(layer.id),
-        zIndex: layerOlZIndex(layer),
+        zIndex: layerOlZIndex(stackRank),
         properties: { layerId: layer.id },
         declutter: layer.layer_type === 'point' ? 'mineral-data' : false,
       })
@@ -1889,9 +1892,7 @@ export default function MapViewer({
     return () => window.cancelAnimationFrame(id)
   }, [assistantOpen])
 
-  const legendLayers = [...layers]
-    .sort((a, b) => a.z_index - b.z_index)
-    .filter((l) => visibleLayers.has(l.id))
+  const legendLayers = sortLayersBottomToTop(layers).filter((l) => visibleLayers.has(l.id))
 
   return (
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>

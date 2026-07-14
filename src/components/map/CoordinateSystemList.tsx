@@ -27,6 +27,204 @@ function optionMatches(option: CoordinateSystemOption, query: string) {
   return searchCoordinateSystems(query, [option]).length > 0
 }
 
+function clampZone(value: number) {
+  if (!Number.isFinite(value)) return 1
+  return Math.min(60, Math.max(1, Math.round(value)))
+}
+
+function UtmZoneBuilder({
+  zone,
+  south,
+  onZoneChange,
+  onSouthChange,
+  onApply,
+  disabled,
+  compact,
+  selected,
+  suggestedLabel,
+}: {
+  zone: number
+  south: boolean
+  onZoneChange: (zone: number) => void
+  onSouthChange: (south: boolean) => void
+  onApply: () => void
+  disabled?: boolean
+  compact?: boolean
+  selected: boolean
+  suggestedLabel?: string | null
+}) {
+  const preview = wgs84UtmOption(zone, south)
+  const stepperBtn = compact
+    ? 'flex h-8 w-8 items-center justify-center rounded-lg border border-app-border bg-app-surface text-sm font-semibold map-text hover:bg-app-subtle disabled:opacity-50'
+    : 'flex h-10 w-10 items-center justify-center rounded-xl border border-app-border bg-app-surface text-base font-semibold text-app-text hover:bg-app-subtle disabled:opacity-50'
+
+  return (
+    <div
+      className={
+        compact
+          ? 'rounded-xl border border-app-border bg-app-subtle/40 p-2.5'
+          : 'rounded-2xl border border-app-border bg-gradient-to-br from-app-subtle/80 to-app-surface p-4'
+      }
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p
+            className={
+              compact
+                ? 'text-[10px] font-semibold uppercase tracking-wide map-text-muted'
+                : 'text-xs font-semibold uppercase tracking-wide text-app-muted'
+            }
+          >
+            Build UTM zone
+          </p>
+          <p className={compact ? 'mt-0.5 text-[11px] map-text-muted' : 'mt-1 text-sm text-app-muted'}>
+            WGS 84 projected metres
+            {suggestedLabel ? ` · suggested ${suggestedLabel}` : ''}
+          </p>
+        </div>
+        {selected ? (
+          <span
+            className={
+              compact
+                ? 'shrink-0 rounded-md bg-terra-600/15 px-1.5 py-0.5 text-[10px] font-semibold text-terra-800 dark:text-terra-300'
+                : 'shrink-0 rounded-full bg-terra-600/12 px-2.5 py-1 text-[11px] font-semibold text-terra-800 dark:text-terra-300'
+            }
+          >
+            Active
+          </span>
+        ) : null}
+      </div>
+
+      <div className={`mt-3 grid gap-3 ${compact ? '' : 'sm:grid-cols-[1fr_1fr_auto] sm:items-end'}`}>
+        <div>
+          <label
+            className={
+              compact
+                ? 'mb-1 block text-[10px] font-medium map-text-muted'
+                : 'mb-1.5 block text-xs font-medium text-app-muted'
+            }
+            htmlFor={compact ? 'utm-zone-compact' : 'utm-zone'}
+          >
+            Zone (1–60)
+          </label>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              className={stepperBtn}
+              disabled={disabled || zone <= 1}
+              onClick={() => onZoneChange(zone - 1)}
+              aria-label="Decrease zone"
+            >
+              −
+            </button>
+            <input
+              id={compact ? 'utm-zone-compact' : 'utm-zone'}
+              type="number"
+              min={1}
+              max={60}
+              value={zone}
+              disabled={disabled}
+              onChange={(e) => onZoneChange(clampZone(Number(e.target.value)))}
+              className={
+                compact
+                  ? 'h-8 w-full min-w-0 rounded-lg border border-app-border bg-app-surface px-2 text-center text-sm font-semibold tabular-nums map-text focus:border-terra-500 focus:outline-none focus:ring-2 focus:ring-terra-500/25'
+                  : 'input h-10 w-full min-w-0 py-0 text-center text-base font-semibold tabular-nums'
+              }
+            />
+            <button
+              type="button"
+              className={stepperBtn}
+              disabled={disabled || zone >= 60}
+              onClick={() => onZoneChange(zone + 1)}
+              aria-label="Increase zone"
+            >
+              +
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <p
+            className={
+              compact
+                ? 'mb-1 text-[10px] font-medium map-text-muted'
+                : 'mb-1.5 text-xs font-medium text-app-muted'
+            }
+            id={compact ? 'utm-hemi-compact' : 'utm-hemi'}
+          >
+            Hemisphere
+          </p>
+          <div
+            role="group"
+            aria-labelledby={compact ? 'utm-hemi-compact' : 'utm-hemi'}
+            className={
+              compact
+                ? 'grid grid-cols-2 rounded-lg border border-app-border bg-app-surface p-0.5'
+                : 'grid grid-cols-2 rounded-xl border border-app-border bg-app-surface p-1'
+            }
+          >
+            {([false, true] as const).map((nextSouth) => {
+              const active = south === nextSouth
+              return (
+                <button
+                  key={nextSouth ? 's' : 'n'}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onSouthChange(nextSouth)}
+                  className={`${compact ? 'rounded-md px-2 py-1.5 text-[11px]' : 'rounded-lg px-3 py-2 text-sm'} font-semibold transition-colors disabled:opacity-50 ${
+                    active
+                      ? 'bg-terra-600 text-white shadow-sm'
+                      : compact
+                        ? 'map-text-muted hover:bg-app-subtle'
+                        : 'text-app-muted hover:bg-app-subtle'
+                  }`}
+                >
+                  {nextSouth ? 'South' : 'North'}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className={compact ? '' : 'sm:min-w-[9.5rem]'}>
+          {!compact ? (
+            <p className="mb-1.5 text-xs font-medium text-app-muted">Selection</p>
+          ) : null}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onApply}
+            className={
+              compact
+                ? `flex w-full items-center justify-center rounded-lg px-2.5 py-2 text-[11px] font-semibold disabled:opacity-60 ${
+                    selected
+                      ? 'border border-terra-600/30 bg-terra-600/10 text-terra-800 dark:text-terra-300'
+                      : 'bg-terra-600 text-white hover:bg-terra-700'
+                  }`
+                : `btn-primary flex w-full items-center justify-center gap-2 text-sm ${
+                    selected ? '!bg-terra-700' : ''
+                  }`
+            }
+          >
+            {selected ? 'Using' : 'Use'} {preview.label.replace('WGS 84 / ', '')}
+          </button>
+        </div>
+      </div>
+
+      <div
+        className={
+          compact
+            ? 'mt-2 flex items-center justify-between gap-2 border-t border-app-border/70 pt-2 text-[10px] map-text-muted'
+            : 'mt-3 flex flex-wrap items-center justify-between gap-2 border-t app-divider pt-3 text-xs text-app-muted'
+        }
+      >
+        <span className="font-medium tabular-nums text-app-text-secondary">{preview.epsg}</span>
+        <span>Projected · metres</span>
+      </div>
+    </div>
+  )
+}
+
 export default function CoordinateSystemList({
   value,
   onSelect,
@@ -98,6 +296,8 @@ export default function CoordinateSystemList({
     return groups
   }, [filtered, recommended, countryCode])
 
+  const activeUtmId = wgs84UtmId(utmZone, utmSouth)
+
   const renderOption = (option: CoordinateSystemOption) => {
     const selected = option.id === value
     return (
@@ -158,7 +358,7 @@ export default function CoordinateSystemList({
 
   return (
     <div className={className}>
-      <div className={compact ? 'px-2 pb-2' : 'px-5 pb-3'}>
+      <div className={compact ? 'space-y-2.5 px-2 pb-2' : 'space-y-4 px-5 pb-4'}>
         <input
           type="search"
           value={query}
@@ -171,72 +371,27 @@ export default function CoordinateSystemList({
           }
           aria-label="Search coordinate systems"
         />
+
+        <UtmZoneBuilder
+          zone={utmZone}
+          south={utmSouth}
+          onZoneChange={setUtmZone}
+          onSouthChange={setUtmSouth}
+          onApply={() => onSelect(activeUtmId)}
+          disabled={disabled}
+          compact={compact}
+          selected={value === activeUtmId}
+          suggestedLabel={suggestedUtm?.label.replace('WGS 84 / ', '') ?? null}
+        />
       </div>
 
-      <div className={compact ? 'px-2 pb-2' : 'px-5 pb-3'}>
-        <p
-          className={
-            compact
-              ? 'mb-1.5 text-[10px] font-semibold uppercase tracking-wide map-text-muted'
-              : 'mb-2 text-xs font-semibold uppercase tracking-wide text-app-muted'
-          }
-        >
-          WGS 84 UTM zone
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-xs">
-            <span className={compact ? 'map-text-muted' : 'text-app-muted'}>Zone</span>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={utmZone}
-              onChange={(e) => {
-                const next = Number(e.target.value)
-                if (Number.isFinite(next)) setUtmZone(Math.min(60, Math.max(1, Math.round(next))))
-              }}
-              className={
-                compact
-                  ? 'w-14 rounded-md border border-app-border bg-app-surface px-1.5 py-1 text-xs map-text'
-                  : 'input w-16 py-1.5 text-sm'
-              }
-            />
-          </label>
-          <div className="inline-flex rounded-md border border-app-border p-0.5">
-            {([false, true] as const).map((south) => (
-              <button
-                key={south ? 's' : 'n'}
-                type="button"
-                onClick={() => setUtmSouth(south)}
-                className={`rounded px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                  utmSouth === south
-                    ? 'bg-terra-600 text-white'
-                    : compact
-                      ? 'map-text-muted hover:bg-app-subtle'
-                      : 'text-app-muted hover:bg-app-subtle'
-                }`}
-              >
-                {south ? 'South' : 'North'}
-              </button>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onSelect(wgs84UtmId(utmZone, utmSouth))}
-            className={
-              compact
-                ? 'rounded-md bg-terra-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-terra-700 disabled:opacity-60'
-                : 'btn-secondary text-xs py-1.5'
-            }
-          >
-            Use UTM {utmZone}
-            {utmSouth ? 'S' : 'N'}
-          </button>
-        </div>
-      </div>
-
-      <ul className={compact ? 'max-h-52 overflow-y-auto border-t app-divider p-1' : 'max-h-[28rem] overflow-y-auto divide-y divide-app-border/40'}>
+      <ul
+        className={
+          compact
+            ? 'max-h-52 overflow-y-auto border-t app-divider p-1'
+            : 'max-h-[28rem] overflow-y-auto divide-y divide-app-border/40 border-t app-divider'
+        }
+      >
         {filtered ? (
           filtered.length === 0 ? (
             <li className={compact ? 'px-2 py-3 text-xs map-text-muted' : 'px-5 py-6 text-sm text-app-muted'}>
@@ -247,7 +402,7 @@ export default function CoordinateSystemList({
           )
         ) : (
           grouped?.map((group) => (
-            <li key={group.key} className={compact ? '' : ''}>
+            <li key={group.key}>
               <div
                 className={
                   compact

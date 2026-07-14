@@ -11,7 +11,7 @@ export function allVisibleLayerIds(layers: MapLayer[]): Set<number> {
 }
 
 /** How many free-map layers to show at once on the landing / preview map. */
-export const LANDING_MAP_LAYER_BATCH = 10
+export const LANDING_MAP_LAYER_BATCH = 15
 
 /**
  * How often the landing map swaps its random layer batch.

@@ -317,6 +317,7 @@ export default function LayersManageTable({
                 onClick={onResetDefault}
                 disabled={reorderBusy}
                 className="text-xs font-medium px-3 py-1.5 rounded-full border border-app-border bg-app-surface/80 text-app-text-secondary hover:bg-app-subtle hover:text-app-text disabled:opacity-50 transition-colors"
+                title="Polygons under lines under points; within each type, larger coverage at the bottom"
               >
                 Reset stack
               </button>
