@@ -31,7 +31,7 @@ export default function CompleteProfilePage() {
 
   if (authLoading) {
     return (
-      <div className="auth-shell relative flex h-[100dvh] max-h-[100dvh] items-center justify-center overflow-hidden">
+      <div className="auth-shell relative flex h-full items-center justify-center overflow-hidden">
         <div className="auth-shell__atmosphere" aria-hidden />
         <div className="relative z-[1] h-8 w-8 animate-spin rounded-full border-2 border-terra-600 border-t-transparent" />
       </div>
@@ -79,14 +79,14 @@ export default function CompleteProfilePage() {
   return (
     <AuthShell mode="profile">
       <div className="auth-form w-full">
-        <header className="mb-4 sm:mb-5">
+        <header className="mb-6">
           <h2 className="auth-form__title">Finish your profile</h2>
-          <p className="auth-form__subtitle mt-1">
+          <p className="auth-form__subtitle mt-1.5">
             One quick step, then you’re ready to explore Terra Meta.
           </p>
         </header>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           {error ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
               {error}

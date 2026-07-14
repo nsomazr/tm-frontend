@@ -182,12 +182,12 @@ export default function SimpleAuthForm({
 
   return (
     <div className="auth-form w-full">
-      <header className="mb-4 sm:mb-5">
+      <header className="mb-6">
         <h2 className="auth-form__title">{title}</h2>
-        <p className="auth-form__subtitle mt-1">{subtitle}</p>
+        <p className="auth-form__subtitle mt-1.5">{subtitle}</p>
       </header>
 
-      <div className="space-y-3.5">
+      <div className="space-y-4">
         {displayError ? (
           <p className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {displayError}
@@ -195,7 +195,7 @@ export default function SimpleAuthForm({
         ) : null}
 
         {step === 'start' && (
-          <div className="space-y-3.5">
+          <div className="space-y-4">
             <label className="block">
               <span className="auth-form__label">
                 {isLogin ? 'Account' : 'Email or mobile'}
@@ -249,7 +249,7 @@ export default function SimpleAuthForm({
         )}
 
         {step === 'otp' && (
-          <form onSubmit={handleVerifyOtp} className="space-y-4">
+          <form onSubmit={handleVerifyOtp} className="space-y-5">
             <OtpInput value={code} onChange={setCode} disabled={loading} />
             {expiresIn > 0 ? (
               <p className="text-center text-sm tabular-nums text-app-text-secondary">

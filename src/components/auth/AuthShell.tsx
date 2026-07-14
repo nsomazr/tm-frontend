@@ -77,19 +77,19 @@ export default function AuthShell({ children, mode = 'login' }: AuthShellProps) 
         : 'Access maps, marketplace listings, and Ask Terra insights.'
 
   return (
-    <div className="auth-shell relative h-[100dvh] max-h-[100dvh] overflow-hidden">
+    <div className="auth-shell relative h-full max-h-[100dvh] overflow-hidden">
       <div className="auth-shell__atmosphere" aria-hidden />
-      <div className="relative z-[1] mx-auto grid h-full w-full max-w-6xl lg:grid-cols-[1.05fr_0.95fr]">
-        <aside className="auth-shell__brand relative hidden min-h-0 overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-10 xl:p-12">
+      <div className="auth-shell__layout relative z-[1] mx-auto grid h-full w-full max-w-6xl lg:grid-cols-[1.05fr_0.95fr]">
+        <aside className="auth-shell__brand relative hidden min-h-0 overflow-hidden lg:flex lg:flex-col lg:justify-between">
           <ContourPattern className="auth-shell__contours pointer-events-none absolute inset-0 h-full w-full text-white/25" />
           <div className="auth-shell__orb auth-shell__orb--a" aria-hidden />
           <div className="auth-shell__orb auth-shell__orb--b" aria-hidden />
 
           <Link to="/" className="relative z-[1] inline-flex w-fit items-center">
-            <Logo variant="wordmark" className="h-10 w-auto brightness-0 invert xl:h-12" />
+            <Logo variant="wordmark" className="auth-shell__logo h-10 w-auto brightness-0 invert xl:h-11" />
           </Link>
 
-          <div className="relative z-[1] max-w-md space-y-3 auth-shell__intro xl:space-y-4">
+          <div className="relative z-[1] max-w-md space-y-3 auth-shell__intro">
             <p className="auth-shell__eyebrow">Mineral intelligence</p>
             <h1 className="auth-shell__headline">{headline}</h1>
             <p className="auth-shell__support">{support}</p>
@@ -98,17 +98,17 @@ export default function AuthShell({ children, mode = 'login' }: AuthShellProps) 
           <CompanyCredit className="relative z-[1] text-white/70 [&_a]:text-white" />
         </aside>
 
-        <section className="relative flex min-h-0 flex-col justify-center overflow-hidden px-4 py-5 sm:px-8 sm:py-6 lg:px-10 xl:px-14">
-          <div className="mx-auto mb-4 w-full max-w-[24rem] shrink-0 text-center sm:mb-5 lg:hidden">
+        <section className="auth-shell__form-col relative flex min-h-0 flex-col justify-center overflow-y-auto">
+          <div className="mx-auto mb-5 w-full max-w-[24rem] shrink-0 text-center lg:hidden">
             <Link to="/" className="inline-flex flex-col items-center gap-2">
-              <Logo variant="wordmark" className="h-10 w-auto sm:h-12" />
+              <Logo variant="wordmark" className="h-10 w-auto sm:h-11" />
             </Link>
-            <p className="auth-shell__mobile-kicker mt-2.5">{headline}</p>
+            <p className="auth-shell__mobile-kicker mt-3">{headline}</p>
           </div>
 
           <div className="auth-shell__panel mx-auto w-full max-w-[24rem] shrink-0">{children}</div>
 
-          <CompanyCredit className="mx-auto mt-4 shrink-0 text-center text-slate-500 [&_a]:text-terra-600 sm:mt-5 lg:hidden" />
+          <CompanyCredit className="mx-auto mt-5 shrink-0 text-center text-slate-500 [&_a]:text-terra-600 lg:hidden" />
         </section>
       </div>
     </div>
