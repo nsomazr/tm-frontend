@@ -8,9 +8,47 @@ import GeoJSON from 'ol/format/GeoJSON'
 import { fromLonLat } from 'ol/proj'
 import { Fill, Stroke, Style, RegularShape } from 'ol/style'
 import type { FeatureLike } from 'ol/Feature'
+import type Feature from 'ol/Feature'
+import type { Geometry } from 'ol/geom'
+import 'ol/ol.css'
 import { createBasemapSource } from '../map/basemaps'
 import { DEFAULT_COUNTRY_FOCUS } from '../map/countryFocus'
 import type { MarketplaceGeoJson } from '../../types'
+
+/** At country overview, claim polygons are often only a few CSS pixels — expand the hit target. */
+function marketplaceHitTolerance(zoom: number | undefined): number {
+  const z = zoom ?? DEFAULT_COUNTRY_FOCUS.default_zoom
+  if (z < 8) return 14
+  if (z < 11) return 8
+  return 4
+}
+
+function featureSlug(feature: FeatureLike): string | null {
+  const slug = String(feature.get('slug') ?? '')
+  return slug || null
+}
+
+function pickListingAtPixel(map: Map, pixel: number[], source: VectorSource<Feature<Geometry>>) {
+  const zoom = map.getView().getZoom()
+  const hitTolerance = marketplaceHitTolerance(zoom)
+
+  const hit = map.forEachFeatureAtPixel(
+    pixel,
+    (feature) => feature,
+    { hitTolerance, layerFilter: (layer) => layer.getSource() === source },
+  )
+  if (hit) return featureSlug(hit)
+
+  // Interior of a large polygon can still miss when styles/stroke dominate — prefer coordinate lookup.
+  const coordinate = map.getCoordinateFromPixel(pixel)
+  if (!coordinate) return null
+  const atCoord = source.getFeaturesAtCoordinate(coordinate)
+  for (const feature of atCoord) {
+    const slug = featureSlug(feature)
+    if (slug) return slug
+  }
+  return null
+}
 
 const FILL = 'rgba(15, 118, 110, 0.28)'
 const STROKE = '#0f766e'
@@ -84,20 +122,27 @@ export default function MarketplaceMap({
       controls: [],
     })
     map.on('singleclick', (evt) => {
-      const hit = map.forEachFeatureAtPixel(evt.pixel, (feature) => feature)
-      if (!hit) {
-        onSelectSlugRef.current(null)
-        return
-      }
-      const slug = String(hit.get('slug') ?? '')
-      onSelectSlugRef.current(slug || null)
+      const slug = pickListingAtPixel(map, evt.pixel, sourceRef.current)
+      onSelectSlugRef.current(slug)
     })
     map.on('pointermove', (evt) => {
-      const hit = map.hasFeatureAtPixel(evt.pixel)
+      if (evt.dragging) return
+      const zoom = map.getView().getZoom()
+      const hit = map.hasFeatureAtPixel(evt.pixel, {
+        hitTolerance: marketplaceHitTolerance(zoom),
+        layerFilter: (layer) => layer.getSource() === sourceRef.current,
+      })
       map.getTargetElement().style.cursor = hit ? 'pointer' : ''
     })
     mapRef.current = map
+
+    const syncSize = () => map.updateSize()
+    const ro = new ResizeObserver(syncSize)
+    ro.observe(containerRef.current)
+    requestAnimationFrame(syncSize)
+
     return () => {
+      ro.disconnect()
       map.setTarget(undefined)
       mapRef.current = null
     }
@@ -158,10 +203,8 @@ export default function MarketplaceMap({
       }
     }
     if (!extent || !Number.isFinite(extent[0])) return
-    const width = map.getSize()?.[0] ?? 0
-    const rightPad = width >= 768 ? 420 : 48
     map.getView().fit(extent, {
-      padding: [64, rightPad, 64, 64],
+      padding: [48, 48, 48, 48],
       maxZoom: 14,
       duration: 450,
     })

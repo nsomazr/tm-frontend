@@ -4,13 +4,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { analyticsApi, marketplaceApi } from '../../api'
 import AssistantMessageContent from '../../components/assistant/AssistantMessageContent'
 import { TerraAssistantAvatar } from '../../components/assistant/AssistantIcons'
+import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
+import ListPagination from '../../components/ui/ListPagination'
 import { DEFAULT_COUNTRY_CODE } from '../../components/map/countryFocus'
+import { usePagination } from '../../hooks/usePagination'
 import type {
   MarketplaceListingOwner,
   MarketplaceListingStatus,
   MarketplaceOwnerAnalyticsListing,
 } from '../../types'
 import { StatCard } from './DashboardUi'
+
+const LISTINGS_PAGE_SIZE = 8
+const INQUIRIES_PAGE_SIZE = 8
 
 function statusLabel(status: MarketplaceListingStatus) {
   if (status === 'published') return 'Published'
@@ -34,6 +40,73 @@ function errorMessage(err: unknown): string {
   if (detail && typeof detail === 'object') return JSON.stringify(detail)
   if (err instanceof Error && err.message) return err.message
   return 'Something went wrong. Please try again.'
+}
+
+function ListingActionsMenu({
+  row,
+  copiedSlug,
+  insightBusy,
+  statusBusy,
+  onCopyLink,
+  onTerraInsights,
+  onSetStatus,
+  onDelete,
+}: {
+  row: MarketplaceListingOwner
+  copiedSlug: string | null
+  insightBusy: boolean
+  statusBusy: boolean
+  onCopyLink: () => void
+  onTerraInsights: () => void
+  onSetStatus: (status: MarketplaceListingStatus) => void
+  onDelete: () => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <ActionMenu
+      label={`Actions for ${row.title}`}
+      open={open}
+      onOpenChange={setOpen}
+      minWidth="11rem"
+    >
+      <ActionMenuItem to={`/dashboard/marketplace/${row.id}`}>Edit</ActionMenuItem>
+      {row.status === 'published' ? (
+        <ActionMenuItem to={publicListingPath(row.slug)}>View public</ActionMenuItem>
+      ) : null}
+      <ActionMenuItem onClick={onCopyLink}>
+        {copiedSlug === row.slug ? 'Copied' : 'Copy link'}
+      </ActionMenuItem>
+      <ActionMenuItem onClick={onTerraInsights} disabled={insightBusy}>
+        {insightBusy ? 'Asking Terra…' : 'Terra insights'}
+      </ActionMenuItem>
+      {row.status !== 'published' ? (
+        <ActionMenuItem
+          onClick={() => onSetStatus('published')}
+          disabled={statusBusy}
+          className="text-emerald-700 dark:text-emerald-400"
+        >
+          Publish
+        </ActionMenuItem>
+      ) : (
+        <ActionMenuItem
+          onClick={() => onSetStatus('hidden')}
+          disabled={statusBusy}
+          className="text-amber-700 dark:text-amber-400"
+        >
+          Unpublish
+        </ActionMenuItem>
+      )}
+      <ActionMenuItem
+        destructive
+        onClick={() => {
+          if (confirm('Remove this listing from the marketplace?')) onDelete()
+        }}
+      >
+        Delete
+      </ActionMenuItem>
+    </ActionMenu>
+  )
 }
 
 export default function DashboardMarketplacePage() {
@@ -124,6 +197,8 @@ export default function DashboardMarketplacePage() {
   const unread = inquiries.filter((i) => !i.is_read).length
   const totals = analyticsQuery.data?.totals
   const insights = analyticsQuery.data?.insights ?? []
+  const listingsPagination = usePagination(listings, LISTINGS_PAGE_SIZE)
+  const inquiriesPagination = usePagination(inquiries, INQUIRIES_PAGE_SIZE)
 
   const analyticsById = useMemo(() => {
     const map = new Map<number, MarketplaceOwnerAnalyticsListing>()
@@ -157,13 +232,13 @@ export default function DashboardMarketplacePage() {
           <p className="mt-1 text-sm text-app-muted">
             List exploration or licence areas on the public{' '}
             <Link to="/marketplace" className="text-terra-600 hover:underline">
-              Marketplace
+              marketplace
             </Link>
-            . Track views, Terra interest, and inquiries from buyers.
+            .
           </p>
         </div>
         <Link to="/dashboard/marketplace/new" className="btn-primary text-sm">
-          Create listing
+          New listing
         </Link>
       </div>
 
@@ -171,12 +246,16 @@ export default function DashboardMarketplacePage() {
         <StatCard
           label="Listings"
           value={String(totals?.listings ?? listings.length)}
-          hint={`${totals?.published ?? listings.filter((l) => l.status === 'published').length} published`}
+          hint={`${totals?.published ?? 0} published · ${totals?.on_map ?? 0} on map`}
         />
         <StatCard
           label="Views"
           value={String(totals?.views ?? 0)}
-          hint={`${totals?.views_30d ?? 0} in last 30 days`}
+          hint={
+            totals?.views_30d != null
+              ? `${totals.views_30d} in last 30 days`
+              : 'Public listing page views'
+          }
         />
         <StatCard
           label="Inquiries"
@@ -232,177 +311,135 @@ export default function DashboardMarketplacePage() {
             </Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b app-divider bg-app-subtle/50 text-xs uppercase tracking-wide text-app-muted">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Title</th>
-                  <th className="px-4 py-3 font-semibold">Status</th>
-                  <th className="px-4 py-3 font-semibold">On map</th>
-                  <th className="px-4 py-3 font-semibold">Views</th>
-                  <th className="px-4 py-3 font-semibold">Inquiries</th>
-                  <th className="px-4 py-3 font-semibold">Interest</th>
-                  <th className="px-4 py-3 font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y app-divider">
-                {listings.map((row: MarketplaceListingOwner) => {
-                  const stats = analyticsById.get(row.id)
-                  const views = stats?.views ?? row.view_count ?? 0
-                  const inquiryTotal = stats?.inquiries ?? row.inquiry_count ?? 0
-                  const downloads = stats?.document_downloads ?? row.document_download_count ?? 0
-                  const terra = stats?.terra_summaries ?? row.terra_summary_count ?? 0
-                  const showingInsight = insightListingId === row.id && insightText
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b app-divider bg-app-subtle/50 text-xs uppercase tracking-wide text-app-muted">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Title</th>
+                    <th className="px-4 py-3 font-semibold">Status</th>
+                    <th className="px-4 py-3 font-semibold">On map</th>
+                    <th className="px-4 py-3 font-semibold">Views</th>
+                    <th className="px-4 py-3 font-semibold">Inquiries</th>
+                    <th className="px-4 py-3 font-semibold">Interest</th>
+                    <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y app-divider">
+                  {listingsPagination.pageItems.map((row: MarketplaceListingOwner) => {
+                    const stats = analyticsById.get(row.id)
+                    const views = stats?.views ?? row.view_count ?? 0
+                    const inquiryTotal = stats?.inquiries ?? row.inquiry_count ?? 0
+                    const downloads = stats?.document_downloads ?? row.document_download_count ?? 0
+                    const terra = stats?.terra_summaries ?? row.terra_summary_count ?? 0
+                    const showingInsight = insightListingId === row.id && insightText
 
-                  return (
-                    <tr key={row.id} className="align-top">
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-app-text">{row.title}</p>
-                        {row.summary && (
-                          <p className="mt-0.5 line-clamp-1 text-xs text-app-muted">{row.summary}</p>
-                        )}
-                        {showingInsight && (
-                          <div className="mt-3 max-w-md rounded-lg border app-divider bg-app-subtle/40 p-3">
-                            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-app-muted">
-                              Terra insights
-                            </p>
-                            <AssistantMessageContent
-                              content={insightText}
-                              role="assistant"
-                              compact
-                              className="text-app-text text-xs"
+                    return (
+                      <tr key={row.id} className="align-middle">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-app-text">{row.title}</p>
+                          {row.summary && (
+                            <p className="mt-0.5 line-clamp-1 text-xs text-app-muted">{row.summary}</p>
+                          )}
+                          {showingInsight && (
+                            <div className="mt-3 max-w-md rounded-lg border app-divider bg-app-subtle/40 p-3">
+                              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-app-muted">
+                                Terra insights
+                              </p>
+                              <AssistantMessageContent
+                                content={insightText}
+                                role="assistant"
+                                compact
+                                className="text-app-text text-xs"
+                              />
+                              <button
+                                type="button"
+                                className="mt-2 text-xs text-app-muted hover:underline"
+                                onClick={() => {
+                                  setInsightListingId(null)
+                                  setInsightText(null)
+                                }}
+                              >
+                                Hide insights
+                              </button>
+                            </div>
+                          )}
+                          {plotInsight.isError && insightListingId === row.id && !insightText && (
+                            <p className="mt-2 text-xs text-red-600">{errorMessage(plotInsight.error)}</p>
+                          )}
+                        </td>
+                        <td className={`whitespace-nowrap px-4 py-3 ${statusClass(row.status)}`}>
+                          {statusLabel(row.status)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <label className="inline-flex items-center gap-2 text-xs text-app-muted">
+                            <input
+                              type="checkbox"
+                              className="checkbox checkbox--sm"
+                              checked={row.show_on_map}
+                              disabled={toggleMap.isPending || row.status !== 'published'}
+                              onChange={(e) =>
+                                toggleMap.mutate({ id: row.id, show_on_map: e.target.checked })
+                              }
                             />
-                            <button
-                              type="button"
-                              className="mt-2 text-xs text-app-muted hover:underline"
-                              onClick={() => {
-                                setInsightListingId(null)
-                                setInsightText(null)
-                              }}
-                            >
-                              Hide insights
-                            </button>
-                          </div>
-                        )}
-                        {plotInsight.isError && insightListingId === row.id && !insightText && (
-                          <p className="mt-2 text-xs text-red-600">{errorMessage(plotInsight.error)}</p>
-                        )}
-                      </td>
-                      <td className={`px-4 py-3 ${statusClass(row.status)}`}>{statusLabel(row.status)}</td>
-                      <td className="px-4 py-3">
-                        <label className="inline-flex items-center gap-2 text-xs text-app-muted">
-                          <input
-                            type="checkbox"
-                            checked={row.show_on_map}
-                            disabled={toggleMap.isPending || row.status !== 'published'}
-                            onChange={(e) =>
-                              toggleMap.mutate({ id: row.id, show_on_map: e.target.checked })
-                            }
-                          />
-                          {row.status === 'published' ? (row.show_on_map ? 'Visible' : 'Hidden') : '—'}
-                        </label>
-                      </td>
-                      <td className="px-4 py-3 text-app-text">
-                        <span className="font-medium">{views}</span>
-                        {(stats?.map_clicks ?? row.map_click_count ?? 0) > 0 && (
-                          <p className="text-[11px] text-app-muted">
-                            {stats?.map_clicks ?? row.map_click_count} map clicks
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-app-text">
-                        {row.inquiry_unread_count > 0 ? (
-                          <span className="font-medium text-terra-700 dark:text-terra-300">
-                            {row.inquiry_unread_count} new
-                          </span>
-                        ) : (
-                          <span className="text-app-muted">{inquiryTotal}</span>
-                        )}
-                        {inquiryTotal > 0 && row.inquiry_unread_count > 0 && (
-                          <p className="text-[11px] text-app-muted">{inquiryTotal} total</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-app-muted">
-                        <p>{downloads} downloads</p>
-                        <p>{terra} Terra</p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col items-start gap-1.5 whitespace-nowrap">
-                          <Link
-                            to={`/dashboard/marketplace/${row.id}`}
-                            className="text-terra-600 hover:underline"
-                          >
-                            Edit
-                          </Link>
-                          {row.status === 'published' ? (
-                            <Link
-                              to={publicListingPath(row.slug)}
-                              className="text-terra-600 hover:underline"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              View public
-                            </Link>
-                          ) : null}
-                          <button
-                            type="button"
-                            className="text-terra-600 hover:underline"
-                            onClick={() => void copyPublicLink(row.slug)}
-                          >
-                            {copiedSlug === row.slug ? 'Copied' : 'Copy link'}
-                          </button>
-                          <button
-                            type="button"
-                            className="text-terra-600 hover:underline"
-                            disabled={plotInsight.isPending && insightListingId === row.id}
-                            onClick={() => {
+                            {row.status === 'published' ? (row.show_on_map ? 'Visible' : 'Hidden') : '—'}
+                          </label>
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-app-text">
+                          <span className="font-medium">{views}</span>
+                          {(stats?.map_clicks ?? row.map_click_count ?? 0) > 0 && (
+                            <p className="text-[11px] text-app-muted">
+                              {stats?.map_clicks ?? row.map_click_count} map clicks
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-app-text">
+                          {row.inquiry_unread_count > 0 ? (
+                            <span className="font-medium text-terra-700 dark:text-terra-300">
+                              {row.inquiry_unread_count} new
+                            </span>
+                          ) : (
+                            <span className="text-app-muted">{inquiryTotal}</span>
+                          )}
+                          {inquiryTotal > 0 && row.inquiry_unread_count > 0 && (
+                            <p className="text-[11px] text-app-muted">{inquiryTotal} total</p>
+                          )}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-app-muted">
+                          <p>{downloads} downloads</p>
+                          <p>{terra} Terra</p>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <ListingActionsMenu
+                            row={row}
+                            copiedSlug={copiedSlug}
+                            insightBusy={plotInsight.isPending && insightListingId === row.id}
+                            statusBusy={setStatus.isPending}
+                            onCopyLink={() => void copyPublicLink(row.slug)}
+                            onTerraInsights={() => {
                               setInsightListingId(row.id)
                               setInsightText(null)
                               plotInsight.mutate(row)
                             }}
-                          >
-                            {plotInsight.isPending && insightListingId === row.id
-                              ? 'Asking Terra…'
-                              : 'Terra insights'}
-                          </button>
-                          {row.status !== 'published' ? (
-                            <button
-                              type="button"
-                              className="text-emerald-700 hover:underline dark:text-emerald-400"
-                              disabled={setStatus.isPending}
-                              onClick={() => setStatus.mutate({ id: row.id, status: 'published' })}
-                            >
-                              Publish
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-amber-700 hover:underline dark:text-amber-400"
-                              disabled={setStatus.isPending}
-                              onClick={() => setStatus.mutate({ id: row.id, status: 'hidden' })}
-                            >
-                              Unpublish
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="text-red-600 hover:underline"
-                            onClick={() => {
-                              if (confirm('Remove this listing from the marketplace?')) {
-                                remove.mutate(row.id)
-                              }
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                            onSetStatus={(status) => setStatus.mutate({ id: row.id, status })}
+                            onDelete={() => remove.mutate(row.id)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <ListPagination
+              className="border-t app-divider px-4 py-3"
+              page={listingsPagination.page}
+              pageCount={listingsPagination.pageCount}
+              total={listingsPagination.total}
+              pageSize={listingsPagination.pageSize}
+              onPageChange={listingsPagination.setPage}
+            />
+          </>
         )}
       </section>
 
@@ -421,53 +458,63 @@ export default function DashboardMarketplacePage() {
           ) : inquiries.length === 0 ? (
             <p className="px-4 py-8 text-sm text-app-muted">No inquiries yet.</p>
           ) : (
-            <ul className="divide-y app-divider">
-              {inquiries.map((inquiry) => (
-                <li
-                  key={inquiry.id}
-                  className={`px-4 py-4 ${inquiry.is_read ? '' : 'bg-terra-50/40 dark:bg-terra-500/5'}`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-app-text">
-                        {inquiry.from_username}
-                        <span className="font-normal text-app-muted"> on </span>
-                        <Link
-                          to={publicListingPath(inquiry.listing_slug)}
-                          className="text-terra-600 hover:underline"
+            <>
+              <ul className="divide-y app-divider">
+                {inquiriesPagination.pageItems.map((inquiry) => (
+                  <li
+                    key={inquiry.id}
+                    className={`px-4 py-4 ${inquiry.is_read ? '' : 'bg-terra-50/40 dark:bg-terra-500/5'}`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-app-text">
+                          {inquiry.from_username}
+                          <span className="font-normal text-app-muted"> on </span>
+                          <Link
+                            to={publicListingPath(inquiry.listing_slug)}
+                            className="text-terra-600 hover:underline"
+                          >
+                            {inquiry.listing_title}
+                          </Link>
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-app-text-secondary">
+                          {inquiry.message}
+                        </p>
+                        {inquiry.contact_email && (
+                          <a
+                            href={`mailto:${inquiry.contact_email}`}
+                            className="mt-1 inline-block text-xs text-terra-600 hover:underline"
+                          >
+                            {inquiry.contact_email}
+                          </a>
+                        )}
+                        <p className="mt-1 text-[11px] text-app-muted">
+                          {new Date(inquiry.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      {!inquiry.is_read && (
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs"
+                          disabled={markRead.isPending}
+                          onClick={() => markRead.mutate(inquiry.id)}
                         >
-                          {inquiry.listing_title}
-                        </Link>
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-app-text-secondary">
-                        {inquiry.message}
-                      </p>
-                      {inquiry.contact_email && (
-                        <a
-                          href={`mailto:${inquiry.contact_email}`}
-                          className="mt-1 inline-block text-xs text-terra-600 hover:underline"
-                        >
-                          {inquiry.contact_email}
-                        </a>
+                          Mark read
+                        </button>
                       )}
-                      <p className="mt-1 text-[11px] text-app-muted">
-                        {new Date(inquiry.created_at).toLocaleString()}
-                      </p>
                     </div>
-                    {!inquiry.is_read && (
-                      <button
-                        type="button"
-                        className="btn-secondary text-xs"
-                        disabled={markRead.isPending}
-                        onClick={() => markRead.mutate(inquiry.id)}
-                      >
-                        Mark read
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+              <ListPagination
+                className="border-t app-divider px-4 py-3"
+                page={inquiriesPagination.page}
+                pageCount={inquiriesPagination.pageCount}
+                total={inquiriesPagination.total}
+                pageSize={inquiriesPagination.pageSize}
+                onPageChange={inquiriesPagination.setPage}
+              />
+            </>
           )}
         </div>
       </section>
