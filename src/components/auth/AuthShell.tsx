@@ -110,9 +110,9 @@ export default function AuthShell({ children, mode = 'login' }: AuthShellProps) 
         </aside>
 
         <section className="auth-shell__form-col relative flex min-h-0 flex-col justify-center overflow-y-auto">
-          <div className="mx-auto mb-5 w-full max-w-[24rem] shrink-0">
+          <div className="mx-auto mb-5 w-full max-w-[24rem] shrink-0 text-center">
             <BackToMapLink />
-            <div className="mt-4 text-center lg:hidden">
+            <div className="mt-4 lg:hidden">
               <Link to="/" className="inline-flex items-center">
                 <Logo variant="wordmark" className="h-9 w-auto" />
               </Link>
