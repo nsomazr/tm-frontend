@@ -76,7 +76,7 @@ export default function MarketplacePlotInsightCard({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col space-y-3 px-3.5 pb-3.5 pt-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-3.5 pb-3.5 pt-3">
         {!signedIn ? (
           <p className="rounded-xl border border-dashed border-app-border bg-app-bg/60 px-3 py-2.5 text-sm text-app-muted">
             <Link to={loginNext} className="font-medium text-terra-700 hover:underline dark:text-terra-300">
@@ -91,7 +91,7 @@ export default function MarketplacePlotInsightCard({
         ) : (
           <button
             type="button"
-            className={`${insight ? 'btn-secondary' : 'btn-primary'} w-full shrink-0 text-sm`}
+            className={`${insight ? 'btn-secondary' : 'btn-primary'} w-full text-sm`}
             onClick={onGenerate}
           >
             {insight ? 'Refresh summary' : 'Get plot summary'}
@@ -101,8 +101,8 @@ export default function MarketplacePlotInsightCard({
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
         {insight && !loading ? (
-          <div className="flex min-h-0 flex-1 flex-col space-y-3 overflow-hidden">
-            <div className="grid shrink-0 grid-cols-2 gap-2">
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
               {region ? <StatChip label="Region" value={region} /> : null}
               <StatChip
                 label="Mapped areas"
@@ -125,7 +125,7 @@ export default function MarketplacePlotInsightCard({
             </div>
 
             {terrain ? (
-              <div className="flex shrink-0 flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 <span className="rounded-full bg-app-subtle px-2 py-0.5 text-[11px] text-app-text-secondary">
                   {terrain.slope_class} slope
                 </span>
@@ -145,7 +145,7 @@ export default function MarketplacePlotInsightCard({
                 ) : null}
               </div>
             ) : insight.structure_orientations?.dominant_trend_label ? (
-              <div className="flex shrink-0 flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 <span className="rounded-full bg-app-subtle px-2 py-0.5 text-[11px] text-app-text-secondary">
                   Trend {insight.structure_orientations.dominant_trend_label}
                   {insight.structure_orientations.mean_trend_deg != null
@@ -156,7 +156,7 @@ export default function MarketplacePlotInsightCard({
             ) : null}
 
             {minerals.length > 0 ? (
-              <div className="shrink-0">
+              <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">
                   Commodities nearby
                 </p>
@@ -194,26 +194,24 @@ export default function MarketplacePlotInsightCard({
                 </ul>
               </div>
             ) : (
-              <p className="shrink-0 rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+              <p className="rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
                 No mapped mineral zones at this plot yet. Terra can still summarize local context.
               </p>
             )}
 
             {insight.ai_insight ? (
-              <div className="flex min-h-0 flex-1 flex-col border-t app-divider pt-3">
-                <p className="mb-2 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-app-muted">
+              <div className="border-t app-divider pt-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-app-muted">
                   Terra narrative
                 </p>
-                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-                  <AssistantMessageContent
-                    content={insight.ai_insight}
-                    role="assistant"
-                    className="text-app-text text-[15px] leading-relaxed [&_p]:mb-3 [&_p:last-child]:mb-0"
-                  />
-                </div>
+                <AssistantMessageContent
+                  content={insight.ai_insight}
+                  role="assistant"
+                  className="text-app-text text-[15px] leading-relaxed [&_p]:mb-3 [&_p:last-child]:mb-0"
+                />
               </div>
             ) : insight.requires_subscription ? (
-              <div className="shrink-0 rounded-lg bg-terra-50/90 px-3 py-2.5 dark:bg-terra-500/10">
+              <div className="rounded-lg bg-terra-50/90 px-3 py-2.5 dark:bg-terra-500/10">
                 <p className="text-xs text-app-text-secondary">
                   {insight.upgrade_message || 'Upgrade to unlock the full Terra narrative for this plot.'}
                 </p>

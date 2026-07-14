@@ -495,7 +495,7 @@ export default function MarketplacePage() {
       <section className="relative flex min-h-[22rem] flex-1 flex-col lg:h-full lg:min-h-0 lg:w-1/2">
         <div
           className={`relative min-h-0 w-full transition-[flex-basis] duration-300 ease-out ${
-            detailOpen ? 'flex-[0_0_46%] lg:flex-[0_0_52%]' : 'flex-1'
+            detailOpen ? 'flex-[0_0_38%] lg:flex-[0_0_42%]' : 'flex-1'
           }`}
         >
           <MarketplaceMap
