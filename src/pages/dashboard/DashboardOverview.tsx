@@ -8,7 +8,7 @@ import AdPlacementSlot from '../../components/ads/AdPlacementSlot'
 
 export default function DashboardOverview() {
   const { user } = useAuth()
-  const { hasFullMapAccess } = useMapEntitlements()
+  const { canUseAnalytics } = useMapEntitlements()
 
   const { data: subscription } = useQuery({
     queryKey: ['my-subscription'],
@@ -36,12 +36,18 @@ export default function DashboardOverview() {
   const { data: hotspots } = useQuery({
     queryKey: ['hotspots'],
     queryFn: () => analyticsApi.hotspots().then((r) => r.data),
-    enabled: hasFullMapAccess,
+    enabled: canUseAnalytics,
   })
 
-  const planName = subscription?.is_active && subscription.plan_detail
-    ? subscription.plan_detail.name
-    : 'Free preview'
+  const planName =
+    user?.current_plan?.name ||
+    (subscription?.is_active && subscription.plan_detail ? subscription.plan_detail.name : 'Explorer')
+  const planHint =
+    user?.current_plan?.days_until_expiry != null
+      ? `${user.current_plan.days_until_expiry} days left`
+      : subscription?.days_until_expiry != null
+        ? `${subscription.days_until_expiry} days left`
+        : undefined
   const topRegion = hotspots?.hotspots?.[0] as { region: string; feature_count: number } | undefined
 
   return (
@@ -55,18 +61,18 @@ export default function DashboardOverview() {
         <StatCard
           label="Plan"
           value={planName}
-          hint={subscription?.days_until_expiry != null ? `${subscription.days_until_expiry} days left` : undefined}
+          hint={planHint}
         />
         <StatCard label="Reports owned" value={String(purchases?.length ?? 0)} />
         <StatCard
           label="Top region"
-          value={hasFullMapAccess && topRegion ? topRegion.region : hasFullMapAccess ? '-' : 'N/A'}
+          value={canUseAnalytics && topRegion ? topRegion.region : canUseAnalytics ? '-' : 'N/A'}
           hint={
-            hasFullMapAccess && topRegion
+            canUseAnalytics && topRegion
               ? `${topRegion.feature_count} areas`
-              : hasFullMapAccess
+              : canUseAnalytics
                 ? 'No mapped data yet. Upload layers in Admin'
-                : 'Subscribe for analytics'
+                : 'Plus or Pro for analytics'
           }
         />
       </div>

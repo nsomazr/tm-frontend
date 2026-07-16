@@ -12,8 +12,8 @@ export default function ReportChangeReview({ changeCount, onAccept }: ReportChan
         <strong>AI updated your draft</strong>
         <span>
           {changeCount === 1
-            ? '1 section changed — highlighted in green below.'
-            : `${changeCount} sections changed — highlighted in green below.`}
+            ? '1 section changed. Highlighted in green below.'
+            : `${changeCount} sections changed. Highlighted in green below.`}
         </span>
       </div>
       <div className="report-change-review__actions">

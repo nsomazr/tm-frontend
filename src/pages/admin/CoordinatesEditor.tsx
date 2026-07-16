@@ -258,6 +258,20 @@ export default function CoordinatesEditor() {
     onError: () => toast.error('Could not delete feature'),
   })
 
+  const deleteLayer = useMutation({
+    mutationFn: (layer: MapLayer) => mapsApi.deleteLayer(layer.slug, layer.mineral_slug),
+    onSuccess: () => {
+      clearLayerGeojsonCache()
+      setMapRefreshKey((key) => key + 1)
+      setSelectedLayerId(null)
+      qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
+      toast.success('Layer deleted')
+    },
+    onError: (err: Error) => {
+      toast.error('Could not delete layer', { description: err.message })
+    },
+  })
+
   const handleDeleteFeature = (feature: MapFeature) => {
     const typeLabel = geometryTypeLabel(feature.geometry)
     toast.confirm(`Delete ${typeLabel} #${feature.id}?`, {
@@ -265,6 +279,18 @@ export default function CoordinatesEditor() {
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => deleteFeature.mutate(feature.id),
+    })
+  }
+
+  const handleDeleteLayer = (layer: MapLayer) => {
+    toast.confirm(`Delete layer "${displayName(layer)}"?`, {
+      description:
+        featureCount > 0
+          ? `Removes the layer and its ${featureCount.toLocaleString()} features. This cannot be undone.`
+          : 'Removes this empty layer shell. This cannot be undone.',
+      confirmLabel: 'Delete layer',
+      destructive: true,
+      onConfirm: () => deleteLayer.mutate(layer),
     })
   }
 
@@ -348,9 +374,17 @@ export default function CoordinatesEditor() {
             )}
             {featureCount === 0 && (
               <span className="text-amber-700 dark:text-amber-300">
-                · No geometry yet — draw below or bulk import
+                · No geometry yet. Draw below or bulk import
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => handleDeleteLayer(selectedLayer)}
+              disabled={deleteLayer.isPending}
+              className="ml-auto text-xs font-medium text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 disabled:opacity-50"
+            >
+              Delete layer
+            </button>
           </div>
         )}
 
@@ -363,7 +397,7 @@ export default function CoordinatesEditor() {
             </p>
             {!layersLoading && sortedLayerList.length === 0 && (
               <p className="text-xs text-amber-700 dark:text-amber-300 mt-3">
-                No layers yet — create one in Layers first.
+                No layers yet. Create one in Layers first.
               </p>
             )}
           </div>

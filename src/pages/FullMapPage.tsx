@@ -16,7 +16,6 @@ import {
   type BoundaryVisibility,
 } from '../components/map/adminBoundaryStyles'
 import {
-  boundaryFocusFromAt,
   boundaryVisibilityForFocus,
   isInspectableMapClick,
   resolveBoundaryFocus,
@@ -56,18 +55,23 @@ import { useTranslation } from '../i18n/LocaleContext'
 import { useDisplayName } from '../i18n/useDisplayName'
 import type { AreaInsight, MapLayer, MineralCatalogEntry, MineralHighlightSpec, MineralSearchInsight } from '../types'
 import type { MineralHeatmapSpec } from '../components/map/mineralHeatmapLayer'
-import { mineralHeatmapZIndex } from '../components/map/mineralHeatmapLayer'
+import { MINERAL_HEATMAP_Z_INDEX } from '../components/map/mineralHeatmapLayer'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import {
   LANDING_MAP_LAYER_BATCH,
   LANDING_MAP_LAYER_ROTATION_MS,
   defaultVisibleLayerIds,
   pickRandomVisibleLayerIds,
+  rotateLandingVisibleLayerIds,
 } from '../components/map/mapUtils'
-import { layersForCatalogSlug } from '../components/map/catalogMineralLayers'
+import { catalogLayerMatchesSlug, layersForCatalogSlug } from '../components/map/catalogMineralLayers'
 import { layerDisplayColor } from '../components/admin/layerColors'
 import { resolveColorHex } from '../lib/mineralColorUtils'
-import { mineralHeatmapQueryOptions } from '../lib/mineralHeatmapQuery'
+import {
+  mineralHeatmapQueryOptions,
+  mineralInteractionHeatmapQueryOptions,
+} from '../lib/mineralHeatmapQuery'
+import type { HeatmapMode } from '../components/map/MineralHeatmapColorbar'
 
 const GENERAL_MINERAL_SLUG = 'general'
 
@@ -174,6 +178,12 @@ function heatmapApiSlug(slug: string, visibleMineralLayers: MapLayer[]): string 
   if (mineralSlugs.size === 1) return [...mineralSlugs][0]
   return slug
 }
+
+function parseMultiMineralSlugs(raw: string | null): string[] {
+  if (!raw) return []
+  return [...new Set(raw.split(',').map((part) => part.trim()).filter(Boolean))]
+}
+
 function mineralColorFromVisibleLayers(
   slug: string,
   layerList: MapLayer[],
@@ -204,6 +214,9 @@ export default function FullMapPage() {
   const [areaInsight, setAreaInsight] = useState<AreaInsight | null>(null)
   const [insightLoading, setInsightLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState<Set<number>>(new Set())
+  const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>('single')
+  const [anomalyOnly, setAnomalyOnly] = useState(false)
+  const [showAnomalyContour, setShowAnomalyContour] = useState(true)
   const catalogMineralSlugRef = useRef<string | null>(null)
   const layersBeforeExploreRef = useRef<Set<number> | null>(null)
   const [panelDismissed, setPanelDismissed] = useState(false)
@@ -416,6 +429,7 @@ export default function FullMapPage() {
       }
 
       setCatalogMineralSlug(entry.slug)
+      setHeatmapMode('single')
       setBoundaryFocus(null)
       setSelectedResult(null)
       setMineral(entry.slug)
@@ -423,6 +437,8 @@ export default function FullMapPage() {
         (prev) => {
           const next = new URLSearchParams(prev)
           next.set('mineral', entry.slug)
+          next.delete('heatmap')
+          next.delete('minerals')
           return next
         },
         { replace: true },
@@ -456,6 +472,19 @@ export default function FullMapPage() {
     if (catalogMineralSlug === slug) return
     void applyCatalogMineral(entry)
   }, [hasFullMapAccess, searchParams, mineralCatalog, applyCatalogMineral, catalogMineralSlug])
+
+  const multiMineralSlugs = useMemo(
+    () =>
+      searchParams.get('heatmap') === 'multi'
+        ? parseMultiMineralSlugs(searchParams.get('minerals'))
+        : [],
+    [searchParams],
+  )
+
+  useEffect(() => {
+    const nextMode: HeatmapMode = searchParams.get('heatmap') === 'multi' ? 'multi' : 'single'
+    setHeatmapMode((prev) => (prev === nextMode ? prev : nextMode))
+  }, [searchParams])
 
   const { data: boundaryCountriesData } = useQuery({
     queryKey: ['countries-with-boundaries'],
@@ -558,13 +587,18 @@ export default function FullMapPage() {
   }, [layersList, hasFullMapAccess])
 
   const activeHeatmapSlug = useMemo(() => {
-    if (!hasFullMapAccess) return null
-    // Starter (and unpaid) lose heatmap while drawing; Plus/Pro keep concentration overlays
-    // on the map during AOI exploration.
-    if (exploreOpen && !canExploreAreas) return null
+    // Concentration heatmaps are Plus/Pro (canExploreAreas); Starter gets show-on-map only.
+    if (!hasFullMapAccess || !canExploreAreas || heatmapMode !== 'single') return null
     const slug = catalogMineralSlug ?? soleVisibleMineralSlug(visibleLayers, layers)
     return isHeatmapMineralSlug(slug) ? slug : null
-  }, [hasFullMapAccess, exploreOpen, canExploreAreas, catalogMineralSlug, visibleLayers, layers])
+  }, [
+    hasFullMapAccess,
+    canExploreAreas,
+    heatmapMode,
+    catalogMineralSlug,
+    visibleLayers,
+    layers,
+  ])
 
   const heatmapLayerList = useMemo(
     () => (activeHeatmapSlug ? layersForHeatmapSlug(activeHeatmapSlug, layers) : []),
@@ -583,16 +617,89 @@ export default function FullMapPage() {
   }, [activeHeatmapSlug, countryCode, catalogMineralSlug, heatmapLayerList])
 
   const {
-    data: heatmapPayload,
-    isFetching: heatmapFetching,
-    error: heatmapError,
+    data: singleHeatmapPayload,
+    isFetching: singleHeatmapFetching,
+    error: singleHeatmapError,
   } = useQuery({
     ...mineralHeatmapQueryOptions(heatmapQueryInput ?? { slug: '', countryCode }),
-    enabled: !!heatmapQueryInput && heatmapLayerList.length > 0,
+    enabled:
+      heatmapMode === 'single' &&
+      !!heatmapQueryInput &&
+      // A nav-selected mineral queries all layers, so it need not wait for the
+      // full layer list to resolve; a sole-visible mineral still requires its layers.
+      (!!catalogMineralSlug || heatmapLayerList.length > 0),
+  })
+
+  const interactionLayers = useMemo(() => {
+    if (multiMineralSlugs.length > 0) {
+      return layers.filter(
+        (layer) =>
+          layer.is_active &&
+          multiMineralSlugs.some(
+            (slug) =>
+              catalogLayerMatchesSlug(layer, slug) || layerHeatmapGroupKey(layer) === slug,
+          ),
+      )
+    }
+    return layers.filter(
+      (layer) =>
+        visibleLayers.has(layer.id) &&
+        layer.is_active &&
+        !!layerHeatmapGroupKey(layer),
+    )
+  }, [layers, visibleLayers, multiMineralSlugs])
+  const interactionMineralCount = useMemo(
+    () =>
+      multiMineralSlugs.length > 0
+        ? multiMineralSlugs.length
+        : new Set(
+            interactionLayers
+              .map((layer) => layerHeatmapGroupKey(layer))
+              .filter((slug): slug is string => !!slug),
+          ).size,
+    [multiMineralSlugs, interactionLayers],
+  )
+
+  useEffect(() => {
+    if (heatmapMode !== 'multi' || multiMineralSlugs.length === 0 || layers.length === 0) return
+    setVisibleLayers((prev) => {
+      const next = new Set(prev)
+      let changed = false
+      for (const slug of multiMineralSlugs) {
+        for (const layer of layersForCatalogSlug(slug, layers)) {
+          if (!next.has(layer.id)) {
+            next.add(layer.id)
+            changed = true
+          }
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [heatmapMode, multiMineralSlugs, layers])
+
+  const interactionLayerIds = useMemo(
+    () => interactionLayers.map((layer) => layer.id),
+    [interactionLayers],
+  )
+  const interactionQueryInput = {
+    countryCode,
+    layerIds: interactionLayerIds,
+  }
+  const {
+    data: interactionHeatmapPayload,
+    isFetching: interactionHeatmapFetching,
+    error: interactionHeatmapError,
+  } = useQuery({
+    ...mineralInteractionHeatmapQueryOptions(interactionQueryInput),
+    enabled:
+      heatmapMode === 'multi' &&
+      hasFullMapAccess &&
+      canExploreAreas &&
+      interactionMineralCount >= 2,
   })
 
   useEffect(() => {
-    if (!hasFullMapAccess || !countryCode || mineralCatalog.length === 0) return
+    if (!hasFullMapAccess || !canExploreAreas || !countryCode || mineralCatalog.length === 0) return
 
     const prefetch = (slug: string) => {
       void queryClient.prefetchQuery(
@@ -622,31 +729,65 @@ export default function FullMapPage() {
         window.clearTimeout(idleId)
       }
     }
-  }, [hasFullMapAccess, countryCode, mineralCatalog, activeHeatmapSlug, queryClient])
+  }, [hasFullMapAccess, canExploreAreas, countryCode, mineralCatalog, activeHeatmapSlug, queryClient])
 
   const mineralHeatmap = useMemo((): MineralHeatmapSpec | null => {
-    if (!activeHeatmapSlug || !heatmapPayload || heatmapPayload.slug !== activeHeatmapSlug) {
+    const payload =
+      heatmapMode === 'multi' ? interactionHeatmapPayload : singleHeatmapPayload
+    if (!payload) return null
+    if (
+      heatmapMode === 'single' &&
+      (!activeHeatmapSlug || payload.slug !== activeHeatmapSlug)
+    ) {
       return null
     }
-    const { data } = heatmapPayload
-    if (!data?.points?.length) return null
-    const visibleIds = new Set(heatmapLayerList.map((layer) => layer.id))
-    const colorHex = resolveColorHex(
-      mineralColorFromVisibleLayers(activeHeatmapSlug, layers, visibleIds),
-    )
-    const minZ = Math.min(...heatmapLayerList.map((layer) => layer.z_index))
+    const { data } = payload
+    if (!data) return null
+    const isEmptyInteraction =
+      heatmapMode === 'multi' && !(data.points?.length) && !!data.empty_reason
+    if (!data.points?.length && !isEmptyInteraction) return null
+    const renderedLayers =
+      heatmapMode === 'multi' ? interactionLayers : heatmapLayerList
+    const visibleIds = new Set(renderedLayers.map((layer) => layer.id))
+    const colorHex =
+      heatmapMode === 'multi'
+        ? resolveColorHex(data.color, '#F97316')
+        : resolveColorHex(
+            mineralColorFromVisibleLayers(activeHeatmapSlug!, layers, visibleIds),
+          )
+    const contours = showAnomalyContour
+      ? data.contours
+      : data.contours?.filter((contour) => contour.level !== 'anomaly')
     return {
-      slug: activeHeatmapSlug,
+      slug: data.slug,
       name: data.name,
+      mode: data.mode ?? (heatmapMode === 'multi' ? 'interaction' : 'single'),
       color: colorHex || resolveColorHex(data.color),
-      points: data.points,
-      contours: data.contours,
-      concentrationStats: data.concentration_stats,
+      points: data.points ?? [],
+      contours,
+      concentrationStats: data.concentration_stats ?? undefined,
       weightLegend: data.weight_legend,
-      zIndex: mineralHeatmapZIndex(minZ),
+      anomalyOnly,
+      emptyReason: data.empty_reason ?? null,
+      emptyDetail: data.detail ?? null,
+      zIndex: MINERAL_HEATMAP_Z_INDEX,
     }
-  }, [activeHeatmapSlug, heatmapPayload, heatmapLayerList, layers])
+  }, [
+    heatmapMode,
+    activeHeatmapSlug,
+    singleHeatmapPayload,
+    interactionHeatmapPayload,
+    interactionLayers,
+    heatmapLayerList,
+    layers,
+    showAnomalyContour,
+    anomalyOnly,
+  ])
 
+  const heatmapFetching =
+    heatmapMode === 'multi' ? interactionHeatmapFetching : singleHeatmapFetching
+  const heatmapError =
+    heatmapMode === 'multi' ? interactionHeatmapError : singleHeatmapError
   const heatmapLoading = heatmapFetching && !mineralHeatmap
 
   useEffect(() => {
@@ -725,20 +866,24 @@ export default function FullMapPage() {
         ? defaultVisibleLayerIds(layers)
         : pickRandomVisibleLayerIds(layers, LANDING_MAP_LAYER_BATCH),
     )
-  }, [mineral, layerIdsKey, hasFullMapAccess, exploreOpen, catalogMineralSlug, layers])
+    // Intentionally keyed by layerIdsKey so identical id sets don't re-roll the batch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- layers read when ids change
+  }, [mineral, layerIdsKey, hasFullMapAccess, exploreOpen, catalogMineralSlug])
 
   useEffect(() => {
     if (hasFullMapAccess || exploreOpen || catalogMineralSlug) return
     if (layers.length <= LANDING_MAP_LAYER_BATCH) return
 
-    const timer = window.setInterval(() => {
+    const rotate = () => {
       setVisibleLayers((prev) =>
-        pickRandomVisibleLayerIds(layers, LANDING_MAP_LAYER_BATCH, prev),
+        rotateLandingVisibleLayerIds(layers, prev, LANDING_MAP_LAYER_BATCH),
       )
-    }, LANDING_MAP_LAYER_ROTATION_MS)
+    }
 
+    const timer = window.setInterval(rotate, LANDING_MAP_LAYER_ROTATION_MS)
     return () => window.clearInterval(timer)
-  }, [hasFullMapAccess, exploreOpen, catalogMineralSlug, layerIdsKey, layers])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- layers read on interval; restart when ids change
+  }, [hasFullMapAccess, exploreOpen, catalogMineralSlug, layerIdsKey])
 
   const handleBoundaryVisibilityChange = useCallback((next: BoundaryVisibility) => {
     setBoundaryVisibility(next)
@@ -968,15 +1113,8 @@ export default function FullMapPage() {
           return
         }
 
-        const focus = boundaryFocusFromAt(at)
-        if (focus) {
-          setBoundaryFocus(focus)
-          if (hasFullMapAccess) {
-            setBoundaryVisibility(boundaryVisibilityForFocus(focus))
-          }
-        } else {
-          setBoundaryFocus(null)
-        }
+        // Keep admin names for Ask Terra, but do not outline the clicked district/ward on the map.
+        setBoundaryFocus(null)
         if (at.region) {
           regionBoundaryName = at.region.name
         }
@@ -1047,7 +1185,6 @@ export default function FullMapPage() {
     },
     [
       fetchAreaInsight,
-      hasFullMapAccess,
       mapBasemap,
       m.map.clickOutsideBoundaries,
       m.map.clickOutsideBoundariesDescription,
@@ -1380,7 +1517,7 @@ export default function FullMapPage() {
 
         <MapCaptureGuard className="relative flex-1 min-h-0 min-w-0 w-full">
           {selectedResult && panelDismissed && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 map-chrome rounded-full text-sm">
+            <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 px-3 py-1.5 map-chrome rounded-full text-sm">
               <span
                 className="w-2.5 h-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: selectedResult.color }}
@@ -1410,7 +1547,7 @@ export default function FullMapPage() {
             visibleLayers={visibleLayers}
             onToggleLayer={toggleLayer}
             onToggleLayerType={toggleLayerType}
-            showLayerPanel={!catalogMineralSlug}
+            showLayerPanel={!catalogMineralSlug || heatmapMode === 'multi'}
             showWatermark={!hasFullMapAccess}
             fullScreen
             className="h-full w-full"
@@ -1437,6 +1574,10 @@ export default function FullMapPage() {
             mineralHighlight={mineralHighlight}
             mineralHeatmap={mineralHeatmap}
             mineralHeatmapLoading={heatmapLoading}
+            anomalyOnly={anomalyOnly}
+            onAnomalyOnlyChange={setAnomalyOnly}
+            showAnomalyContour={showAnomalyContour}
+            onShowAnomalyContourChange={setShowAnomalyContour}
             assistantOpen={assistantOpen}
             onAssistantToggle={toggleAssistantPanel}
             onAssistantClose={handleCloseAssistant}

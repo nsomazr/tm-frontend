@@ -382,6 +382,25 @@ export const geographyApi = {
     ),
   deleteBoundaryGeologyDocument: (boundaryId: number, documentId: number) =>
     api.delete(`/geography/admin/boundaries/${boundaryId}/geology/documents/${documentId}/`),
+  geoReferences: () =>
+    api.get<{ results: import('../types').GeoReferenceDataset[] }>(
+      '/geography/admin/geo-references/',
+    ),
+  createGeoReference: (form: FormData, onUploadProgress?: (percent: number) => void) =>
+    api.post<import('../types').GeoReferenceDataset>('/geography/admin/geo-references/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (event) => {
+        if (!onUploadProgress || !event.total) return
+        onUploadProgress(Math.round((event.loaded / event.total) * 100))
+      },
+    }),
+  deleteGeoReference: (id: number) => api.delete(`/geography/admin/geo-references/${id}/`),
+  geoReferencesGeoJson: (id?: number) =>
+    api.get<{ type: 'FeatureCollection'; features: unknown[] }>(
+      id
+        ? `/geography/admin/geo-references/${id}/geojson/`
+        : '/geography/admin/geo-references/geojson/',
+    ),
 }
 
 export const adminApi = {
@@ -419,6 +438,12 @@ export const analyticsApi = {
     api.get<import('../types').AdminMineralAnalytics>('/analytics/admin/minerals/'),
   adminUserActivity: () =>
     api.get<import('../types').AdminUserActivityAnalytics>('/analytics/admin/user-activity/'),
+  clearUserActivity: () =>
+    api.delete<{
+      assistant_credit_usages_deleted: number
+      mineral_exploration_logs_deleted: number
+      assistant_chat_threads_deleted: number
+    }>('/analytics/admin/user-activity/'),
   adminManagerPerformance: () =>
     api.get<import('../types').ManagerPerformanceReview>('/analytics/admin/managers/'),
   mineralExploration: () =>
@@ -457,6 +482,19 @@ export const analyticsApi = {
           : {}),
       },
     }),
+  mineralInteractionHeatmap: (
+    layerIds: number[],
+    options: { country?: string } = {},
+  ) =>
+    api.get<import('../types').MineralHeatmapData>(
+      '/analytics/minerals/interaction/heatmap/',
+      {
+        params: {
+          country: options.country,
+          layer_ids: layerIds.join(','),
+        },
+      },
+    ),
   searchContextInsights: (params: {
     mineral_slug?: string
     region_id?: number

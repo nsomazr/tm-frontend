@@ -116,7 +116,7 @@ export default function MapInsightsPanel({
                   className="text-slate-700 text-xs"
                 />
               </div>
-            ) : insight!.requires_subscription ? (
+            ) : insight!.requires_subscription && !hasFullAccess ? (
               <div className="pt-2 border-t border-slate-100 bg-terra-50/80 -mx-4 px-4 py-3 rounded-b-xl">
                 <p className="text-xs text-slate-600 mb-2">
                   {insight.upgrade_message || m.map.subscriberUpsell}

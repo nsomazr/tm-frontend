@@ -119,7 +119,7 @@ export default function LayerBulkImportPanel({
           progress={uploadProgress}
           label={
             uploadProgress >= 100
-              ? 'Upload complete — processing on server…'
+              ? 'Upload complete. Processing on server…'
               : 'Uploading file…'
           }
         />

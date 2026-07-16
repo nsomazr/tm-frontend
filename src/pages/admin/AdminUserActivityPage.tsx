@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { DonutChart, VerticalBarChart } from '../../components/analytics/Charts'
@@ -6,6 +6,7 @@ import { fmt } from '../../components/analytics/chartTheme'
 import { analyticsApi } from '../../api'
 import ActionMenu, { ActionMenuItem } from '../../components/ui/ActionMenu'
 import ListPagination from '../../components/ui/ListPagination'
+import { toast } from '../../components/ui/toast'
 import { DEFAULT_PAGE_SIZE, usePagination } from '../../hooks/usePagination'
 import type { AdminUserActivityAnalytics } from '../../types'
 
@@ -308,18 +309,59 @@ function UserActivity({ data }: { data: AdminUserActivityAnalytics }) {
 }
 
 export default function AdminUserActivityPage() {
+  const qc = useQueryClient()
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-user-activity'],
     queryFn: () => analyticsApi.adminUserActivity().then((r) => r.data),
   })
 
+  const clearActivity = useMutation({
+    mutationFn: () => analyticsApi.clearUserActivity().then((r) => r.data),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['admin-user-activity'] })
+      const total =
+        (result.assistant_credit_usages_deleted || 0) +
+        (result.mineral_exploration_logs_deleted || 0) +
+        (result.assistant_chat_threads_deleted || 0)
+      toast.success(total === 0 ? 'No activity data to clear' : 'User activity data cleared', {
+        description:
+          total > 0
+            ? `${result.assistant_credit_usages_deleted} credit events · ${result.mineral_exploration_logs_deleted} explorations · ${result.assistant_chat_threads_deleted} chat threads`
+            : undefined,
+      })
+    },
+    onError: (err: Error) => {
+      toast.error('Could not clear activity data', { description: err.message })
+    },
+  })
+
+  const handleClearAll = () => {
+    toast.confirm('Clear all user activity data?', {
+      description:
+        'Removes mineral exploration logs, Ask Terra credit usage (map insights, chats, exports), and saved chat threads. This cannot be undone.',
+      confirmLabel: 'Clear all data',
+      destructive: true,
+      onConfirm: () => clearActivity.mutate(),
+    })
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-app-text">User activity</h1>
-        <p className="text-sm text-app-muted mt-0.5">
-          Mineral explores, map search, and Ask Terra usage.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-app-text">User activity</h1>
+          <p className="text-sm text-app-muted mt-0.5">
+            Mineral explores, map search, and Ask Terra usage.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleClearAll}
+          disabled={clearActivity.isPending || isLoading}
+          className="btn-secondary text-sm shrink-0 text-red-700 border-red-300 hover:bg-red-50 dark:text-red-300 dark:border-red-500/40 dark:hover:bg-red-950/40 disabled:opacity-50"
+        >
+          {clearActivity.isPending ? 'Clearing…' : 'Clear all data'}
+        </button>
       </div>
 
       {isLoading && <p className="text-sm text-app-text-muted">Loading user activity…</p>}

@@ -9,6 +9,7 @@ export function useMapEntitlements() {
     hasPaidAccess: auth.hasPaidAccess,
     hasFullMapAccess: auth.hasFullMapAccess,
     canSaveExplorations: auth.canSaveExplorations,
+    canUseAnalytics: auth.canUseAnalytics,
     mineralExploration: auth.mineralExploration,
     isManager: auth.isManager,
   }

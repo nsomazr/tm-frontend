@@ -170,7 +170,7 @@ export default function LayerActivityPage() {
                             Open layer
                           </Link>
                         ) : (
-                          <span className="text-sm text-app-text-muted">—</span>
+                          <span className="text-sm text-app-text-muted">-</span>
                         )}
                       </td>
                     </tr>
@@ -240,7 +240,7 @@ export default function LayerActivityPage() {
                               Open layer
                             </Link>
                           ) : (
-                            <span className="text-sm text-app-text-muted">—</span>
+                            <span className="text-sm text-app-text-muted">-</span>
                           )}
                         </td>
                       </tr>

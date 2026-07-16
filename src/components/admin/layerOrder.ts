@@ -1,13 +1,32 @@
 import type { MapLayer } from '../../types'
 
+/** Relative type order bottom → top (polygons under structures under points). */
 export const LAYER_TYPE_STACK_ORDER: Record<string, number> = {
   polygon: 0,
   line: 1,
   point: 2,
 }
 
-/** Rough coverage proxy until area_km2 is stored on layers. */
+/**
+ * OpenLayers z-index bands so heatmaps can sit between polygons and structures:
+ * polygons → heatmap → structures → points.
+ */
+export const LAYER_OL_Z_BAND: Record<string, number> = {
+  polygon: 3600,
+  line: 3700,
+  point: 3800,
+}
+
+/** Heatmap / contour between polygon and line bands. */
+export const MINERAL_HEATMAP_OL_Z = 3650
+export const MINERAL_HEATMAP_CONTOUR_OL_Z = 3655
+
+/** Coverage used for stacking: prefer real polygon area, else feature count. */
 export function layerCoverageScore(layer: MapLayer): number {
+  if (layer.layer_type === 'polygon') {
+    const area = Number(layer.area_km2)
+    if (Number.isFinite(area) && area > 0) return area
+  }
   return Math.max(0, layer.feature_count ?? 0)
 }
 
@@ -38,10 +57,33 @@ export function applyDefaultTypeStack(layers: MapLayer[]): MapLayer[] {
   return sortLayersBottomToTop(layers).map((layer, index) => ({ ...layer, z_index: index }))
 }
 
+/** Rank within each layer type (0 = bottom of that type band). */
+export function stackRanksWithinType(layers: MapLayer[]): Map<number, number> {
+  const ranks = new Map<number, number>()
+  const byType = new Map<string, MapLayer[]>()
+  for (const layer of layers) {
+    const type = layer.layer_type || 'polygon'
+    const list = byType.get(type) ?? []
+    list.push(layer)
+    byType.set(type, list)
+  }
+  for (const list of byType.values()) {
+    list.sort(compareLayersBottomToTop)
+    list.forEach((layer, index) => ranks.set(layer.id, index))
+  }
+  return ranks
+}
+
 /** Stable map draw ranks (0 = bottom) from the default stack rules. */
 export function stackIndicesBottomToTop(layers: MapLayer[]): Map<number, number> {
   const sorted = sortLayersBottomToTop(layers)
   return new Map(sorted.map((layer, index) => [layer.id, index]))
+}
+
+/** Absolute OpenLayers z-index for a mineral data layer. */
+export function openLayersZIndexForLayer(layer: MapLayer, rankWithinType = 0): number {
+  const band = LAYER_OL_Z_BAND[layer.layer_type] ?? 3650
+  return band + Math.max(0, Math.min(99, rankWithinType))
 }
 
 export function applyGroupOrder(

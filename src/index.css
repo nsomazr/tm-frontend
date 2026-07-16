@@ -1697,8 +1697,10 @@
     --map-scale-stack-left: max(0.75rem, env(safe-area-inset-left, 0px));
     --map-scale-stack-height: 3rem;
     --map-scale-stack-gap: 0.375rem;
-    --map-scale-stack-tools-height: 3.5rem;
+    --map-scale-stack-tools-height: 2.75rem;
     --map-left-dock-width: min(18rem, calc(100vw - 1.5rem));
+    /* Wide enough for full DMS pairs + DD/DMS toggle beside the compass. */
+    --map-scale-stack-tools-width: min(28rem, calc(100vw - 1.5rem));
   }
 
   .map-left-dock {
@@ -1757,20 +1759,23 @@
     );
     z-index: 20;
     display: flex;
-    align-items: stretch;
+    align-items: center;
     gap: 0.5rem;
-    width: var(--map-left-dock-width);
-    max-width: var(--map-left-dock-width);
+    width: max-content;
+    max-width: var(--map-scale-stack-tools-width);
+    height: var(--map-scale-stack-tools-height);
   }
 
   .map-viewer:not(.map-viewer--mobile) .map-scale-stack-tools__compass {
-    align-self: center;
+    flex: 0 0 auto;
   }
 
   .map-viewer:not(.map-viewer--mobile) .map-scale-stack-tools__readout {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
-    width: 100%;
+    width: max-content;
+    max-width: calc(var(--map-scale-stack-tools-width) - 3.25rem);
+    height: 100%;
   }
 
   .map-assistant-sheet {

@@ -8,6 +8,7 @@ interface MapCompassProps {
   onResetNorth?: () => void
 }
 
+/** Fixed-size north indicator — keep in sync with `--map-scale-stack-tools-height`. */
 export default function MapCompass({
   rotationRad = 0,
   className = '',
@@ -15,14 +16,14 @@ export default function MapCompass({
   onResetNorth,
 }: MapCompassProps) {
   const { m } = useTranslation()
-  const size = compact ? 40 : 48
+  const size = compact ? 36 : 44
   const rotationDeg = (-rotationRad * 180) / Math.PI
   const interactive = typeof onResetNorth === 'function' && Math.abs(rotationRad) > 0.001
 
   const body = (
     <svg
-      width={size - 8}
-      height={size - 8}
+      width={size - 10}
+      height={size - 10}
       viewBox="0 0 40 40"
       className="text-app-text-secondary"
       style={{ transform: `rotate(${rotationDeg}deg)` }}
@@ -52,14 +53,17 @@ export default function MapCompass({
     </svg>
   )
 
+  const boxClass = `pointer-events-auto map-chrome flex shrink-0 items-center justify-center rounded-lg border border-app-border bg-app-surface/95 shadow-sm backdrop-blur-sm ${className}`
+  const boxStyle = { width: size, height: size }
+
   if (interactive) {
     return (
       <button
         type="button"
-        className={`pointer-events-auto map-chrome flex items-center justify-center rounded-xl border border-app-border bg-app-surface/95 shadow-sm backdrop-blur-sm cursor-pointer hover:bg-app-subtle ${className}`}
-        style={{ width: size, height: size }}
+        className={`${boxClass} cursor-pointer hover:bg-app-subtle`}
+        style={boxStyle}
         aria-label={m.map.compassNorth}
-        title={`${m.map.compassNorth} — reset`}
+        title={`${m.map.compassNorth} · reset`}
         onClick={onResetNorth}
       >
         {body}
@@ -69,8 +73,8 @@ export default function MapCompass({
 
   return (
     <div
-      className={`pointer-events-none map-chrome flex items-center justify-center rounded-xl border border-app-border bg-app-surface/95 shadow-sm backdrop-blur-sm ${className}`}
-      style={{ width: size, height: size }}
+      className={`${boxClass} pointer-events-none`}
+      style={boxStyle}
       role="img"
       aria-label={m.map.compassNorth}
       title={m.map.compassNorth}

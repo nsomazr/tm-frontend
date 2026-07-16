@@ -124,7 +124,12 @@ export default function MobileMenu() {
               <div className="h-10" />
             ) : user ? (
               <div className="space-y-3 border-t app-divider pt-4">
-                <p className="truncate px-1 text-sm text-app-muted">{user.username}</p>
+                <div className="px-1">
+                  <p className="truncate text-sm text-app-muted">{user.username}</p>
+                  <p className="mt-1 text-xs font-semibold text-terra-700 dark:text-terra-400">
+                    {m.nav.plan}: {user.current_plan?.name ?? 'Explorer'}
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => {

@@ -94,7 +94,7 @@ export default function AdminDashboard() {
         <p className="mt-1 text-sm text-app-muted">
           {isAdmin
             ? 'Platform health, revenue, and geological information at a glance.'
-            : 'Your assigned minerals, layers, and map coverage.'}
+            : 'Upload point occurrences and publish reports for your assigned commodities.'}
         </p>
       </div>
 
@@ -120,10 +120,10 @@ export default function AdminDashboard() {
         )}
 
         <StatCard
-          label="Mapped layers"
+          label={isAdmin ? 'Mapped layers' : 'Your occurrences'}
           value={mappedLayerCount}
-          link="/admin/coverage"
-          linkLabel="View coverage →"
+          link={isAdmin ? '/admin/coverage' : '/admin/layers'}
+          linkLabel={isAdmin ? 'View coverage →' : 'Manage occurrences →'}
         />
 
         <StatCard
@@ -132,10 +132,33 @@ export default function AdminDashboard() {
           hint={
             topRegion
               ? `${topRegion.feature_count} mapped zones`
-              : 'No mapped data yet. Upload layers in Admin'
+              : isAdmin
+                ? 'No mapped data yet. Upload layers in Admin'
+                : 'No mapped data yet for your commodities'
           }
+          link="/admin/reports"
+          linkLabel="Publish reports →"
         />
       </div>
+
+      {!isAdmin && (
+        <div className="mb-8 grid gap-4 sm:grid-cols-2">
+          <Link
+            to="/admin/layers"
+            className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
+          >
+            <p className="text-sm font-medium text-app-text">Upload occurrences</p>
+            <p className="mt-1 text-xs text-app-muted">Create and import point layers only</p>
+          </Link>
+          <Link
+            to="/admin/reports"
+            className="rounded-xl bg-app-surface p-4 transition-colors hover:bg-app-subtle"
+          >
+            <p className="text-sm font-medium text-app-text">Publish reports</p>
+            <p className="mt-1 text-xs text-app-muted">Write, upload PDFs, and publish for your minerals</p>
+          </Link>
+        </div>
+      )}
 
       {isAdmin && (
         <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

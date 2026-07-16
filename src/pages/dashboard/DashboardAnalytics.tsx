@@ -39,19 +39,19 @@ function AnalyticsSkeleton() {
 }
 
 export default function DashboardAnalytics() {
-  const { hasFullMapAccess } = useMapEntitlements()
+  const { canUseAnalytics } = useMapEntitlements()
   const displayName = useDisplayName()
 
   const { data: hotspots, isLoading } = useQuery({
     queryKey: ['hotspots'],
     queryFn: () => analyticsApi.hotspots().then((r) => r.data),
-    enabled: hasFullMapAccess,
+    enabled: canUseAnalytics,
   })
 
   const { data: investor } = useQuery({
     queryKey: ['investor'],
     queryFn: () => analyticsApi.investor().then((r) => r.data),
-    enabled: hasFullMapAccess,
+    enabled: canUseAnalytics,
   })
 
   const layerHotspots = (hotspots?.layer_hotspots ?? []) as {
@@ -142,12 +142,12 @@ export default function DashboardAnalytics() {
     color: selectedLayer?.color,
   }))
 
-  if (!hasFullMapAccess) {
+  if (!canUseAnalytics) {
     return (
       <>
         <PageHeader title="Analytics" description="Regional mineral hotspot data." />
         <EmptyState
-          message="Analytics are included with a paid subscription."
+          message="Analytics are included with Plus and Pro plans."
           action={
             <Link to="/subscriptions" className="btn-primary text-sm">
               Upgrade your plan

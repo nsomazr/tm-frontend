@@ -217,7 +217,7 @@ export default function SimpleAuthForm({
             </label>
 
             {isLogin && identifier.trim() && !isEmail && detectedChannel !== 'sms' ? (
-              <p className="text-xs text-app-muted">Username account — use password sign-in below.</p>
+              <p className="text-xs text-app-muted">Username account. Use password sign-in below.</p>
             ) : null}
             {detectedChannel === 'sms' ? (
               <p className="text-xs text-app-muted">We’ll text a one-time code to this number.</p>

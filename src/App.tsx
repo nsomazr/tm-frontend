@@ -100,7 +100,14 @@ export default function App() {
           }
         >
           <Route index element={<AdminDashboard />} />
-          <Route path="coverage" element={<AdminCoveragePage />} />
+          <Route
+            path="coverage"
+            element={
+              <AdminOnly>
+                <AdminCoveragePage />
+              </AdminOnly>
+            }
+          />
           <Route
             path="boundaries"
             element={
@@ -165,7 +172,14 @@ export default function App() {
               </AdminOnly>
             }
           />
-          <Route path="minerals" element={<MineralsPage />} />
+          <Route
+            path="minerals"
+            element={
+              <AdminOnly>
+                <MineralsPage />
+              </AdminOnly>
+            }
+          />
           <Route
             path="managers"
             element={
@@ -191,7 +205,14 @@ export default function App() {
             }
           />
           <Route path="layers" element={<LayersPage />} />
-          <Route path="coordinates" element={<CoordinatesEditor />} />
+          <Route
+            path="coordinates"
+            element={
+              <AdminOnly>
+                <CoordinatesEditor />
+              </AdminOnly>
+            }
+          />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="reports/new" element={<ReportEditorPage />} />
           <Route path="reports/:slug/edit" element={<ReportEditorPage />} />

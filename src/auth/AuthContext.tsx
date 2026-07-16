@@ -66,6 +66,7 @@ interface AuthContextType {
   hasPaidAccess: boolean
   hasFullMapAccess: boolean
   canSaveExplorations: boolean
+  canUseAnalytics: boolean
   mineralExploration: import('../types').MineralExplorationQuota | null
 }
 
@@ -168,9 +169,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === 'super_admin' || user?.role === 'admin'
   const isSuperAdmin = user?.role === 'super_admin'
   const isManager = isAdmin || user?.role === 'mineral_manager'
+  // Admins always have full product access regardless of subscription fields.
   const hasPaidAccess = Boolean(user?.has_paid_access) || isAdmin
   const hasFullMapAccess = hasPaidAccess || user?.role === 'mineral_manager'
-  const canSaveExplorations = user?.can_save_explorations ?? isAdmin
+  const canSaveExplorations = Boolean(user?.can_save_explorations) || isAdmin
+  const canUseAnalytics = Boolean(user?.can_use_analytics) || isAdmin
   const mineralExploration = user?.mineral_exploration ?? null
 
   return (
@@ -191,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hasPaidAccess,
         hasFullMapAccess,
         canSaveExplorations,
+        canUseAnalytics,
         mineralExploration,
       }}
     >

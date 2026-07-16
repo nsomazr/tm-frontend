@@ -12,10 +12,6 @@ import {
   LAYER_IMPORT_CSV_HINT,
   LAYER_IMPORT_HINT,
 } from '../../lib/layerImportFileType'
-import {
-  SPECIAL_COMMODITY_FALLBACKS,
-  TRACKED_ELEMENT_COMMODITIES,
-} from '../../constants/periodicCommodities'
 import { toast } from '../../components/ui/toast'
 import { ADMIN_LAYERS_KEY, useAdminLayers } from '../../hooks/useAdminLayers'
 import { useDisplayName } from '../../i18n/useDisplayName'
@@ -26,8 +22,6 @@ import {
   suggestLayerStyle,
 } from '../../components/admin/layerColors'
 import MineralColorPickerModal from '../../components/admin/MineralColorPickerModal'
-import MineralColorReference from '../../components/admin/MineralColorReference'
-import { matchGeologicalColor } from '../../constants/geologicalMineralColors'
 import {
   STRUCTURE_RANK_OPTIONS,
   layerStyleWithStructureRank,
@@ -54,11 +48,6 @@ const LAYER_TYPES = [
   { value: 'line' as const, label: 'Line' },
 ] as const
 
-const NAV_COMMODITY_SLUGS = new Set([
-  ...TRACKED_ELEMENT_COMMODITIES.map((c) => c.slug),
-  ...SPECIAL_COMMODITY_FALLBACKS.map((c) => c.slug),
-])
-
 function invalidateLayerQueries(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ADMIN_LAYERS_KEY })
   qc.invalidateQueries({ queryKey: ['layers'] })
@@ -83,42 +72,48 @@ async function waitForLayerUpload(uploadId: number, timeoutMs = 180_000) {
   }
 }
 
-/** Attach the new layer to selected layers' commodities, and/or adopt selected point/line layers. */
-async function persistLinkedLayers(
+/** Link a new polygon/point layer to all structure (line) layers on its commodity. */
+async function persistStructureLinks(
   created: MapLayer,
-  linkedLayerIds: number[],
   allLayers: MapLayer[],
+  linkWithStructure: boolean,
 ) {
-  if (!linkedLayerIds.length) return
+  if (!linkWithStructure || !created.mineral_slug) return
 
-  const selected = allLayers.filter((layer) => linkedLayerIds.includes(layer.id))
-  const pointLineIds = selected
-    .filter((layer) => layer.layer_type === 'point' || layer.layer_type === 'line')
-    .map((layer) => layer.id)
-
-  if (created.mineral_slug && pointLineIds.length > 0) {
-    const { data: mineral } = await mineralsApi.get(created.mineral_slug)
-    const next = new Set([...(mineral.associated_layer_ids ?? []), ...pointLineIds])
-    await mineralsApi.update(created.mineral_slug, {
-      associated_layer_ids: [...next],
-    })
+  if (created.layer_type === 'line') {
+    // New structure: attach it to every commodity that already has polygon/point layers.
+    const mineralSlugs = new Set(
+      allLayers
+        .filter(
+          (layer) =>
+            layer.is_active &&
+            (layer.layer_type === 'polygon' || layer.layer_type === 'point') &&
+            layer.mineral_slug,
+        )
+        .map((layer) => layer.mineral_slug as string),
+    )
+    mineralSlugs.add(created.mineral_slug)
+    await Promise.all(
+      [...mineralSlugs].map(async (slug) => {
+        const { data: mineral } = await mineralsApi.get(slug)
+        const next = new Set([...(mineral.associated_layer_ids ?? []), created.id])
+        await mineralsApi.update(slug, { associated_layer_ids: [...next] })
+      }),
+    )
+    return
   }
 
-  const targetSlugs = [
-    ...new Set(
-      selected
-        .map((layer) => layer.mineral_slug)
-        .filter((slug): slug is string => Boolean(slug) && slug !== created.mineral_slug),
-    ),
-  ]
+  // Polygon / point: attach all existing structure layers to this commodity.
+  const structureIds = allLayers
+    .filter((layer) => layer.is_active && layer.layer_type === 'line')
+    .map((layer) => layer.id)
+  if (!structureIds.length) return
 
-  await Promise.all(
-    targetSlugs.map(async (slug) => {
-      const { data: mineral } = await mineralsApi.get(slug)
-      const next = new Set([...(mineral.associated_layer_ids ?? []), created.id])
-      await mineralsApi.update(slug, { associated_layer_ids: [...next] })
-    }),
-  )
+  const { data: mineral } = await mineralsApi.get(created.mineral_slug)
+  const next = new Set([...(mineral.associated_layer_ids ?? []), ...structureIds])
+  await mineralsApi.update(created.mineral_slug, {
+    associated_layer_ids: [...next],
+  })
 }
 
 type ImportOutcome = {
@@ -138,9 +133,11 @@ export default function LayersPage() {
 
   const [newName, setNewName] = useState('')
   const [newNameSw, setNewNameSw] = useState('')
-  const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>('polygon')
-  const [newMineralId, setNewMineralId] = useState('')
-  const [linkedLayerIds, setLinkedLayerIds] = useState<number[]>([])
+  const [newLayerType, setNewLayerType] = useState<'polygon' | 'point' | 'line'>(
+    isAdmin ? 'polygon' : 'point',
+  )
+  const [linkToLayerId, setLinkToLayerId] = useState('')
+  const [linkWithStructure, setLinkWithStructure] = useState(true)
   const [newPreview, setNewPreview] = useState(false)
   const [newColor, setNewColor] = useState('#0D9488')
   const [colorTouched, setColorTouched] = useState(false)
@@ -156,55 +153,62 @@ export default function LayersPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null)
 
   const { data: allLayers = [] } = useAdminLayers()
+  const managedLayers = useMemo(
+    () => (isAdmin ? allLayers : allLayers.filter((layer) => layer.layer_type === 'point')),
+    [allLayers, isAdmin],
+  )
+  const availableLayerTypes = useMemo(
+    () => (isAdmin ? LAYER_TYPES : LAYER_TYPES.filter((type) => type.value === 'point')),
+    [isAdmin],
+  )
   const { data: mineralsList = [] } = useQuery({
     queryKey: ['minerals', 'all'],
     queryFn: fetchAllMinerals,
   })
 
-  const commodityOptions = useMemo(() => {
-    const list = mineralsList.filter((m) => m.is_active)
-    return [...list].sort((a, b) => {
-      const aNav = NAV_COMMODITY_SLUGS.has(a.slug) ? 0 : a.slug === 'general' ? 2 : 1
-      const bNav = NAV_COMMODITY_SLUGS.has(b.slug) ? 0 : b.slug === 'general' ? 2 : 1
-      if (aNav !== bNav) return aNav - bNav
-      return a.name.localeCompare(b.name)
-    })
-  }, [mineralsList])
-
-  const importableLayers = allLayers.filter((l) => l.is_active)
-  const stackableLayers = allLayers.filter((l) => l.is_active)
-  const linkableLayers = useMemo(
+  const structureLayers = useMemo(
     () =>
-      [...allLayers.filter((layer) => layer.is_active)].sort((a, b) =>
+      allLayers.filter(
+        (layer) => layer.is_active && layer.layer_type === 'line' && (layer.feature_count ?? 0) > 0,
+      ),
+    [allLayers],
+  )
+
+  const linkableExistingLayers = useMemo(
+    () =>
+      [...managedLayers.filter((layer) => layer.is_active)].sort((a, b) =>
         displayName(a).localeCompare(displayName(b)),
       ),
-    [allLayers, displayName],
+    [managedLayers, displayName],
   )
+
+  const importableLayers = managedLayers.filter((l) => l.is_active)
+  const stackableLayers = managedLayers.filter((l) => l.is_active)
 
   const usedLayerColors = useMemo(
     () => allLayers.map((layer) => layerDisplayColor(layer)).filter(Boolean),
     [allLayers]
   )
 
-  const selectedMineral = useMemo(
-    () => commodityOptions.find((m) => String(m.id) === newMineralId) ?? null,
-    [commodityOptions, newMineralId]
+  const linkToLayer = useMemo(
+    () => linkableExistingLayers.find((layer) => String(layer.id) === linkToLayerId) ?? null,
+    [linkableExistingLayers, linkToLayerId],
   )
+
+  const linkedMineralColor = useMemo(() => {
+    if (!linkToLayer?.mineral) return undefined
+    return mineralsList.find((mineral) => mineral.id === linkToLayer.mineral)?.color
+  }, [linkToLayer, mineralsList])
 
   const colorSuggestion = useMemo(
     () =>
       suggestLayerStyle(
-        newName || selectedMineral?.name || '',
+        newName || linkToLayer?.mineral_name || '',
         usedLayerColors,
         newLayerType,
-        selectedMineral?.color
+        linkedMineralColor,
       ),
-    [newName, selectedMineral, usedLayerColors, newLayerType]
-  )
-
-  const geologicalMatch = useMemo(
-    () => matchGeologicalColor(newName || selectedMineral?.name || ''),
-    [newName, selectedMineral?.name]
+    [newName, linkToLayer, usedLayerColors, newLayerType, linkedMineralColor],
   )
 
   useEffect(() => {
@@ -217,50 +221,53 @@ export default function LayersPage() {
     setNewStructureRank(suggestStructureRank(newName, newLayerType))
   }, [newName, newLayerType, structureRankTouched])
 
-  const toggleLinkedLayer = (layerId: number) => {
-    setLinkedLayerIds((prev) =>
-      prev.includes(layerId) ? prev.filter((id) => id !== layerId) : [...prev, layerId],
-    )
-  }
+  // Polygons and points stay linked to structures by default.
+  useEffect(() => {
+    if (newLayerType === 'polygon' || newLayerType === 'point') {
+      setLinkWithStructure(true)
+    }
+  }, [newLayerType])
 
   const createLayer = useMutation({
     mutationFn: async () => {
       if (!newName.trim()) throw new Error('Layer name is required')
+      const layerType = isAdmin ? newLayerType : 'point'
       const style = suggestLayerStyle(
         newName,
         usedLayerColors,
-        newLayerType,
-        selectedMineral?.color
+        layerType,
+        linkedMineralColor,
       )
       const fill = colorTouched ? newColor : style.fill
       const baseStyle = layerStyleWithColor(
         { fill, stroke: fill, strokeWidth: style.strokeWidth },
-        newLayerType,
+        layerType,
         fill
       )
       const payload: Partial<MapLayer> = {
         name: newName.trim(),
         name_sw: newNameSw.trim(),
-        layer_type: newLayerType,
+        layer_type: layerType,
         z_index: stackableLayers.length,
-        is_preview: newPreview,
+        is_preview: isAdmin ? newPreview : false,
         is_active: true,
         style:
-          newLayerType === 'line'
+          layerType === 'line'
             ? layerStyleWithStructureRank(baseStyle, newStructureRank)
             : baseStyle,
-        ...(useBufferZone ? { buffer_km: clampBufferKm(newBufferKm) } : { buffer_km: null }),
-        heatmap_weight: clampHeatmapWeight(newHeatmapWeight),
+        ...(isAdmin && useBufferZone ? { buffer_km: clampBufferKm(newBufferKm) } : { buffer_km: null }),
+        heatmap_weight: isAdmin ? clampHeatmapWeight(newHeatmapWeight) : LAYER_HEATMAP_WEIGHT_DEFAULT,
       }
-      const mineralId = Number(newMineralId)
-      if (Number.isFinite(mineralId) && mineralId > 0) {
-        payload.mineral = mineralId
+      if (linkToLayer?.mineral) {
+        payload.mineral = linkToLayer.mineral
       }
       const res = await mapsApi.createLayer(payload)
       try {
-        await persistLinkedLayers(res.data, linkedLayerIds, allLayers)
+        if (isAdmin) {
+          await persistStructureLinks(res.data, allLayers, linkWithStructure)
+        }
       } catch {
-        toast.error('Layer created, but linking failed', {
+        toast.error('Layer created, but structure linking failed', {
           description: 'You can link layers later in Commodities → Edit.',
         })
       }
@@ -275,8 +282,8 @@ export default function LayersPage() {
       })
       setNewName('')
       setNewNameSw('')
-      setNewMineralId('')
-      setLinkedLayerIds([])
+      setLinkToLayerId('')
+      setLinkWithStructure(true)
       setNewPreview(false)
       setColorTouched(false)
       setStructureRankTouched(false)
@@ -284,6 +291,7 @@ export default function LayersPage() {
       setUseBufferZone(false)
       setNewBufferKm(10)
       setNewHeatmapWeight(LAYER_HEATMAP_WEIGHT_DEFAULT)
+      if (!isAdmin) setNewLayerType('point')
     },
     onError: (err: Error) => {
       toast.error('Could not create layer', { description: err.message })
@@ -292,8 +300,11 @@ export default function LayersPage() {
 
   const importLayer = useMutation({
     mutationFn: () => {
-      const layer = allLayers.find((l) => String(l.id) === selectedLayerId)
+      const layer = managedLayers.find((l) => String(l.id) === selectedLayerId)
       if (!layer || !uploadFile) throw new Error('Missing layer or file')
+      if (!isAdmin && layer.layer_type !== 'point') {
+        throw new Error('Managers may only upload point occurrence layers.')
+      }
       const name = uploadFile.name.toLowerCase()
       const fileType = detectLayerImportFileType(name)
       setUploadProgress(0)
@@ -397,24 +408,34 @@ export default function LayersPage() {
     ? `/admin/minerals?layer=${encodeURIComponent(importOutcome.layerSlug)}`
     : '/admin/minerals'
 
-  const canCreate = newName.trim().length > 0 && !!newMineralId
+  const canCreate = newName.trim().length > 0
   const canImport = !!selectedLayerId && !!uploadFile
-  const linkedSummary =
-    linkedLayerIds.length === 0
-      ? 'None selected'
-      : `${linkedLayerIds.length} selected`
+  const advancedOptionCount =
+    (newNameSw.trim() ? 1 : 0) +
+    (isAdmin && useBufferZone ? 1 : 0) +
+    (isAdmin && newPreview ? 1 : 0) +
+    (isAdmin && newLayerType === 'line' && structureRankTouched ? 1 : 0) +
+    (isAdmin && newHeatmapWeight !== LAYER_HEATMAP_WEIGHT_DEFAULT ? 1 : 0)
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-app-text">Layers</h1>
+          <h1 className="text-2xl font-bold text-app-text">
+            {isAdmin ? 'Layers' : 'Occurrences'}
+          </h1>
           <p className="text-sm text-app-muted mt-0.5">
-            Create, import, then style in{' '}
-            <Link to="/admin/minerals" className="text-terra-600 dark:text-terra-400 hover:underline">
-              Commodities
-            </Link>
-            .
+            {isAdmin ? (
+              <>
+                Create, import, then style in{' '}
+                <Link to="/admin/minerals" className="text-terra-600 dark:text-terra-400 hover:underline">
+                  Commodities
+                </Link>
+                .
+              </>
+            ) : (
+              'Upload point occurrences for your assigned commodities. Polygons and other map tools are managed by platform admins.'
+            )}
           </p>
         </div>
         {isAdmin && (
@@ -470,56 +491,43 @@ export default function LayersPage() {
         {layerMode === 'create' ? (
           <>
             <div className="px-4 py-4">
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <label className="block sm:col-span-2">
-                    <span className="text-sm font-medium text-app-text">Name</span>
-                    <input
-                      type="text"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="input mt-1 w-full"
-                      placeholder="e.g. Lithium points"
-                      autoFocus
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-sm font-medium text-app-text-secondary">Swahili</span>
-                    <input
-                      type="text"
-                      value={newNameSw}
-                      onChange={(e) => setNewNameSw(e.target.value)}
-                      className="input mt-1 w-full"
-                      placeholder="Optional"
-                    />
-                  </label>
-                </div>
+              <div className="mx-auto max-w-xl space-y-4">
+                <label className="block">
+                  <span className="text-sm font-medium text-app-text">Name</span>
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    className="input mt-1 w-full"
+                    placeholder="e.g. Lithium points"
+                    autoFocus
+                  />
+                </label>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="block min-w-0">
-                    <span className="text-sm font-medium text-app-text">Commodity</span>
+                    <span className="text-sm font-medium text-app-text">Link to</span>
                     <select
-                      value={newMineralId}
-                      onChange={(e) => setNewMineralId(e.target.value)}
+                      value={linkToLayerId}
+                      onChange={(e) => setLinkToLayerId(e.target.value)}
                       className="input mt-1 w-full"
                     >
-                      <option value="">Select…</option>
-                      {commodityOptions.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name}
-                          {NAV_COMMODITY_SLUGS.has(option.slug)
-                            ? ''
-                            : option.slug === 'general'
-                              ? ' (shared)'
-                              : ''}
+                      <option value="">None (new group)</option>
+                      {linkableExistingLayers.map((layer) => (
+                        <option key={layer.id} value={String(layer.id)}>
+                          {displayName(layer)}
+                          {layer.mineral_name ? ` · ${layer.mineral_name}` : ''}
+                          {` · ${layer.layer_type}`}
                         </option>
                       ))}
                     </select>
                     <p className="mt-1 text-xs text-app-text-muted">
-                      Dedicated commodities appear by name in the map minerals menu after import.
-                      Layers on General (shared) each appear under their layer name.
+                      {linkableExistingLayers.length > 0
+                        ? 'Optional. Group this with an existing layer, or leave as a new group.'
+                        : 'No layers yet. This creates a new group from the layer name.'}
                     </p>
                   </label>
+
                   <div className="min-w-0">
                     <span className="text-sm font-medium text-app-text">Type</span>
                     <div
@@ -527,7 +535,7 @@ export default function LayersPage() {
                       role="radiogroup"
                       aria-label="Geometry type"
                     >
-                      {LAYER_TYPES.map((type) => (
+                      {availableLayerTypes.map((type) => (
                         <button
                           key={type.value}
                           type="button"
@@ -542,80 +550,60 @@ export default function LayersPage() {
                         </button>
                       ))}
                     </div>
+                    {!isAdmin ? (
+                      <p className="mt-1 text-xs text-app-text-muted">
+                        Managers upload point occurrences only.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
-                <div className="min-w-0">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-sm font-medium text-app-text">Link Layers</span>
-                    <span className="text-xs text-app-text-muted">{linkedSummary}</span>
-                  </div>
-                  {linkableLayers.length === 0 ? (
-                    <p className="mt-1 text-xs text-app-text-muted rounded-xl border border-dashed border-app-border px-3 py-2.5">
-                      No other layers yet. Optional.
-                    </p>
-                  ) : (
-                    <ul className="mt-1 max-h-36 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
-                      {linkableLayers.map((layer) => {
-                        const checked = linkedLayerIds.includes(layer.id)
-                        return (
-                          <li key={layer.id}>
-                            <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-app-subtle/50">
-                              <input
-                                type="checkbox"
-                                className="checkbox"
-                                checked={checked}
-                                onChange={() => toggleLinkedLayer(layer.id)}
-                              />
-                              <span
-                                className="h-2.5 w-2.5 rounded-full shrink-0 border border-app-border/50"
-                                style={{ backgroundColor: layerDisplayColor(layer) }}
-                                aria-hidden
-                              />
-                              <span className="min-w-0 flex-1 text-sm text-app-text truncate">
-                                {displayName(layer)}
-                              </span>
-                              <span className="text-[10px] uppercase tracking-wide text-app-text-muted">
-                                {layer.layer_type}
-                              </span>
-                            </label>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                  <p className="mt-1 text-xs text-app-text-muted">
-                    Optional. Extra point/line layers to include in this commodity heatmap.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-x-4 sm:gap-y-2">
-                  <div className="flex flex-wrap items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium text-app-text shrink-0">Color</span>
+                {isAdmin ? (
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-app-border bg-app-subtle/40 px-3.5 py-3">
                     <input
-                      type="color"
-                      value={colorInputValue(newColor)}
-                      onChange={(e) => {
-                        setColorTouched(true)
-                        setNewColor(e.target.value)
-                      }}
-                      className="h-8 w-8 cursor-pointer rounded-md border border-app-border bg-transparent p-0.5 shrink-0"
-                      aria-label="Map color"
+                      type="checkbox"
+                      className="checkbox mt-0.5"
+                      checked={linkWithStructure}
+                      onChange={(e) => setLinkWithStructure(e.target.checked)}
                     />
-                    <span className="font-mono text-xs text-app-text-muted">{colorInputValue(newColor)}</span>
-                    {!colorTouched && colorSuggestion.sourceLabel && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-terra-500/10 px-2 py-0.5 text-[11px] font-medium text-terra-700 dark:text-terra-300">
-                        Auto · {colorSuggestion.sourceLabel}
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-app-text">
+                        {newLayerType === 'line'
+                          ? 'Link with polygons & points'
+                          : 'Link with structure'}
                       </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setColorPickerOpen(true)}
-                      className="text-xs text-terra-600 dark:text-terra-400 hover:underline"
-                    >
-                      Palette
-                    </button>
+                      <span className="mt-0.5 block text-xs text-app-text-muted">
+                        {newLayerType === 'line'
+                          ? 'Connect this structure to mineral polygon and point layers (on by default).'
+                          : structureLayers.length > 0
+                            ? `On by default. Ties this layer to ${structureLayers.length} structure layer${structureLayers.length === 1 ? '' : 's'} for insights and heatmaps.`
+                            : 'On by default. When structure lines exist, this polygon/point layer stays connected to them.'}
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-app-border bg-app-subtle/40 px-3 py-2.5">
+                  <input
+                    type="color"
+                    value={colorInputValue(newColor)}
+                    onChange={(e) => {
+                      setColorTouched(true)
+                      setNewColor(e.target.value)
+                    }}
+                    className="h-9 w-9 shrink-0 cursor-pointer rounded-md border border-app-border bg-transparent p-0.5"
+                    aria-label="Map color"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-app-text">Map color</p>
+                    <p className="truncate font-mono text-xs text-app-text-muted">
+                      {colorInputValue(newColor)}
+                      {!colorTouched && colorSuggestion.sourceLabel
+                        ? ` · Auto from ${colorSuggestion.sourceLabel}`
+                        : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
                     {colorTouched ? (
                       <button
                         type="button"
@@ -625,116 +613,145 @@ export default function LayersPage() {
                         Use auto
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setColorPickerOpen(true)}
+                      className="btn-secondary !px-3 !py-1.5 text-xs"
+                    >
+                      Palette
+                    </button>
                   </div>
-
-                  {newLayerType === 'line' && (
-                    <label className="flex items-center gap-2 min-w-0">
-                      <span className="text-sm font-medium text-app-text shrink-0">Line</span>
-                      <select
-                        value={newStructureRank}
-                        onChange={(e) => {
-                          setStructureRankTouched(true)
-                          setNewStructureRank(Number(e.target.value) as StructureLineRank)
-                        }}
-                        className="input input-compact min-w-0 flex-1 sm:w-32 sm:flex-none"
-                      >
-                        {STRUCTURE_RANK_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  <label className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-app-text shrink-0">Heatmap</span>
-                    <input
-                      type="number"
-                      min={LAYER_HEATMAP_WEIGHT_MIN}
-                      max={LAYER_HEATMAP_WEIGHT_MAX}
-                      step={1}
-                      value={newHeatmapWeight}
-                      onChange={(e) => {
-                        const n = Number(e.target.value)
-                        if (Number.isFinite(n)) setNewHeatmapWeight(n)
-                      }}
-                      onBlur={(e) => {
-                        const n = Number(e.target.value)
-                        if (Number.isFinite(n)) setNewHeatmapWeight(clampHeatmapWeight(n))
-                      }}
-                      className="input input-compact w-14 tabular-nums"
-                      aria-label="Heatmap weight"
-                      title={`0–${LAYER_HEATMAP_WEIGHT_MAX}`}
-                    />
-                  </label>
-
-                  <div className="inline-flex items-center gap-2 flex-wrap">
-                    <label className="checkbox-label">
-                      <input
-                        type="checkbox"
-                        checked={useBufferZone}
-                        onChange={(e) => setUseBufferZone(e.target.checked)}
-                        className="checkbox"
-                      />
-                      <span>Buffer</span>
-                    </label>
-                    {useBufferZone && (
-                      <>
-                        <input
-                          type="number"
-                          min={LAYER_BUFFER_KM_MIN}
-                          max={LAYER_BUFFER_KM_MAX}
-                          step={1}
-                          value={newBufferKm}
-                          onChange={(e) => {
-                            const n = Number(e.target.value)
-                            if (Number.isFinite(n)) setNewBufferKm(n)
-                          }}
-                          onBlur={(e) => {
-                            const n = Number(e.target.value)
-                            if (Number.isFinite(n)) setNewBufferKm(clampBufferKm(n))
-                          }}
-                          className="input input-compact w-14 tabular-nums"
-                          aria-label="Buffer radius in kilometers"
-                          title={formatBufferKmRange()}
-                        />
-                        <span className="text-xs text-app-text-muted">km</span>
-                      </>
-                    )}
-                  </div>
-
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={newPreview}
-                      onChange={(e) => setNewPreview(e.target.checked)}
-                      className="checkbox"
-                    />
-                    <span>Free map</span>
-                  </label>
-                  </div>
-
-                  <MineralColorReference
-                    variant="panel"
-                    layerName={newName || selectedMineral?.name || ''}
-                    usedColors={usedLayerColors}
-                    selectedColor={newColor}
-                    onSelect={(hex) => {
-                      setColorTouched(true)
-                      setNewColor(hex)
-                    }}
-                  />
-                  {!colorTouched && !geologicalMatch && !selectedMineral?.color && (
-                    <p className="text-xs text-app-text-muted">
-                      Type a mineral name or pick a commodity to auto-suggest a map color.
-                    </p>
-                  )}
                 </div>
+
+                <details className="group rounded-xl border border-app-border open:bg-app-subtle/20">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-2.5 text-sm font-medium text-app-text marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-2">
+                      More options
+                      {advancedOptionCount > 0 ? (
+                        <span className="rounded-full bg-terra-500/15 px-2 py-0.5 text-[11px] font-semibold text-terra-800 dark:text-terra-300">
+                          {advancedOptionCount} set
+                        </span>
+                      ) : (
+                        <span className="text-xs font-normal text-app-text-muted">
+                          Optional
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-app-border text-sm font-semibold leading-none text-app-text-muted transition-transform group-open:rotate-45"
+                      aria-hidden
+                    >
+                      +
+                    </span>
+                  </summary>
+
+                  <div className="space-y-4 border-t border-app-border px-3.5 py-3.5">
+                    <label className="block">
+                      <span className="text-sm font-medium text-app-text">Swahili name</span>
+                      <input
+                        type="text"
+                        value={newNameSw}
+                        onChange={(e) => setNewNameSw(e.target.value)}
+                        className="input mt-1 w-full"
+                        placeholder="Optional"
+                      />
+                    </label>
+
+                    {isAdmin && newLayerType === 'line' ? (
+                      <label className="block">
+                        <span className="text-sm font-medium text-app-text">Line style</span>
+                        <select
+                          value={newStructureRank}
+                          onChange={(e) => {
+                            setStructureRankTouched(true)
+                            setNewStructureRank(Number(e.target.value) as StructureLineRank)
+                          }}
+                          className="input mt-1 w-full"
+                        >
+                          {STRUCTURE_RANK_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+
+                    {isAdmin ? (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="text-sm font-medium text-app-text">Heatmap weight</span>
+                          <input
+                            type="number"
+                            min={LAYER_HEATMAP_WEIGHT_MIN}
+                            max={LAYER_HEATMAP_WEIGHT_MAX}
+                            step={1}
+                            value={newHeatmapWeight}
+                            onChange={(e) => {
+                              const n = Number(e.target.value)
+                              if (Number.isFinite(n)) setNewHeatmapWeight(n)
+                            }}
+                            onBlur={(e) => {
+                              const n = Number(e.target.value)
+                              if (Number.isFinite(n)) setNewHeatmapWeight(clampHeatmapWeight(n))
+                            }}
+                            className="input mt-1 w-full tabular-nums"
+                            aria-label="Heatmap weight"
+                            title={`0-${LAYER_HEATMAP_WEIGHT_MAX}`}
+                          />
+                        </label>
+
+                        <div className="flex flex-col justify-end gap-2 sm:pb-1">
+                          <label className="checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={useBufferZone}
+                              onChange={(e) => setUseBufferZone(e.target.checked)}
+                              className="checkbox"
+                            />
+                            <span>Buffer zone</span>
+                          </label>
+                          {useBufferZone ? (
+                            <div className="flex items-center gap-2 pl-6">
+                              <input
+                                type="number"
+                                min={LAYER_BUFFER_KM_MIN}
+                                max={LAYER_BUFFER_KM_MAX}
+                                step={1}
+                                value={newBufferKm}
+                                onChange={(e) => {
+                                  const n = Number(e.target.value)
+                                  if (Number.isFinite(n)) setNewBufferKm(n)
+                                }}
+                                onBlur={(e) => {
+                                  const n = Number(e.target.value)
+                                  if (Number.isFinite(n)) setNewBufferKm(clampBufferKm(n))
+                                }}
+                                className="input input-compact w-20 tabular-nums"
+                                aria-label="Buffer radius in kilometers"
+                                title={formatBufferKmRange()}
+                              />
+                              <span className="text-xs text-app-text-muted">km</span>
+                            </div>
+                          ) : null}
+                          <label className="checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={newPreview}
+                              onChange={(e) => setNewPreview(e.target.checked)}
+                              className="checkbox"
+                            />
+                            <span>Show on free map</span>
+                          </label>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
               </div>
             </div>
 
-            <div className="px-4 py-3 border-t app-divider flex justify-end">
+            <div className="flex justify-end border-t app-divider px-4 py-3">
               <button
                 type="button"
                 onClick={() => createLayer.mutate()}

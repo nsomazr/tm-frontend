@@ -1,3 +1,10 @@
+export interface UserCurrentPlan {
+  slug: string
+  name: string
+  billing_cycle: 'monthly' | 'annual' | null
+  days_until_expiry: number | null
+}
+
 export interface User {
   id: number
   username: string
@@ -11,6 +18,8 @@ export interface User {
   is_active?: boolean
   has_paid_access?: boolean
   can_save_explorations?: boolean
+  can_use_analytics?: boolean
+  current_plan?: UserCurrentPlan | null
   assistant_credits?: AssistantCredits | null
   mineral_exploration?: MineralExplorationQuota | null
   created_at: string
@@ -66,6 +75,8 @@ export interface MapLayer {
   /** Catalog mineral slugs that associate this layer for heatmap overlays. */
   associated_catalog_slugs?: string[]
   feature_count: number
+  /** Total polygon coverage (km²); used for large-under-small stack order. */
+  area_km2?: number
   current_version?: number
   created_by?: number | null
   created_by_name?: string | null
@@ -589,6 +600,21 @@ export interface BoundaryGeologyDocument {
   created_at: string
 }
 
+export interface GeoReferenceDataset {
+  id: number
+  name: string
+  slug: string
+  country: number | null
+  country_code: string | null
+  source_filename: string
+  feature_count: number
+  bounds: { west?: number; south?: number; east?: number; north?: number }
+  is_active: boolean
+  uploaded_by_name: string
+  created_at: string
+  updated_at: string
+}
+
 export interface AdminBoundaryGeology {
   id: number
   level: number
@@ -675,16 +701,23 @@ export interface MineralHeatmapData {
   slug: string
   name: string
   color: string
+  mode?: 'single' | 'interaction'
   feature_count: number
   point_count: number
   points: MineralHeatmapPoint[]
-  concentration_stats?: { mean: number; median: number }
+  concentration_stats?: {
+    mean: number
+    median: number
+    stdev: number
+    cutoff: number
+  }
+  minerals?: { slug: string; name: string; color: string }[]
+  empty_reason?: string | null
+  detail?: string
   contours?: {
     level: string
     threshold: number
     coordinates?: number[][][]
-    center?: { lat: number; lng: number }
-    radius_km?: number
   }[]
   weight_legend?: {
     strong: number
@@ -1075,6 +1108,8 @@ export interface MarketplaceListingPublic {
   center_lng: number | null
   bounding_box?: Record<string, number>
   commodity_labels: string[]
+  primary_mineral?: string
+  other_minerals?: string[]
   show_contact_public?: boolean
   allow_inquiries?: boolean
   contact_name?: string
@@ -1096,6 +1131,8 @@ export interface MarketplaceListingOwner {
   center_lng: number | null
   bounding_box: Record<string, number>
   commodity_labels: string[]
+  primary_mineral?: string
+  other_minerals?: string[]
   status: MarketplaceListingStatus
   show_on_map: boolean
   contact_name: string
@@ -1160,6 +1197,8 @@ export interface MarketplaceListingWrite {
   geometry?: GeoJSON.Geometry | Record<string, unknown> | null
   buffer_km?: number | null
   commodity_labels?: string[]
+  primary_mineral?: string
+  other_minerals?: string[]
   status?: MarketplaceListingStatus
   show_on_map?: boolean
   contact_name?: string
@@ -1195,6 +1234,8 @@ export interface MarketplaceGeoJsonFeature {
     geometry_type: string | null
     buffer_km: number | null
     commodity_labels: string[]
+    primary_mineral?: string
+    other_minerals?: string[]
     color: string
   }
 }

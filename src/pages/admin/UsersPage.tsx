@@ -58,7 +58,7 @@ function initials(user: User) {
 }
 
 function formatJoined(iso?: string) {
-  if (!iso) return '—'
+  if (!iso) return '-'
   return new Date(iso).toLocaleDateString(undefined, {
     year: 'numeric',
     month: 'short',
@@ -372,7 +372,7 @@ export default function UsersPage() {
                             </div>
                           </td>
                           <td className="text-app-text-secondary">
-                            {user.email || <span className="text-app-text-muted">—</span>}
+                            {user.email || <span className="text-app-text-muted">-</span>}
                           </td>
                           <td>
                             <span

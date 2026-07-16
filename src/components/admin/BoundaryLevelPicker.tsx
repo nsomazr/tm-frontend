@@ -59,7 +59,7 @@ export default function BoundaryLevelPicker({
                   selected ? 'font-semibold text-app-text' : 'text-app-text-muted'
                 }`}
               >
-                {count > 0 ? count.toLocaleString() : '—'}
+                {count > 0 ? count.toLocaleString() : '-'}
               </span>
             </button>
           )

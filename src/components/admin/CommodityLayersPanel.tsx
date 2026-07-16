@@ -150,6 +150,40 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
     },
   })
 
+  const deleteLayersBulk = useMutation({
+    mutationFn: async (layersToDelete: MapLayer[]) => {
+      const failures: string[] = []
+      for (const layer of layersToDelete) {
+        try {
+          await mapsApi.deleteLayer(layer.slug, layer.mineral_slug)
+        } catch (err) {
+          failures.push(displayName(layer))
+          console.error(err)
+        }
+      }
+      return { deleted: layersToDelete.length - failures.length, failures }
+    },
+    onSuccess: ({ deleted, failures }) => {
+      invalidateLayerQueries(qc)
+      if (failures.length === 0) {
+        toast.success(deleted === 1 ? 'Layer deleted' : `${deleted} layers deleted`)
+        return
+      }
+      if (deleted > 0) {
+        toast.error(`Deleted ${deleted}, failed ${failures.length}`, {
+          description: failures.slice(0, 4).join(', '),
+        })
+        return
+      }
+      toast.error('Delete failed', {
+        description: failures.slice(0, 4).join(', '),
+      })
+    },
+    onError: (err: Error) => {
+      toast.error('Bulk delete failed', { description: err.message })
+    },
+  })
+
   const persistLayerStack = async (orderedActive: MapLayer[]) => {
     const bottomToTop = sortLayersBottomToTop(orderedActive)
     const inactive = sortLayersBottomToTop(allLayers.filter((layer) => !layer.is_active))
@@ -249,6 +283,22 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
     })
   }
 
+  const handleBulkDelete = (layersToDelete: MapLayer[]) => {
+    if (layersToDelete.length === 0) return
+    const featureTotal = layersToDelete.reduce((sum, layer) => sum + (layer.feature_count || 0), 0)
+    toast.confirm(
+      layersToDelete.length === 1
+        ? `Delete "${displayName(layersToDelete[0])}"?`
+        : `Delete ${layersToDelete.length} selected layers?`,
+      {
+        description: `This removes ${featureTotal.toLocaleString()} features total and cannot be undone.`,
+        confirmLabel: layersToDelete.length === 1 ? 'Delete' : 'Delete all selected',
+        destructive: true,
+        onConfirm: () => deleteLayersBulk.mutate(layersToDelete),
+      },
+    )
+  }
+
   if (isLoading) {
     return <p className="text-sm text-app-muted">Loading layers…</p>
   }
@@ -274,6 +324,7 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
   return (
     <LayersManageTable
       layers={visibleLayers}
+      allLayers={allLayers}
       stackableLayers={stackableLayers}
       showHidden={showHidden}
       onShowHiddenChange={setShowHidden}
@@ -291,6 +342,7 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
       onToggleActive={handleToggleActive}
       onTogglePreview={handleTogglePreview}
       onDelete={handleDelete}
+      onBulkDelete={handleBulkDelete}
       onEditDetails={onEditDetails}
       renderVersionHistory={(layerId) => (
         <LayerVersionHistory layerId={layerId} className="mx-1" />
@@ -298,7 +350,7 @@ export default function CommodityLayersPanel({ onEditDetails }: CommodityLayersP
       isAdmin={isAdmin}
       reorderBusy={reorderStack.isPending}
       updateBusy={updateLayer.isPending}
-      deleteBusy={deleteLayer.isPending}
+      deleteBusy={deleteLayer.isPending || deleteLayersBulk.isPending}
     />
   )
 }

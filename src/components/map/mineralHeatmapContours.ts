@@ -1,17 +1,14 @@
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Feature from 'ol/Feature'
-import Circle from 'ol/geom/Circle'
 import LineString from 'ol/geom/LineString'
 import { fromLonLat } from 'ol/proj'
 import { Stroke, Style } from 'ol/style'
 
 export interface HeatmapContourLevel {
-  level: 'mean' | 'median' | 'concentration' | string
+  level: 'anomaly' | string
   threshold: number
   coordinates?: number[][][]
-  center?: { lat: number; lng: number }
-  radius_km?: number
 }
 
 export interface HeatmapContourSpec {
@@ -20,36 +17,32 @@ export interface HeatmapContourSpec {
   contours: HeatmapContourLevel[]
 }
 
-export const MINERAL_HEATMAP_CONTOUR_Z_INDEX = 3555
+export const MINERAL_HEATMAP_CONTOUR_Z_INDEX = 3655
 
-const CONCENTRATION_STROKE = '#64748b'
-const CONTOUR_DASH = [7, 5] as number[]
-
-const concentrationCircleStyle = new Style({
+/** Soft outer glow + crisp inner rim for anomaly / peak-zone threshold. */
+const anomalyGlowStyle = new Style({
   stroke: new Stroke({
-    color: CONCENTRATION_STROKE,
+    color: 'rgba(251, 146, 60, 0.28)',
+    width: 8,
+    lineCap: 'round',
+    lineJoin: 'round',
+  }),
+})
+
+const anomalyRimStyle = new Style({
+  stroke: new Stroke({
+    color: 'rgba(249, 115, 22, 0.92)',
     width: 1.75,
-    lineDash: CONTOUR_DASH,
+    lineDash: [5, 7],
+    lineCap: 'round',
+    lineJoin: 'round',
   }),
 })
 
 function populateContourSource(source: VectorSource, contours: HeatmapContourLevel[]) {
   source.clear(true)
   for (const contour of contours) {
-    if (contour.center && contour.radius_km != null && contour.radius_km > 0) {
-      const radiusM = contour.radius_km * 1000
-      const feature = new Feature({
-        geometry: new Circle(
-          fromLonLat([contour.center.lng, contour.center.lat]),
-          radiusM,
-        ),
-        contourLevel: contour.level,
-      })
-      feature.setStyle(concentrationCircleStyle)
-      source.addFeature(feature)
-      continue
-    }
-
+    if (contour.level !== 'anomaly') continue
     for (const path of contour.coordinates ?? []) {
       if (path.length < 2) continue
       const coords = path.map(([lng, lat]) => fromLonLat([lng, lat]))
@@ -57,7 +50,7 @@ function populateContourSource(source: VectorSource, contours: HeatmapContourLev
         geometry: new LineString(coords),
         contourLevel: contour.level,
       })
-      feature.setStyle(concentrationCircleStyle)
+      feature.setStyle([anomalyGlowStyle, anomalyRimStyle])
       source.addFeature(feature)
     }
   }
@@ -70,7 +63,7 @@ export function createHeatmapContourLayer(spec: HeatmapContourSpec): VectorLayer
   return new VectorLayer({
     source,
     zIndex: MINERAL_HEATMAP_CONTOUR_Z_INDEX,
-    opacity: 0.92,
+    opacity: 0.95,
     properties: { mineralHeatmapContours: spec.slug },
   })
 }
@@ -83,7 +76,12 @@ export async function syncMineralHeatmapContours(
 ): Promise<void> {
   const cancelled = () => isCancelled?.() === true
 
-  if (!spec?.contours?.length) {
+  const anomalyContours =
+    spec?.contours?.filter(
+      (contour) => contour.level === 'anomaly' && (contour.coordinates?.length ?? 0) > 0,
+    ) ?? []
+
+  if (!spec || anomalyContours.length === 0) {
     if (layerRef.current) {
       map.removeLayer(layerRef.current)
       layerRef.current = null
@@ -95,14 +93,14 @@ export async function syncMineralHeatmapContours(
   if (existing) {
     existing.set('mineralHeatmapContours', spec.slug)
     const source = existing.getSource()
-    if (source) populateContourSource(source, spec.contours)
+    if (source) populateContourSource(source, anomalyContours)
     if (cancelled()) return
     return
   }
 
   if (cancelled()) return
 
-  const layer = createHeatmapContourLayer(spec)
+  const layer = createHeatmapContourLayer({ ...spec, contours: anomalyContours })
   map.addLayer(layer)
   layerRef.current = layer
 }

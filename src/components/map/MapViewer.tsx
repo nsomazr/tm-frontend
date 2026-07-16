@@ -19,6 +19,7 @@ import 'ol/ol.css'
 import type { AreaInsight, Country, CountryFocus, MapLayer, MineralHighlightSpec } from '../../types'
 import { mapsApi } from '../../api'
 import WatermarkOverlay from './WatermarkOverlay'
+import MapCopyrightMarks from './MapCopyrightMarks'
 import LayerPanel from './LayerPanel'
 import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
 import MapRightDock from './MapRightDock'
@@ -59,7 +60,7 @@ import { loadLayerGeojson } from './mapGeojsonCache'
 import { syncMineralHeatmapLayer, MINERAL_HEATMAP_Z_INDEX, type MineralHeatmapSpec } from './mineralHeatmapLayer'
 import { syncMineralHeatmapContours } from './mineralHeatmapContours'
 import { pickRandomVisibleLayerIds } from './mapUtils'
-import { sortLayersBottomToTop, stackIndicesBottomToTop } from '../admin/layerOrder'
+import { sortLayersBottomToTop, stackRanksWithinType, openLayersZIndexForLayer } from '../admin/layerOrder'
 import { useTranslation } from '../../i18n/LocaleContext'
 import {
   boundaryLabelZoom,
@@ -173,6 +174,10 @@ interface MapViewerProps {
   mineralHighlight?: MineralHighlightSpec | null
   mineralHeatmap?: MineralHeatmapSpec | null
   mineralHeatmapLoading?: boolean
+  anomalyOnly?: boolean
+  onAnomalyOnlyChange?: (value: boolean) => void
+  showAnomalyContour?: boolean
+  onShowAnomalyContourChange?: (value: boolean) => void
   /** Show the coordinate-system (CRS) picker. Reserved for admin/editor contexts. */
   showCoordinateSystem?: boolean
   showCoordinateReadout?: boolean
@@ -319,11 +324,6 @@ function fitCountryView(
   if (duration <= 0) {
     lockMinZoomToCurrentView(map)
   }
-}
-
-function layerOlZIndex(stackRank: number) {
-  // Above admin boundary overlays (3100–3400), below analysis/hover (4500+).
-  return 3600 + stackRank
 }
 
 function villageLabelsVisible(
@@ -510,6 +510,10 @@ export default function MapViewer({
   mineralHighlight = null,
   mineralHeatmap = null,
   mineralHeatmapLoading = false,
+  anomalyOnly = false,
+  onAnomalyOnlyChange,
+  showAnomalyContour = true,
+  onShowAnomalyContourChange,
   showCoordinateSystem = false,
   showCoordinateReadout = false,
   showBasemapLabels: showBasemapLabelsProp,
@@ -622,13 +626,16 @@ export default function MapViewer({
     }
     return base
   }, [externalVisible, internalVisible, staticMap, layers])
+  // Serialize Set contents so legend/effects reliably react when the free-map batch rotates.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally derive from Set contents via spread
+  const visibleLayerIdsKey = [...visibleLayers].sort((a, b) => a - b).join(',')
   const isMobile = useMediaQuery('(max-width: 767px)')
   countryFitChromeRef.current = {
     leftPanel: Boolean(
       hasPaidAccess &&
         !minimalChrome &&
         !isMobile &&
-        ((showLayerPanel && layers.length > 0) || !!mineralHeatmap?.points?.length || mineralHeatmapLoading),
+        ((showLayerPanel && layers.length > 0) || !!mineralHeatmap?.points?.length || !!mineralHeatmap?.emptyReason || mineralHeatmapLoading),
     ),
     rightDock: !minimalChrome,
   }
@@ -670,8 +677,14 @@ export default function MapViewer({
   const lockedBoundaryLevels = useMemo(() => [] as BoundaryLevelKey[], [])
 
   const styleFn = useCallback(
-    (layer: MapLayer) => buildLayerStyleFunction(layer, basemapRef.current, themeRef.current),
-    []
+    (layer: MapLayer) =>
+      buildLayerStyleFunction(
+        layer,
+        basemapRef.current,
+        themeRef.current,
+        mineralHeatmap?.points?.length ? 'heatmap' : 'normal',
+      ),
+    [mineralHeatmap?.points?.length],
   )
 
   const restyleVectorLayers = useCallback(() => {
@@ -681,6 +694,10 @@ export default function MapViewer({
     })
     hoverLayerRef.current?.getSource()?.clear()
   }, [styleFn])
+
+  useEffect(() => {
+    restyleVectorLayers()
+  }, [restyleVectorLayers])
 
   const syncVillageLayers = useCallback((zoom?: number) => {
     const map = mapInstance.current
@@ -727,10 +744,11 @@ export default function MapViewer({
 
   useEffect(() => {
     setLayers(initialLayers)
-    if (!externalVisible) {
+    // Parent always passes visibleLayers from FullMapPage; only seed when uncontrolled.
+    if (externalVisible == null) {
       setInternalVisible(new Set(initialLayers.map((l) => l.id)))
     }
-  }, [initialLayers, externalVisible])
+  }, [initialLayers, externalVisible == null])
 
   // Init map once
   useEffect(() => {
@@ -1467,7 +1485,7 @@ export default function MapViewer({
     if (!map || mapEpoch === 0) return
 
     const sorted = sortLayersBottomToTop(layers)
-    const stackRanks = stackIndicesBottomToTop(layers)
+    const stackRanks = stackRanksWithinType(layers)
     const nextIds = new Set(sorted.map((layer) => layer.id))
 
     vectorLayersRef.current.forEach((vectorLayer, id) => {
@@ -1483,12 +1501,13 @@ export default function MapViewer({
     sorted.forEach((layer) => {
       layerMetaRef.current.set(layer.id, layer)
       const existing = vectorLayersRef.current.get(layer.id)
-      const stackRank = stackRanks.get(layer.id) ?? layer.z_index
+      const stackRank = stackRanks.get(layer.id) ?? 0
+      const olZ = openLayersZIndexForLayer(layer, stackRank)
 
       if (existing && layerIsOnMap(map, existing)) {
         existing.setStyle(styleFn(layer))
         existing.setVisible(visibleLayers.has(layer.id))
-        existing.setZIndex(layerOlZIndex(stackRank))
+        existing.setZIndex(olZ)
         const source = existing.getSource()
         if (source && source.getFeatures().length === 0) {
           populateLayerSource(layer.id, layer, source)
@@ -1506,7 +1525,7 @@ export default function MapViewer({
         source,
         style: styleFn(layer),
         visible: visibleLayers.has(layer.id),
-        zIndex: layerOlZIndex(stackRank),
+        zIndex: olZ,
         properties: { layerId: layer.id },
         declutter: layer.layer_type === 'point' ? 'mineral-data' : false,
       })
@@ -1539,7 +1558,7 @@ export default function MapViewer({
     vectorLayersRef.current.forEach((vl, id) => {
       vl.setVisible(visibleLayers.has(id))
     })
-  }, [visibleLayers])
+  }, [visibleLayerIdsKey, visibleLayers])
 
   const toggleLayer = (id: number) => {
     if (onToggleLayer) {
@@ -1892,11 +1911,19 @@ export default function MapViewer({
     return () => window.cancelAnimationFrame(id)
   }, [assistantOpen])
 
-  const legendLayers = sortLayersBottomToTop(layers).filter((l) => visibleLayers.has(l.id))
+  const legendLayers = useMemo(
+    () => sortLayersBottomToTop(layers).filter((l) => visibleLayers.has(l.id)),
+    // visibleLayerIdsKey ensures this recomputes when the Set's contents change.
+    [layers, visibleLayers, visibleLayerIdsKey],
+  )
 
   return (
     <div className={`relative map-viewer w-full min-w-0 overflow-hidden ${isMobile ? 'map-viewer--mobile' : ''} ${className}`}>
       <div ref={mapRef} className="h-full w-full min-w-0 overflow-hidden bg-slate-200" />
+      <MapCopyrightMarks
+        map={mapEpoch > 0 ? mapInstance.current : null}
+        bounds={(countryFocus ?? DEFAULT_COUNTRY_FOCUS).bounds}
+      />
       {showWatermark && <WatermarkOverlay />}
       {!minimalChrome && !isMobile && (
         <div className="map-scale-stack-tools pointer-events-none">
@@ -1960,7 +1987,7 @@ export default function MapViewer({
           />
         </div>
       )}
-      {hasPaidAccess && !minimalChrome && !isMobile && (showLayerPanel && layers.length > 0 || mineralHeatmap?.points?.length || mineralHeatmapLoading) && (
+      {hasPaidAccess && !minimalChrome && !isMobile && (showLayerPanel && layers.length > 0 || mineralHeatmap?.points?.length || mineralHeatmap?.emptyReason || mineralHeatmapLoading) && (
         <div className="map-left-dock absolute z-10 top-[max(1.125rem,env(safe-area-inset-top,0px))] hidden md:flex min-h-0 flex-col gap-2 pointer-events-none overflow-hidden">
           {showLayerPanel && layers.length > 0 && (
             <LayerPanel
@@ -1977,9 +2004,17 @@ export default function MapViewer({
           )}
           <MineralHeatmapColorbar
             embedded
-            spec={mineralHeatmap?.points?.length ? mineralHeatmap : null}
+            spec={
+              mineralHeatmap?.points?.length || mineralHeatmap?.emptyReason
+                ? mineralHeatmap
+                : null
+            }
             loading={mineralHeatmapLoading}
-            className="pointer-events-none shrink-0 w-full"
+            anomalyOnly={anomalyOnly}
+            onAnomalyOnlyChange={onAnomalyOnlyChange}
+            showAnomalyContour={showAnomalyContour}
+            onShowAnomalyContourChange={onShowAnomalyContourChange}
+            className="shrink-0 w-full"
           />
         </div>
       )}
@@ -2013,6 +2048,7 @@ export default function MapViewer({
           showMapAds={showMapAds}
           totalLayerCount={layers.length}
           showLayerRotationHint={staticMap}
+          legendSyncKey={visibleLayerIdsKey}
         />
       )}
       {isMobile && !minimalChrome && (
@@ -2029,6 +2065,7 @@ export default function MapViewer({
           showBoundaryLabels={showBoundaryLabels}
           onShowBoundaryLabelsChange={setShowBoundaryLabels}
           legendLayers={legendLayers}
+          legendSyncKey={visibleLayerIdsKey}
           onZoomIn={() => zoomMap(1)}
           onZoomOut={() => zoomMap(-1)}
           onResetView={resetMapView}
@@ -2063,8 +2100,16 @@ export default function MapViewer({
           refreshInsightPending={refreshInsightPending}
           insightLoadingTerrainView={insightLoadingTerrainView}
           onExploreSimilarArea={onExploreSimilarArea}
-          mineralHeatmap={mineralHeatmap?.points?.length ? mineralHeatmap : null}
+          mineralHeatmap={
+            mineralHeatmap?.points?.length || mineralHeatmap?.emptyReason
+              ? mineralHeatmap
+              : null
+          }
           mineralHeatmapLoading={mineralHeatmapLoading}
+          anomalyOnly={anomalyOnly}
+          onAnomalyOnlyChange={onAnomalyOnlyChange}
+          showAnomalyContour={showAnomalyContour}
+          onShowAnomalyContourChange={onShowAnomalyContourChange}
           showMapAds={showMapAds}
           mapRotation={mapRotation}
           totalLayerCount={layers.length}

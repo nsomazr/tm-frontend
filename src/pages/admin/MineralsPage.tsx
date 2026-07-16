@@ -51,10 +51,10 @@ function CommodityEditor({
   })
 
   const commodityOptions = useMemo(() => {
-    const list = mineralsList.filter((m) => m.is_active)
+    const list = mineralsList.filter((m) => m.is_active && m.slug !== 'general')
     return [...list].sort((a, b) => {
-      const aNav = NAV_COMMODITY_SLUGS.has(a.slug) ? 0 : a.slug === 'general' ? 2 : 1
-      const bNav = NAV_COMMODITY_SLUGS.has(b.slug) ? 0 : b.slug === 'general' ? 2 : 1
+      const aNav = NAV_COMMODITY_SLUGS.has(a.slug) ? 0 : 1
+      const bNav = NAV_COMMODITY_SLUGS.has(b.slug) ? 0 : 1
       if (aNav !== bNav) return aNav - bNav
       return a.name.localeCompare(b.name)
     })
@@ -186,7 +186,7 @@ function CommodityEditor({
           </div>
 
           <label className="block">
-            <span className="text-sm font-medium text-app-text">Commodity</span>
+            <span className="text-sm font-medium text-app-text">Link to group</span>
             <select
               value={mineralId}
               onChange={(e) => setMineralId(e.target.value)}
@@ -195,11 +195,6 @@ function CommodityEditor({
               {commodityOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.name}
-                  {NAV_COMMODITY_SLUGS.has(option.slug)
-                    ? ''
-                    : option.slug === 'general'
-                      ? ' (shared)'
-                      : ''}
                 </option>
               ))}
             </select>
@@ -240,9 +235,17 @@ function CommodityEditor({
           />
 
           <div>
-            <span className="text-sm font-medium text-app-text">Link Layers</span>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-medium text-app-text">Link related layers</span>
+              <span className="text-xs text-app-text-muted">
+                {associatedIds.length === 0 ? 'Optional' : `${associatedIds.length} selected`}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-app-text-muted">
+              Not required. Use only when other layers should share this commodity’s heatmap.
+            </p>
             {associableLayers.length === 0 ? (
-              <p className="text-xs text-app-text-muted mt-1">No point or line layers. Optional.</p>
+              <p className="text-xs text-app-text-muted mt-1">No point or line layers yet.</p>
             ) : (
               <ul className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-app-border divide-y app-divider">
                 {associableLayers.map((candidate) => {

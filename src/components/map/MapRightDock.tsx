@@ -12,6 +12,7 @@ import type { Country } from '../../types'
 import type { BoundaryFocus } from './boundaryFocus'
 import BoundaryVisibilityToggles from './BoundaryVisibilityToggles'
 import AdPlacementSlot from '../ads/AdPlacementSlot'
+import { useAuth } from '../../auth/AuthContext'
 import { useTranslation } from '../../i18n/LocaleContext'
 
 interface MapRightDockProps {
@@ -43,6 +44,8 @@ interface MapRightDockProps {
   showMapAds?: boolean
   totalLayerCount?: number
   showLayerRotationHint?: boolean
+  /** Bumps when the free-map visible batch rotates so the legend remounts cleanly. */
+  legendSyncKey?: string
 }
 
 export default function MapRightDock({
@@ -74,8 +77,11 @@ export default function MapRightDock({
   showMapAds = true,
   totalLayerCount,
   showLayerRotationHint = false,
+  legendSyncKey,
 }: MapRightDockProps) {
   const { m } = useTranslation()
+  const { user } = useAuth()
+  const showLegend = !user && layers.length > 0
   const current = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
 
   return (
@@ -134,11 +140,11 @@ export default function MapRightDock({
       <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
         <BasemapSwitcher value={basemap} onChange={onBasemapChange} embedded current={current} />
       </div>
-      {/* Legend + ads for every visitor (paid/unpaid, signed in or out).
-          Paid users still get the interactive LayerPanel on the left. */}
-      {layers.length > 0 && (
+      {/* Legend only for anonymous visitors; signed-in users use Layers (paid) or no legend. */}
+      {showLegend && (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl overflow-hidden">
           <LegendPanel
+            key={legendSyncKey || `legend-${layers.map((l) => l.id).join(',')}`}
             layers={layers}
             embedded
             defaultOpen

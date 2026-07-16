@@ -159,6 +159,8 @@ function formatWhenShort(iso?: string | null) {
 
 interface LayersManageTableProps {
   layers: MapLayer[]
+  /** Full catalog used for Select all (includes hidden when the table filter hides them). */
+  allLayers?: MapLayer[]
   stackableLayers: MapLayer[]
   showHidden: boolean
   onShowHiddenChange: (value: boolean) => void
@@ -174,6 +176,7 @@ interface LayersManageTableProps {
   onToggleActive: (layer: MapLayer) => void
   onTogglePreview: (layer: MapLayer) => void
   onDelete: (layer: MapLayer) => void
+  onBulkDelete?: (layers: MapLayer[]) => void
   onEditDetails?: (layer: MapLayer) => void
   renderVersionHistory: (layerId: number) => ReactNode
   isAdmin: boolean
@@ -184,6 +187,7 @@ interface LayersManageTableProps {
 
 export default function LayersManageTable({
   layers,
+  allLayers,
   stackableLayers,
   showHidden,
   onShowHiddenChange,
@@ -199,6 +203,7 @@ export default function LayersManageTable({
   onToggleActive,
   onTogglePreview,
   onDelete,
+  onBulkDelete,
   onEditDetails,
   renderVersionHistory,
   isAdmin,
@@ -216,12 +221,28 @@ export default function LayersManageTable({
   const [groupPages, setGroupPages] = useState<Record<string, number>>({})
   /** When true, that group lists every layer (for cross-page drag reorder). */
   const [groupShowAll, setGroupShowAll] = useState<Record<string, boolean>>({})
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const highlightRowRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (highlightLayerId == null) return
     highlightRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [highlightLayerId])
+
+  // Drop selection entries that are no longer in the catalog.
+  useEffect(() => {
+    const catalog = allLayers ?? layers
+    const valid = new Set(catalog.map((layer) => layer.id))
+    setSelectedIds((prev) => {
+      let changed = false
+      const next = new Set<number>()
+      for (const id of prev) {
+        if (valid.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : prev
+    })
+  }, [allLayers, layers])
 
   const usedColors = useMemo(
     () => layers.map((layer) => layerDisplayColor(layer)).filter(Boolean),
@@ -230,6 +251,43 @@ export default function LayersManageTable({
   const colorPickerLayer = layers.find((layer) => layer.id === colorPickerLayerId) ?? null
 
   const canResetStack = stackableLayers.length > 1
+  const selectionPool = allLayers ?? layers
+  const hiddenCount = useMemo(
+    () => selectionPool.filter((layer) => !layer.is_active).length,
+    [selectionPool],
+  )
+  const allSelected = selectionPool.length > 0 && selectedIds.size === selectionPool.length
+  const someSelected = selectedIds.size > 0 && !allSelected
+  const selectedLayers = useMemo(
+    () => selectionPool.filter((layer) => selectedIds.has(layer.id)),
+    [selectionPool, selectedIds],
+  )
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+      return
+    }
+    // Select every layer in the catalog, including hidden ones not currently listed.
+    if (!showHidden && hiddenCount > 0) {
+      onShowHiddenChange(true)
+    }
+    setSelectedIds(new Set(selectionPool.map((layer) => layer.id)))
+  }
+
+  const toggleSelectLayer = (layerId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(layerId)) next.delete(layerId)
+      else next.add(layerId)
+      return next
+    })
+  }
+
+  const handleBulkDeleteClick = () => {
+    if (!onBulkDelete || selectedLayers.length === 0) return
+    onBulkDelete(selectedLayers)
+  }
 
   const groupedLayers = useMemo(
     () =>
@@ -296,12 +354,49 @@ export default function LayersManageTable({
       <div className="relative px-4 py-3 sm:px-5 border-b app-divider overflow-hidden">
         <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 flex flex-wrap items-center gap-2.5">
+            <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelected
+                }}
+                onChange={toggleSelectAll}
+                className="checkbox"
+                aria-label={allSelected ? 'Clear layer selection' : 'Select all layers'}
+              />
+              <span className="text-xs font-medium text-app-text-secondary">Select all</span>
+            </label>
             <h2 className="text-base font-semibold tracking-tight text-app-text">Layers</h2>
             <span className="inline-flex items-center rounded-full border border-app-border bg-app-subtle/70 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-app-text-secondary">
               {layers.length}
             </span>
+            {selectedIds.size > 0 && (
+              <span className="inline-flex items-center rounded-full border border-terra-500/30 bg-terra-500/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-terra-800 dark:text-terra-300">
+                {selectedIds.size} selected
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            {selectedIds.size > 0 && onBulkDelete && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs font-medium px-3 py-1.5 rounded-full border border-app-border bg-app-surface/80 text-app-text-secondary hover:bg-app-subtle hover:text-app-text transition-colors"
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteClick}
+                  disabled={deleteBusy}
+                  className="text-xs font-medium px-3 py-1.5 rounded-full border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50 transition-colors dark:border-red-500/40 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
+                >
+                  Delete selected
+                </button>
+              </>
+            )}
             <label className="inline-flex items-center gap-2 rounded-full border border-app-border bg-app-surface/80 px-3 py-1.5 text-xs text-app-text-secondary cursor-pointer hover:border-app-border-strong transition-colors">
               <input
                 type="checkbox"
@@ -309,7 +404,7 @@ export default function LayersManageTable({
                 onChange={(e) => onShowHiddenChange(e.target.checked)}
                 className="checkbox"
               />
-              <span>Hidden</span>
+              <span>Hidden{hiddenCount > 0 ? ` (${hiddenCount})` : ''}</span>
             </label>
             {canResetStack && (
               <button
@@ -444,6 +539,14 @@ export default function LayersManageTable({
                         >
                           <div className="flex items-start gap-3">
                             <div className="flex items-center gap-2 pt-0.5 shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(layer.id)}
+                                onChange={() => toggleSelectLayer(layer.id)}
+                                className="checkbox"
+                                aria-label={`Select ${displayName(layer)}`}
+                                onClick={(e) => e.stopPropagation()}
+                              />
                               {canDrag ? (
                                 <span
                                   className="inline-flex h-7 w-6 items-center justify-center rounded-md text-app-text-muted/70 group-hover:text-app-text-secondary select-none cursor-grab active:cursor-grabbing"
@@ -555,8 +658,8 @@ export default function LayersManageTable({
                               } ${!layer.is_active || updateBusy ? 'opacity-50' : 'cursor-pointer hover:border-app-border-strong'}`}
                               title={
                                 layer.is_preview
-                                  ? 'On free map — click to hide'
-                                  : 'Off free map — click to show'
+                                  ? 'On free map. Click to hide'
+                                  : 'Off free map. Click to show'
                               }
                             >
                               <input

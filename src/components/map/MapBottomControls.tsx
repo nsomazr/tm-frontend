@@ -23,6 +23,7 @@ import type { Country } from '../../types'
 import type { TerraAssistantMapContext } from '../assistant/TerraAssistantPanel'
 import type { InsightSnapshotContext } from './insightSnapshot'
 import AdPlacementSlot from '../ads/AdPlacementSlot'
+import { useAuth } from '../../auth/AuthContext'
 
 interface MapBottomControlsProps {
   layers: MapLayer[]
@@ -72,12 +73,17 @@ interface MapBottomControlsProps {
   onExploreSimilarArea?: (lat: number, lng: number, boundaryId?: number) => void
   mineralHeatmap?: MineralHeatmapSpec | null
   mineralHeatmapLoading?: boolean
+  anomalyOnly?: boolean
+  onAnomalyOnlyChange?: (value: boolean) => void
+  showAnomalyContour?: boolean
+  onShowAnomalyContourChange?: (value: boolean) => void
   showMapAds?: boolean
   mapRotation?: number
   /** When false, hide the layers toggle/sheet (e.g. top-nav mineral focus mode). */
   showLayersPanel?: boolean
   totalLayerCount?: number
   showLayerRotationHint?: boolean
+  legendSyncKey?: string
 }
 
 type Panel = 'layers' | 'basemap' | 'legend' | null
@@ -245,13 +251,19 @@ export default function MapBottomControls({
   onExploreSimilarArea,
   mineralHeatmap = null,
   mineralHeatmapLoading = false,
+  anomalyOnly = false,
+  onAnomalyOnlyChange,
+  showAnomalyContour = true,
+  onShowAnomalyContourChange,
   showMapAds = true,
   mapRotation = 0,
   showLayersPanel = true,
   totalLayerCount,
   showLayerRotationHint = false,
+  legendSyncKey,
 }: MapBottomControlsProps) {
   const { m } = useTranslation()
+  const { user } = useAuth()
   const displayName = useDisplayName()
   const [panel, setPanel] = useState<Panel>(null)
   const [countryPanelOpen, setCountryPanelOpen] = useState(false)
@@ -262,6 +274,10 @@ export default function MapBottomControls({
       setPanel(null)
     }
   }, [assistantOpen])
+
+  useEffect(() => {
+    if (user && panel === 'legend') setPanel(null)
+  }, [user, panel])
 
   const typeLabels: Record<string, string> = {
     polygon: m.map.polygons,
@@ -314,9 +330,9 @@ export default function MapBottomControls({
   }
 
   const currentBasemap = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
-  // Layers panel for paid users; everyone also gets a read-only legend (with ads below) on desktop.
+  // Layers for paid users; read-only legend only for anonymous visitors.
   const showLayersBtn = hasPaidAccess && layers.length > 0 && showLayersPanel
-  const showLegendBtn = legendLayers.length > 0 && !showLayersBtn
+  const showLegendBtn = !user && legendLayers.length > 0 && !showLayersBtn
   const sheetOpen = panel != null
   /** When a sheet is open, hide mid-dock chrome so legend/layers are not squeezed away. */
   const showMidChrome = !sheetOpen
@@ -398,11 +414,15 @@ export default function MapBottomControls({
             )}
           </div>
           {mineralHeatmap || mineralHeatmapLoading ? (
-            <div className="shrink-0 border-t app-divider px-3 py-2.5">
+            <div className="pointer-events-auto shrink-0 border-t app-divider px-3 py-2.5">
               <MineralHeatmapColorbar
                 embedded
                 spec={mineralHeatmap}
                 loading={mineralHeatmapLoading}
+                anomalyOnly={anomalyOnly}
+                onAnomalyOnlyChange={onAnomalyOnlyChange}
+                showAnomalyContour={showAnomalyContour}
+                onShowAnomalyContourChange={onShowAnomalyContourChange}
               />
             </div>
           ) : null}
@@ -458,6 +478,7 @@ export default function MapBottomControls({
               )}
             </p>
             <LegendPanel
+              key={legendSyncKey || `legend-${legendLayers.map((l) => l.id).join(',')}`}
               layers={legendLayers}
               embedded
               sheetMode
@@ -624,11 +645,15 @@ export default function MapBottomControls({
         )}
 
         {showMidChrome && (mineralHeatmap || mineralHeatmapLoading) && (
-          <div className="pointer-events-none mb-1.5 shrink-0">
+          <div className="pointer-events-auto mb-1.5 shrink-0">
             <MineralHeatmapColorbar
               embedded
               spec={mineralHeatmap}
               loading={mineralHeatmapLoading}
+              anomalyOnly={anomalyOnly}
+              onAnomalyOnlyChange={onAnomalyOnlyChange}
+              showAnomalyContour={showAnomalyContour}
+              onShowAnomalyContourChange={onShowAnomalyContourChange}
               className="w-full"
             />
           </div>

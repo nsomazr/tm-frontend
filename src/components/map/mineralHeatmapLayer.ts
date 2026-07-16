@@ -3,7 +3,6 @@ import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import VectorSource from 'ol/source/Vector'
 import { fromLonLat } from 'ol/proj'
-import { hexToHexAlpha, normalizeHex } from '../../lib/mineralColorUtils'
 
 export interface MineralHeatmapPoint {
   lat: number
@@ -25,43 +24,89 @@ export interface MineralHeatmapSpec {
   slug: string
   name?: string
   color: string
+  mode?: 'single' | 'interaction'
   points: MineralHeatmapPoint[]
   contours?: import('./mineralHeatmapContours').HeatmapContourLevel[]
-  concentrationStats?: { mean: number; median: number }
+  concentrationStats?: {
+    mean: number
+    median: number
+    stdev: number
+    cutoff: number
+  }
   weightLegend?: MineralHeatmapWeightLegend
-  /** Draw below mineral vector layers (3600 + z_index). */
+  anomalyOnly?: boolean
+  emptyReason?: string | null
+  emptyDetail?: string | null
+  /** Between polygon and structure/point bands (see layerOrder bands). */
   zIndex?: number
 }
 
-export function mineralHeatmapGradient(color: string): string[] {
-  const hex = normalizeHex(color, '#E87722')
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-  const lowAlpha = luminance < 0.2 ? 0.42 : luminance < 0.35 ? 0.3 : 0.22
+/**
+ * Weather-radar style ramp (green → yellow → orange → red → magenta).
+ * Distinct saturated stops read closer to classic scientific concentration maps.
+ */
+export function radarHeatmapGradient(): string[] {
   return [
-    hexToHexAlpha(hex, 0),
-    hexToHexAlpha(hex, lowAlpha),
-    hexToHexAlpha(hex, Math.min(0.72, lowAlpha + 0.26)),
-    hexToHexAlpha(hex, Math.min(0.88, lowAlpha + 0.46)),
-    hexToHexAlpha(hex, 1),
+    'rgba(0, 228, 0, 0)',
+    'rgba(0, 228, 0, 0.55)',
+    'rgba(160, 230, 0, 0.72)',
+    'rgba(255, 255, 0, 0.82)',
+    'rgba(255, 176, 0, 0.88)',
+    'rgba(255, 126, 0, 0.92)',
+    'rgba(255, 0, 0, 0.95)',
+    'rgba(200, 0, 80, 0.97)',
+    'rgba(192, 0, 192, 1)',
   ]
 }
 
-/** Mineral vector layers start at 3600; heatmap sits between boundaries (≤3400) and data. */
-export const MINERAL_HEATMAP_Z_INDEX = 3550
+export function mineralHeatmapGradient(_color: string): string[] {
+  return radarHeatmapGradient()
+}
+
+export function interactionHeatmapGradient(): string[] {
+  return radarHeatmapGradient()
+}
+
+function heatmapGradient(spec: MineralHeatmapSpec): string[] {
+  const base = radarHeatmapGradient()
+  const cutoff = spec.concentrationStats?.cutoff
+  if (!cutoff || !spec.points.length) return base
+  const min = Math.min(...spec.points.map((point) => point.weight))
+  const max = Math.max(...spec.points.map((point) => point.weight))
+  if (!Number.isFinite(max) || max <= min || cutoff >= max) return base
+
+  // Above peak-zone threshold, push into the magenta core of the radar ramp.
+  const cutoffIndex = Math.min(
+    7,
+    Math.max(4, Math.round(((cutoff - min) / (max - min)) * 8)),
+  )
+  return Array.from({ length: 9 }, (_, index) => {
+    if (index === 0) return 'rgba(0, 228, 0, 0)'
+    if (index >= cutoffIndex) {
+      const progress = (index - cutoffIndex) / Math.max(1, 8 - cutoffIndex)
+      return progress > 0.5
+        ? 'rgba(192, 0, 192, 1)'
+        : progress > 0.2
+          ? 'rgba(220, 0, 100, 0.98)'
+          : 'rgba(255, 0, 0, 0.95)'
+    }
+    return base[Math.min(index, base.length - 1)]
+  })
+}
+
+/** Heatmap sits above polygons (3600+) and below structures (3700+) / points (3800+). */
+export const MINERAL_HEATMAP_Z_INDEX = 3650
 
 /** @deprecated use MINERAL_HEATMAP_Z_INDEX; kept for callers passing min layer z */
 export function mineralHeatmapZIndex(_minLayerZIndex: number): number {
   return MINERAL_HEATMAP_Z_INDEX
 }
 
-const TARGET_HEATMAP_OPACITY = 0.82
-const HEATMAP_FADE_IN_MS = 80
+const TARGET_HEATMAP_OPACITY = 0.92
+const HEATMAP_FADE_IN_MS = 160
 const FEATURE_CHUNK_SIZE = 3000
 
-const DATA_LAYER_Z_INDEX = 3600
+const STRUCTURE_LAYER_Z_INDEX = 3700
 
 function easeOutCubic(t: number) {
   return 1 - Math.pow(1 - t, 3)
@@ -84,13 +129,26 @@ function animateLayerOpacity(layer: Heatmap, from: number, to: number, durationM
   })
 }
 
-function featuresFromPoints(points: MineralHeatmapPoint[]): Feature[] {
+function visiblePoints(spec: MineralHeatmapSpec): MineralHeatmapPoint[] {
+  if (!spec.anomalyOnly || !spec.concentrationStats?.cutoff) return spec.points
+  return spec.points.filter((point) => point.weight >= spec.concentrationStats!.cutoff)
+}
+
+function featuresFromPoints(
+  points: MineralHeatmapPoint[],
+  minWeight: number,
+  maxWeight: number,
+): Feature[] {
   const features = new Array<Feature>(points.length)
+  const span = maxWeight - minWeight
   for (let i = 0; i < points.length; i += 1) {
     const point = points[i]
+    const normalized = span > 0 ? (point.weight - minWeight) / span : 1
+    const curved = Math.pow(Math.max(0, normalized), 0.7)
     features[i] = new Feature({
       geometry: new Point(fromLonLat([point.lng, point.lat])),
-      weight: point.weight,
+      weight: point.weight > 0 ? Math.min(1, Math.max(0.12, curved)) : 0,
+      rawWeight: point.weight,
     })
   }
   return features
@@ -99,20 +157,23 @@ function featuresFromPoints(points: MineralHeatmapPoint[]): Feature[] {
 async function replaceHeatmapFeatures(
   source: VectorSource,
   points: MineralHeatmapPoint[],
+  rangePoints: MineralHeatmapPoint[],
   isCancelled?: () => boolean,
 ): Promise<void> {
   source.clear(true)
   if (!points.length) return
+  const minWeight = Math.min(...rangePoints.map((point) => point.weight))
+  const maxWeight = Math.max(...rangePoints.map((point) => point.weight))
 
   if (points.length <= FEATURE_CHUNK_SIZE) {
-    source.addFeatures(featuresFromPoints(points))
+    source.addFeatures(featuresFromPoints(points, minWeight, maxWeight))
     return
   }
 
   for (let offset = 0; offset < points.length; offset += FEATURE_CHUNK_SIZE) {
     if (isCancelled?.()) return
     const chunk = points.slice(offset, offset + FEATURE_CHUNK_SIZE)
-    source.addFeatures(featuresFromPoints(chunk))
+    source.addFeatures(featuresFromPoints(chunk, minWeight, maxWeight))
     if (offset + FEATURE_CHUNK_SIZE < points.length) {
       await new Promise<void>((resolve) => {
         requestAnimationFrame(() => resolve())
@@ -121,14 +182,14 @@ async function replaceHeatmapFeatures(
   }
 }
 
-function insertLayerBelowDataLayers(map: import('ol/Map').default, layer: Heatmap, zIndex: number) {
+function insertLayerBelowStructures(map: import('ol/Map').default, layer: Heatmap, zIndex: number) {
   layer.setZIndex(zIndex)
   const collection = map.getLayers()
   let insertAt = collection.getLength()
   for (let i = 0; i < collection.getLength(); i += 1) {
     const candidate = collection.item(i)
     const z = candidate.getZIndex?.() ?? 0
-    if (z >= DATA_LAYER_Z_INDEX) {
+    if (z >= STRUCTURE_LAYER_Z_INDEX) {
       insertAt = i
       break
     }
@@ -147,26 +208,29 @@ export function removeMineralHeatmapLayer(
 }
 
 function applyHeatmapStyle(layer: Heatmap, spec: MineralHeatmapSpec, mobile: boolean) {
-  const hex = normalizeHex(spec.color, '#E87722')
-  layer.setBlur(mobile ? 18 : 22)
-  layer.setRadius(mobile ? 12 : 16)
-  layer.setGradient(mineralHeatmapGradient(hex))
+  // Larger blur/radius merges sample points into smooth radar-style lobes.
+  layer.setBlur(mobile ? 22 : 32)
+  layer.setRadius(mobile ? 18 : 26)
+  layer.setGradient(heatmapGradient(spec))
   layer.setZIndex(spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX)
   layer.set('mineralHeatmap', spec.slug)
 }
 
 export function createMineralHeatmapLayer(spec: MineralHeatmapSpec, mobile: boolean): Heatmap {
   const source = new VectorSource()
-  if (spec.points.length <= FEATURE_CHUNK_SIZE) {
-    source.addFeatures(featuresFromPoints(spec.points))
+  const points = visiblePoints(spec)
+  if (points.length <= FEATURE_CHUNK_SIZE) {
+    const minWeight = Math.min(...spec.points.map((point) => point.weight))
+    const maxWeight = Math.max(...spec.points.map((point) => point.weight))
+    source.addFeatures(featuresFromPoints(points, minWeight, maxWeight))
   }
 
   const layer = new Heatmap({
     source,
-    blur: mobile ? 18 : 22,
-    radius: mobile ? 12 : 16,
+    blur: mobile ? 22 : 32,
+    radius: mobile ? 18 : 26,
     weight: (feature) => Number(feature.get('weight') ?? 1),
-    gradient: mineralHeatmapGradient(normalizeHex(spec.color, '#E87722')),
+    gradient: heatmapGradient(spec),
     zIndex: spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX,
     opacity: 0,
     properties: { mineralHeatmap: spec.slug },
@@ -195,7 +259,7 @@ export async function syncMineralHeatmapLayer(
     existing.setOpacity(TARGET_HEATMAP_OPACITY)
     const source = existing.getSource()
     if (source) {
-      await replaceHeatmapFeatures(source, spec.points, cancelled)
+      await replaceHeatmapFeatures(source, visiblePoints(spec), spec.points, cancelled)
     }
     if (cancelled()) return
     return
@@ -204,12 +268,13 @@ export async function syncMineralHeatmapLayer(
   if (cancelled()) return
 
   const layer = createMineralHeatmapLayer(spec, mobile)
-  insertLayerBelowDataLayers(map, layer, spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX)
+  insertLayerBelowStructures(map, layer, spec.zIndex ?? MINERAL_HEATMAP_Z_INDEX)
   layerRef.current = layer
 
   const source = layer.getSource()
-  if (source && spec.points.length > FEATURE_CHUNK_SIZE) {
-    await replaceHeatmapFeatures(source, spec.points, cancelled)
+  const points = visiblePoints(spec)
+  if (source && points.length > FEATURE_CHUNK_SIZE) {
+    await replaceHeatmapFeatures(source, points, spec.points, cancelled)
     if (cancelled()) return
   }
 

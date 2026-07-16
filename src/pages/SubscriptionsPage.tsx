@@ -25,7 +25,7 @@ import {
   localizedPlanName,
 } from '../i18n/planLocalization'
 import { FALLBACK_PLANS } from '../constants/fallbackPlans'
-import { monthlyEquivalent, planHighlight, sortPaidPlans } from '../lib/planTiers'
+import { monthlyEquivalent, planHighlight, planTierStyle, sortPaidPlans } from '../lib/planTiers'
 import { en } from '../i18n/messages/en'
 
 function formatPlanPriceLabel(plan: SubscriptionPlan, currency: 'TZS' | 'USD', rate?: number) {
@@ -109,6 +109,7 @@ function PlanFeatureList({ items }: { items: string[] }) {
 
 function PricingCard({
   badge,
+  tierStyle,
   title,
   description,
   price,
@@ -120,6 +121,8 @@ function PricingCard({
   muted,
 }: {
   badge?: string | null
+  /** Unique colored pill for the package name. */
+  tierStyle?: { className: string } | null
   title: string
   description: string
   price: ReactNode
@@ -145,7 +148,17 @@ function PricingCard({
           {badge}
         </span>
       )}
-      <h2 className="text-lg font-semibold text-app-text">{title}</h2>
+      <h2 className="text-lg font-semibold text-app-text">
+        {tierStyle ? (
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold tracking-wide ring-1 ring-inset ${tierStyle.className}`}
+          >
+            {title}
+          </span>
+        ) : (
+          title
+        )}
+      </h2>
       <p className="mt-1.5 min-h-[2.75rem] text-sm leading-snug text-app-muted">{description}</p>
       <div className="mt-5 border-b app-divider pb-5">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -366,7 +379,7 @@ function SubscriptionsPageContent() {
         <Link to="/" className="btn-primary text-sm">{p.exploreFree}</Link>
       </MarketingHero>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-6 mb-8">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 -mt-2 mb-8">
         <AdPlacementSlot placement="subscriptions_banner" />
       </div>
 
@@ -393,6 +406,7 @@ function SubscriptionsPageContent() {
               <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory sm:grid sm:overflow-visible sm:pb-0 sm:snap-none sm:grid-cols-2 sm:gap-5 lg:gap-6 xl:grid-cols-4">
                 <PricingCard
                   muted={hasPaidAccess}
+                  tierStyle={planTierStyle('free')}
                   title={p.freeTitle}
                   description={p.freeDesc}
                   price={<PlanPriceAmount amountTzs={0} />}
@@ -430,6 +444,7 @@ function SubscriptionsPageContent() {
                     <PricingCard
                       key={plan.slug}
                       badge={badge}
+                      tierStyle={planTierStyle(plan.slug)}
                       highlighted={highlighted || isCurrent}
                       title={localizedPlanName(plan, locale)}
                       description={localizedPlanDescription(plan, locale)}

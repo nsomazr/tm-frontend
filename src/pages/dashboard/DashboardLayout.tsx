@@ -22,15 +22,16 @@ const quickLinks = [
 
 export default function DashboardLayout() {
   const { user } = useAuth()
-  const { hasFullMapAccess } = useMapEntitlements()
+  const { canUseAnalytics } = useMapEntitlements()
   const { pathname } = useLocation()
   const isAssistantPage = pathname === '/dashboard/assistant'
+  const planName = user?.current_plan?.name ?? 'Explorer'
 
   const accountLinks = mainLinks.map((link) => ({
     ...link,
     badge:
-      link.to === '/dashboard/analytics' && !hasFullMapAccess ? (
-        <span className="ml-1 text-[10px] text-amber-600">Pro</span>
+      link.to === '/dashboard/analytics' && !canUseAnalytics ? (
+        <span className="ml-1 text-[10px] text-amber-600">Plus</span>
       ) : undefined,
   }))
 
@@ -47,6 +48,9 @@ export default function DashboardLayout() {
               {user?.first_name || user?.username}
             </p>
             <p className="text-xs text-app-muted truncate mt-0.5">{user?.email}</p>
+            <p className="mt-1.5 inline-flex max-w-full truncate rounded-full border border-terra-200/80 bg-terra-50/80 px-2 py-0.5 text-[10px] font-semibold text-terra-800 dark:border-terra-500/30 dark:bg-terra-500/10 dark:text-terra-300">
+              {planName}
+            </p>
           </div>
         }
         groups={groups}

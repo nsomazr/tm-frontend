@@ -50,3 +50,27 @@ export function mineralHeatmapQueryOptions(input: {
     retry: 1,
   }
 }
+
+export async function fetchMineralInteractionHeatmap(
+  countryCode: string,
+  layerIds: number[],
+): Promise<MineralHeatmapQueryPayload> {
+  const { data } = await analyticsApi.mineralInteractionHeatmap(layerIds, {
+    country: countryCode,
+  })
+  return { slug: 'multi-mineral-interaction', data }
+}
+
+export function mineralInteractionHeatmapQueryOptions(input: {
+  countryCode: string
+  layerIds: number[]
+}) {
+  const layerScope = mineralHeatmapLayerScope(input.layerIds)
+  return {
+    queryKey: ['mineral-heatmap', 'interaction', input.countryCode, layerScope] as const,
+    queryFn: () => fetchMineralInteractionHeatmap(input.countryCode, input.layerIds),
+    staleTime: 15 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+  }
+}

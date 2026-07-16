@@ -93,6 +93,7 @@ function defaultSeedMessage(
     emptyStateMessage: string
     platformWelcome: string
     mapFreeAsk: string
+    clickMapHint: string
   },
   hasPaidAccess: boolean,
   hasInsightContext: boolean
@@ -108,6 +109,9 @@ function defaultSeedMessage(
   }
   if (!hasPaidAccess) {
     return [{ role: 'assistant', content: ta.platformWelcome }]
+  }
+  if (hasInsightContext) {
+    return [{ role: 'assistant', content: ta.clickMapHint }]
   }
   return [{ role: 'assistant', content: ta.emptyStateMessage }]
 }
@@ -135,7 +139,7 @@ function SimilarAreasStrip({
             key={area.boundary_id}
             type="button"
             onClick={() => onExplore(area.lat, area.lng, area.boundary_id)}
-            title={[area.region, area.match_reasons?.join(' · ')].filter(Boolean).join(' — ')}
+            title={[area.region, area.match_reasons?.join(' · ')].filter(Boolean).join(' · ')}
             className={cardClass}
           >
             <div className="flex min-h-0 items-start justify-between gap-1.5">
@@ -207,7 +211,7 @@ export default function TerraAssistantPanel({
   const { m } = useTranslation()
   const ta = m.assistant
   const p = m.pricing
-  const { user, loading: authLoading } = useAuth()
+  const { user, loading: authLoading, isAdmin } = useAuth()
   const displayName = useDisplayName()
   const isFillLayout = layout === 'fill'
   const isCompact = !isFillLayout
@@ -304,10 +308,17 @@ export default function TerraAssistantPanel({
           })
           if (cancelled) return
           if (data.messages.length > 0) {
-            setMessages(data.messages)
-            setError('')
-            setHistoryReady(true)
-            return
+            const onlyUpsell =
+              hasPaidAccess &&
+              data.messages.length === 1 &&
+              data.messages[0]?.role === 'assistant' &&
+              /subscrib/i.test(data.messages[0]?.content || '')
+            if (!onlyUpsell) {
+              setMessages(data.messages)
+              setError('')
+              setHistoryReady(true)
+              return
+            }
           }
         } catch {
           /* fall through to seed */
@@ -335,6 +346,7 @@ export default function TerraAssistantPanel({
     ta.accountWelcome,
     ta.emptyStateMessage,
     ta.platformWelcome,
+    ta.clickMapHint,
     hasPaidAccess,
     hasInsightContext,
     ta.mapFreeAsk,
@@ -616,24 +628,45 @@ export default function TerraAssistantPanel({
         </button>
       </div>
 
-      <div className="flex items-center justify-between gap-2 mt-1.5 px-0.5 text-[11px] map-text-muted min-w-0">
-        <span className="min-w-0 leading-snug">{creditsFooterText()}</span>
-        {!user && credits?.tier === 'anonymous' && (
-          <Link to="/login" className="text-terra-600 hover:underline font-medium shrink-0 whitespace-nowrap">
-            {ta.signInForCredits}
-          </Link>
-        )}
-        {user && !hasPaidAccess && atLimit && (
-          <Link to="/subscriptions" className="text-terra-600 hover:underline font-medium shrink-0 whitespace-nowrap">
-            {ta.upgradeShort}
-          </Link>
-        )}
-        {user && !hasPaidAccess && !atLimit && credits?.tier === 'free' && (
-          <Link to="/subscriptions" className="text-terra-600 hover:underline font-medium shrink-0 whitespace-nowrap">
-            {ta.getMoreCredits}
-          </Link>
-        )}
+      <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 px-0.5 text-[11px] map-text-muted">
+        <span className="min-w-0 truncate leading-snug">{creditsFooterText()}</span>
+        <div className="flex shrink-0 items-center gap-2.5">
+          {!user && credits?.tier === 'anonymous' && (
+            <Link to="/login" className="font-medium whitespace-nowrap text-terra-600 hover:underline">
+              {ta.signInForCredits}
+            </Link>
+          )}
+          {user && !hasPaidAccess && atLimit && (
+            <Link
+              to="/subscriptions"
+              className="font-medium whitespace-nowrap text-terra-600 hover:underline"
+            >
+              {ta.upgradeShort}
+            </Link>
+          )}
+          {user && !hasPaidAccess && !atLimit && credits?.tier === 'free' && (
+            <Link
+              to="/subscriptions"
+              className="font-medium whitespace-nowrap text-terra-600 hover:underline"
+            >
+              {ta.getMoreCredits}
+            </Link>
+          )}
+        </div>
       </div>
+      {insightExport ? (
+        <TerraInsightExportControls
+          hasPaidAccess={hasPaidAccess}
+          mode={mode}
+          messages={messages}
+          mapContext={mapContext}
+          mapSnapshot={mapSnapshot}
+          getMapSnapshot={getMapSnapshot}
+          analysisAreaKm2={insight?.aerial?.analysis_area_km2}
+          onCreditsRefresh={() => void refreshCredits()}
+          inline
+        />
+      ) : null}
     </form>
   )
 
@@ -727,7 +760,7 @@ export default function TerraAssistantPanel({
                   insight?.visual_observations ||
                   insight?.direction_insights?.summary_lines?.length ||
                   insight?.structure_orientations?.summary_lines?.length ||
-                  insight?.geological_context?.summary_lines?.length
+                  (isAdmin && insight?.geological_context?.summary_lines?.length)
                 )
 
               return (
@@ -784,7 +817,7 @@ export default function TerraAssistantPanel({
                               lines={insight.structure_orientations.summary_lines}
                             />
                           ) : null}
-                          {insight?.geological_context?.summary_lines?.length ? (
+                          {insight?.geological_context?.summary_lines?.length && isAdmin ? (
                             <SupplementaryInsightBlock
                               embedded
                               title={m.map.geologyInsightTitle}
@@ -887,19 +920,6 @@ export default function TerraAssistantPanel({
       >
         {!loading && historyReady && !chatHistoryEnabled && messages.length > 1 && !mobileSheet && (
           <p className="px-0.5 text-[11px] leading-snug map-text-muted">{ta.chatHistorySessionHint}</p>
-        )}
-        {insightExport && (
-          <TerraInsightExportControls
-            hasPaidAccess={hasPaidAccess}
-            mode={mode}
-            messages={messages}
-            mapContext={mapContext}
-            mapSnapshot={mapSnapshot}
-            getMapSnapshot={getMapSnapshot}
-            analysisAreaKm2={insight?.aerial?.analysis_area_km2}
-            onCreditsRefresh={() => void refreshCredits()}
-            compact={mobileSheet || isCompact}
-          />
         )}
         {showFooterUpgradeHint && user && !hasPaidAccess && atLimit && (
           <p className="px-0.5 text-[11px] leading-snug text-app-text-secondary">

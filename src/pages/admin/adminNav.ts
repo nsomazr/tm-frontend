@@ -24,17 +24,18 @@ export const adminNavGroups: AdminNavGroup[] = [
     title: 'Map content',
     roles: ['admin', 'manager'],
     items: [
-      { to: '/admin/layers', label: 'Layers', roles: ['admin', 'manager'] },
-      { to: '/admin/minerals', label: 'Commodities', roles: ['admin', 'manager'] },
-      { to: '/admin/coordinates', label: 'Coordinates', roles: ['admin', 'manager'] },
+      { to: '/admin/layers', label: 'Layers', roles: ['admin'] },
+      { to: '/admin/layers', label: 'Occurrences', roles: ['manager'] },
+      { to: '/admin/minerals', label: 'Commodities', roles: ['admin'] },
+      { to: '/admin/coordinates', label: 'Coordinates', roles: ['admin'] },
       { to: '/admin/reports', label: 'Reports', roles: ['admin', 'manager'] },
     ],
   },
   {
     title: 'Insights',
-    roles: ['admin', 'manager'],
+    roles: ['admin'],
     items: [
-      { to: '/admin/coverage', label: 'Coverage', roles: ['admin', 'manager'] },
+      { to: '/admin/coverage', label: 'Coverage', roles: ['admin'] },
       { to: '/admin/mineral-analytics', label: 'Mineral analytics', roles: ['admin'] },
       { to: '/admin/user-activity', label: 'User activity', roles: ['admin'] },
       { to: '/admin/analytics', label: 'Business', roles: ['admin'] },

@@ -17,8 +17,16 @@ function UserMenu() {
   if (loading) return <div className="w-24 h-9" />
 
   if (user) {
+    const planName = user.current_plan?.name ?? 'Explorer'
     return (
       <div className="flex items-center gap-2 sm:gap-3">
+        <Link
+          to="/dashboard/subscription"
+          className="hidden sm:inline-flex items-center rounded-full border border-terra-200/80 bg-terra-50/80 px-2.5 py-1 text-[11px] font-semibold text-terra-800 dark:border-terra-500/30 dark:bg-terra-500/10 dark:text-terra-300"
+          title={`${m.nav.plan}: ${planName}`}
+        >
+          {planName}
+        </Link>
         <Link to="/dashboard" className="nav-link text-xs sm:text-sm whitespace-nowrap px-2">
           {m.nav.dashboard}
         </Link>

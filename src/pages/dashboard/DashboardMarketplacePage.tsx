@@ -215,7 +215,7 @@ export default function DashboardMarketplacePage() {
       setCopiedSlug(slug)
       window.setTimeout(() => setCopiedSlug((current) => (current === slug ? null : current)), 1800)
     } catch {
-      setNotice('Could not copy link — open View public instead.')
+      setNotice('Could not copy link. Open View public instead.')
     }
   }
 
@@ -382,7 +382,7 @@ export default function DashboardMarketplacePage() {
                                 toggleMap.mutate({ id: row.id, show_on_map: e.target.checked })
                               }
                             />
-                            {row.status === 'published' ? (row.show_on_map ? 'Visible' : 'Hidden') : '—'}
+                            {row.status === 'published' ? (row.show_on_map ? 'Visible' : 'Hidden') : '-'}
                           </label>
                         </td>
                         <td className="px-4 py-3 tabular-nums text-app-text">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { marketplaceApi } from '../../api'
@@ -33,6 +33,10 @@ import {
   REPORT_BUFFER_KM_MAX,
   REPORT_BUFFER_KM_MIN,
 } from '../../constants/reportBufferZone'
+import {
+  OtherMineralsField,
+  PrimaryMineralField,
+} from '../../components/marketplace/MarketplaceMineralPicker'
 import type { MarketplaceListingStatus, MarketplaceListingWrite } from '../../types'
 
 function boundsAroundPoint(lat: number, lng: number, span = 0.08): AdminFitBounds {
@@ -138,7 +142,8 @@ export default function DashboardMarketplaceEditorPage() {
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [commodities, setCommodities] = useState('')
+  const [primaryMineral, setPrimaryMineral] = useState('')
+  const [otherMinerals, setOtherMinerals] = useState<string[]>([])
   const [contactEmail, setContactEmail] = useState('')
   const [contactPhone, setContactPhone] = useState('')
   const [showContactPublic, setShowContactPublic] = useState(false)
@@ -178,7 +183,14 @@ export default function DashboardMarketplaceEditorPage() {
     setTitle(row.title)
     const about = (row.description || '').trim() || (row.summary || '').trim()
     setDescription(about)
-    setCommodities((row.commodity_labels || []).join(', '))
+    const labels = row.commodity_labels || []
+    const primary = (row.primary_mineral || '').trim() || labels[0] || ''
+    const others =
+      row.other_minerals?.length
+        ? row.other_minerals.map((s) => s.trim()).filter(Boolean)
+        : labels.slice(1)
+    setPrimaryMineral(primary)
+    setOtherMinerals(others.filter((s) => s.toLowerCase() !== primary.toLowerCase()))
     setContactEmail(row.contact_email || '')
     setContactPhone(row.contact_phone || '')
     setShowContactPublic(row.show_contact_public)
@@ -321,15 +333,6 @@ export default function DashboardMarketplaceEditorPage() {
     },
   })
 
-  const commodityLabels = useMemo(
-    () =>
-      commodities
-        .split(/[,;]/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-    [commodities],
-  )
-
   const hasArea = Boolean(draw && explorationReady(draw))
   const points = draw?.mode === 'point' ? draw.points : draw?.points ?? []
   const finishedPolygons = draw?.mode === 'polygon' ? draw.polygons || [] : []
@@ -361,11 +364,17 @@ export default function DashboardMarketplaceEditorPage() {
       showBuffer && bufferKm.trim() !== '' ? clampReportBufferKm(Number(bufferKm)) : null
     const about = description.trim()
     const listSummary = (about.split('\n').find((line) => line.trim()) || title).trim().slice(0, 500)
+    const primary = primaryMineral.trim()
+    const others = otherMinerals
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((s) => s.toLowerCase() !== primary.toLowerCase())
     return {
       title: title.trim(),
       summary: listSummary,
       description: about,
-      commodity_labels: commodityLabels,
+      primary_mineral: primary,
+      other_minerals: others,
       geometry,
       buffer_km: buffer,
       contact_name: '',
@@ -569,24 +578,39 @@ export default function DashboardMarketplaceEditorPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-app-muted">About this listing (optional)</span>
+            <span className="font-medium text-app-text">Description</span>
+            <span className="mt-0.5 block text-xs text-app-muted">
+              Licence status, work completed, access, and what a buyer should know. The first
+              line is used as the short marketplace summary.
+            </span>
             <textarea
-              className="mt-1 w-full rounded-lg border app-divider bg-app-bg px-3 py-2 text-app-text"
-              rows={3}
+              className="mt-1.5 w-full rounded-lg border app-divider bg-app-bg px-3 py-2 text-app-text"
+              rows={5}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What you are offering, licence status, work done…"
+              placeholder={`Example:
+PL gold licence near Geita. 2 years remaining.
+Drilling and assays available on request. Road access year-round.`}
             />
           </label>
-          <label className="block text-sm">
-            <span className="text-app-muted">Minerals (optional)</span>
-            <input
-              className="mt-1 w-full rounded-lg border app-divider bg-app-bg px-3 py-2 text-app-text"
-              value={commodities}
-              onChange={(e) => setCommodities(e.target.value)}
-              placeholder="Gold, copper"
+
+          <div className="space-y-4 rounded-xl border app-divider bg-app-subtle/30 p-3">
+            <PrimaryMineralField
+              value={primaryMineral}
+              onChange={(next) => {
+                setPrimaryMineral(next)
+                setOtherMinerals((prev) =>
+                  prev.filter((s) => s.toLowerCase() !== next.trim().toLowerCase()),
+                )
+              }}
+              exclude={otherMinerals}
             />
-          </label>
+            <OtherMineralsField
+              values={otherMinerals}
+              onChange={setOtherMinerals}
+              exclude={primaryMineral ? [primaryMineral] : []}
+            />
+          </div>
 
           <div className="rounded-xl border app-divider bg-app-subtle/30 p-3 space-y-3">
             <p className="text-sm font-medium text-app-text">How buyers reach you</p>

@@ -1,7 +1,6 @@
 import {
   coordinateSystemById,
   formatCoordinate,
-  formatCoordinateParts,
   type CoordinateSystemId,
   transformMapCoordinate,
 } from './coordinateSystems'
@@ -16,6 +15,7 @@ interface MapCoordinateReadoutProps {
   className?: string
 }
 
+/** Compact single-row readout — height matches the map compass (44px). */
 export default function MapCoordinateReadout({
   mapCoordinate,
   coordinateSystem,
@@ -27,37 +27,28 @@ export default function MapCoordinateReadout({
 
   const system = coordinateSystemById(coordinateSystem)
   const transformed = transformMapCoordinate(mapCoordinate, coordinateSystem)
-  const useStackedDms = system.kind === 'geographic' && coordinateFormat === 'dms'
   const text = formatCoordinate(transformed, system.kind, coordinateFormat)
-  const parts = useStackedDms
-    ? formatCoordinateParts(transformed, system.kind, coordinateFormat)
-    : null
 
   return (
     <div
-      className={`map-coordinate-readout pointer-events-auto map-chrome rounded-lg px-2.5 py-1.5 text-[11px] font-mono tabular-nums map-text-secondary shadow-sm ${className}`}
+      className={`map-coordinate-readout pointer-events-auto map-chrome flex h-11 min-h-11 max-h-11 items-center gap-2 rounded-lg px-2.5 text-[11px] font-mono tabular-nums map-text-secondary shadow-sm ${className}`}
     >
-      <p className="mb-1.5 truncate text-[10px] font-sans font-semibold uppercase leading-none tracking-wide map-text-muted">
-        {system.label}
-      </p>
-      <div className="flex min-h-[1.25rem] items-start gap-2">
-        {parts ? (
-          <div className="min-w-0 flex-1 space-y-0.5 text-[11px] leading-snug">
-            <div className="whitespace-nowrap">{parts.primary}</div>
-            <div className="whitespace-nowrap">{parts.secondary}</div>
-          </div>
-        ) : (
-          <span className="min-w-0 flex-1 break-all text-[11px] leading-tight">{text}</span>
-        )}
-        {system.kind === 'geographic' && (
-          <CoordinateFormatToggle
-            value={coordinateFormat}
-            onChange={onCoordinateFormatChange}
-            compact
-            className="shrink-0 mt-0.5"
-          />
-        )}
+      <div className="min-w-0 shrink">
+        <p className="truncate text-[9px] font-sans font-semibold uppercase leading-none tracking-wide map-text-muted">
+          {system.label}
+        </p>
+        <p className="mt-0.5 whitespace-nowrap text-[11px] leading-tight" title={text}>
+          {text}
+        </p>
       </div>
+      {system.kind === 'geographic' && (
+        <CoordinateFormatToggle
+          value={coordinateFormat}
+          onChange={onCoordinateFormatChange}
+          compact
+          className="shrink-0"
+        />
+      )}
     </div>
   )
 }

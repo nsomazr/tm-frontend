@@ -90,7 +90,7 @@ function validateDraftLength(
   }
 
   if (words < 35) {
-    return `AI returned only ${words} words (${modelUsed}). The model may be unavailable or rate-limited — check Assistant settings, try again, or enable web search.`
+    return `AI returned only ${words} words (${modelUsed}). The model may be unavailable or rate-limited. Check Assistant settings, try again, or enable web search.`
   }
 
   return null
