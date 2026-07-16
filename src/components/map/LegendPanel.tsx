@@ -1,6 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from '../../i18n/LocaleContext'
-import { interpolate } from '../../i18n/utils'
 import { useDisplayName } from '../../i18n/useDisplayName'
 import type { MapLayer } from '../../types'
 import { layerDisplayColor } from '../admin/layerColors'
@@ -89,7 +88,7 @@ export default function LegendPanel({
     showRotationHint &&
     typeof totalLayerCount === 'number' &&
     totalLayerCount > count
-      ? interpolate(m.map.layerRotationHint, { shown: count, total: totalLayerCount })
+      ? m.map.layerRotationHint
       : null
 
   if (sheetMode) {

@@ -110,7 +110,7 @@ export const en = {
     terraAssistantInsight: 'Terra Assistant insight',
     viewPlans: 'View plans',
     previewOnly: 'Preview data only. Subscribe for all layers and full analytics.',
-    layerRotationHint: 'Showing {shown} of {total} free layers · refreshes every 2 min',
+    layerRotationHint: 'Refreshes every 5 mins',
     subscribeForInsights:
       'Subscribe for deeper Terra insights, full analytics dashboards, and report downloads.',
     commodityLayer: 'Commodity layer',

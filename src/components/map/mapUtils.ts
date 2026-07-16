@@ -15,9 +15,9 @@ export const LANDING_MAP_LAYER_BATCH = 15
 
 /**
  * How often the landing map swaps one layer in the visible batch.
- * 2 minutes: enough time to look around, frequent enough to feel alive.
+ * 5 minutes: enough time to explore before the free-map sample rotates.
  */
-export const LANDING_MAP_LAYER_ROTATION_MS = 2 * 60 * 1000
+export const LANDING_MAP_LAYER_ROTATION_MS = 5 * 60 * 1000
 
 function shuffleIds(ids: number[]): number[] {
   const next = [...ids]

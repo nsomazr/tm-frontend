@@ -162,6 +162,28 @@ function visibleLayerIdsForCatalogSlug(catalogSlug: string, layerList: MapLayer[
   )
 }
 
+/** Multi-mineral heatmap: selected minerals (polygon + point) plus all structures. */
+function visibleLayerIdsForMultiMinerals(slugs: string[], layerList: MapLayer[]): Set<number> {
+  const next = new Set<number>()
+  for (const slug of slugs) {
+    for (const layer of layersForCatalogSlug(slug, layerList)) {
+      next.add(layer.id)
+    }
+  }
+  for (const layer of layerList) {
+    if (layer.layer_type === 'line') next.add(layer.id)
+  }
+  return next
+}
+
+function sameLayerIdSet(a: Set<number>, b: Set<number>): boolean {
+  if (a.size !== b.size) return false
+  for (const id of a) {
+    if (!b.has(id)) return false
+  }
+  return true
+}
+
 function visibleLayerIdsKey(slug: string, layerList: MapLayer[], visible: Set<number>): string {
   return visibleLayersForMineral(slug, layerList, visible)
     .map((layer) => layer.id)
@@ -662,19 +684,8 @@ export default function FullMapPage() {
 
   useEffect(() => {
     if (heatmapMode !== 'multi' || multiMineralSlugs.length === 0 || layers.length === 0) return
-    setVisibleLayers((prev) => {
-      const next = new Set(prev)
-      let changed = false
-      for (const slug of multiMineralSlugs) {
-        for (const layer of layersForCatalogSlug(slug, layers)) {
-          if (!next.has(layer.id)) {
-            next.add(layer.id)
-            changed = true
-          }
-        }
-      }
-      return changed ? next : prev
-    })
+    const next = visibleLayerIdsForMultiMinerals(multiMineralSlugs, layers)
+    setVisibleLayers((prev) => (sameLayerIdSet(prev, next) ? prev : next))
   }, [heatmapMode, multiMineralSlugs, layers])
 
   const interactionLayerIds = useMemo(
@@ -853,6 +864,8 @@ export default function FullMapPage() {
 
   useEffect(() => {
     if (!layerIdsKey || exploreOpen || layers.length === 0) return
+    // Multi-mineral heatmap owns checkboxes: selected minerals + structures only.
+    if (heatmapMode === 'multi' && multiMineralSlugs.length > 0) return
     if (catalogMineralSlug) {
       const nextVisible = visibleLayerIdsForCatalogSlug(catalogMineralSlug, layers)
       if (nextVisible.size > 0) {
@@ -868,7 +881,7 @@ export default function FullMapPage() {
     )
     // Intentionally keyed by layerIdsKey so identical id sets don't re-roll the batch.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- layers read when ids change
-  }, [mineral, layerIdsKey, hasFullMapAccess, exploreOpen, catalogMineralSlug])
+  }, [mineral, layerIdsKey, hasFullMapAccess, exploreOpen, catalogMineralSlug, heatmapMode, multiMineralSlugs])
 
   useEffect(() => {
     if (hasFullMapAccess || exploreOpen || catalogMineralSlug) return

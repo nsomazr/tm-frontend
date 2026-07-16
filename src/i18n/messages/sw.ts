@@ -112,7 +112,7 @@ export const sw: Messages = {
     terraAssistantInsight: 'Maarifa ya Msaidizi wa Terra',
     viewPlans: 'Angalia mipango',
     previewOnly: 'Data ya onyesho tu. Jiunge ili kupata tabaka zote na uchambuzi kamili.',
-    layerRotationHint: 'Inaonyesha {shown} kati ya {total} tabaka za bure · inasasishwa kila dakika 2',
+    layerRotationHint: 'Inasasishwa kila dakika 5',
     subscribeForInsights:
       'Jiunge ili kupata maarifa ya kina ya Terra, uchambuzi kamili, na upakuaji wa ripoti.',
     commodityLayer: 'Tabaka la bidhaa',
