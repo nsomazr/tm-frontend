@@ -141,11 +141,11 @@ export default function LegendPanel({
           {count === 0 ? (
             <p className="text-[11px] map-text-muted px-2.5 py-2 leading-snug">{m.map.legendEmpty}</p>
           ) : (
-            <ul className="max-h-[min(42vh,280px)] overflow-y-auto p-1.5 space-y-0.5 text-[11px]">
+            <ul className="max-h-[min(30vh,210px)] overflow-y-auto p-1.5 space-y-0.5 text-[11px]">
               {entries.map((entry) => {
                 const sym = TYPE_SYMBOL[entry.type] ?? TYPE_SYMBOL.polygon
                 return (
-                  <li key={entry.id} className="flex items-start gap-1.5 px-1 py-0.5 rounded-md hover:bg-app-subtle">
+                  <li key={entry.id} className="flex items-start gap-1.5 rounded-md px-1 py-[1px] hover:bg-app-subtle">
                     {sym.render(entry.color, entry.layer)}
                     <span className="map-text leading-snug break-words min-w-0">{entry.name}</span>
                   </li>

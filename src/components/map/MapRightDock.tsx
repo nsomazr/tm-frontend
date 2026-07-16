@@ -85,7 +85,7 @@ export default function MapRightDock({
   const current = BASEMAPS.find((b) => b.id === basemap) ?? BASEMAPS[0]
 
   return (
-    <aside className="absolute z-10 flex-col gap-1.5 pointer-events-none max-h-[calc(100%-4rem)] overflow-y-auto
+    <aside className="absolute z-10 flex-col gap-1.5 pointer-events-none max-h-[calc(100%-9.5rem)] overflow-y-auto
       top-3 right-3 w-60 hidden md:flex">
       {hasPaidAccess && countries.length > 0 ? (
         <div className="pointer-events-auto shrink-0 map-chrome rounded-xl p-2">
