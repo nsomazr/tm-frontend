@@ -730,7 +730,7 @@ export default function LayersManageTable({
                               title="0–10 weight"
                             >
                               <span className="text-[10px] font-medium uppercase tracking-wide text-app-text-muted whitespace-nowrap">
-                                Heat
+                                Weight
                               </span>
                               <input
                                 type="number"

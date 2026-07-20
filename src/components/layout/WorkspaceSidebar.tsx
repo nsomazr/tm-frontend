@@ -9,6 +9,8 @@ export interface SidebarLink {
   label: string
   end?: boolean
   badge?: ReactNode
+  /** Override default NavLink active detection (e.g. exclude sibling routes). */
+  matchPath?: (pathname: string) => boolean
 }
 
 export interface SidebarGroup {
@@ -146,6 +148,7 @@ export default function WorkspaceSidebar({
   groups,
   footerLinks = [],
 }: WorkspaceSidebarProps) {
+  const location = useLocation()
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(`${storageKey}:collapsed`) === '1'
@@ -250,7 +253,16 @@ export default function WorkspaceSidebar({
               {open && (
                 <div className="mt-0.5 space-y-0.5">
                   {group.links.map((link) => (
-                    <NavLink key={link.to} to={link.to} end={link.end} className={navClass}>
+                    <NavLink
+                      key={link.to}
+                      to={link.to}
+                      end={link.end}
+                      className={({ isActive }) =>
+                        navClass({
+                          isActive: link.matchPath ? link.matchPath(location.pathname) : isActive,
+                        })
+                      }
+                    >
                       {link.label}
                       {link.badge}
                     </NavLink>
@@ -291,6 +303,7 @@ export function WorkspaceMobileNav({
     .map((to) => allLinks.find((link) => link.to === to))
     .filter((link): link is SidebarLink => Boolean(link))
   const linkMatches = (link: SidebarLink) => {
+    if (link.matchPath) return link.matchPath(location.pathname)
     if (link.end) return location.pathname === link.to
     return location.pathname === link.to || location.pathname.startsWith(`${link.to}/`)
   }
@@ -389,7 +402,11 @@ export function WorkspaceMobileNav({
                         to={link.to}
                         end={link.end}
                         onClick={() => setMoreOpen(false)}
-                        className={navClass}
+                        className={({ isActive }) =>
+                          navClass({
+                            isActive: link.matchPath ? link.matchPath(location.pathname) : isActive,
+                          })
+                        }
                       >
                         {link.label}
                         {link.badge}

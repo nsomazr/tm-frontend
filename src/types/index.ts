@@ -1220,6 +1220,78 @@ export interface MarketplaceInquiry {
   contact_email: string
   is_read: boolean
   created_at: string
+  conversation_id?: number
+  message_id?: number
+}
+
+export interface MarketplaceMessageReply {
+  id: number
+  sender_username: string
+  body: string
+}
+
+export interface MarketplaceMessage {
+  id: number
+  sender: number
+  sender_username: string
+  body: string
+  reply_to: MarketplaceMessageReply | null
+  created_at: string
+  is_mine: boolean
+  read_by_recipient: boolean
+}
+
+export type MarketplaceConversationOrigin =
+  | 'marketplace_inquiry'
+  | 'listing_message'
+  | 'owner_outreach'
+  | 'direct'
+
+export interface MarketplaceConversation {
+  id: number
+  listing: number | null
+  listing_title: string | null
+  listing_slug: string | null
+  buyer: number
+  buyer_username: string
+  owner_username: string
+  buyer_contact_email: string
+  owner_last_read_at: string | null
+  buyer_last_read_at: string | null
+  last_message: MarketplaceMessage | null
+  unread: boolean
+  archived: boolean
+  role: 'owner' | 'buyer' | 'viewer'
+  origin: MarketplaceConversationOrigin
+  created_at: string
+  updated_at: string
+  messages?: MarketplaceMessage[]
+}
+
+export interface UserNotification {
+  id: number
+  kind: 'marketplace_inquiry' | 'marketplace_message'
+  title: string
+  body: string
+  link: string
+  payload: Record<string, unknown>
+  is_read: boolean
+  created_at: string
+}
+
+export interface MarketplaceUserSearchResult {
+  id: number
+  username: string
+  display_name: string
+  organization: string
+  public_listing_count: number
+}
+
+export interface ConversationListingOption {
+  id: number
+  title: string
+  slug: string
+  role: 'owner' | 'buyer'
 }
 
 export interface MarketplaceGeoJsonFeature {

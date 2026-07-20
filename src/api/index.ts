@@ -27,9 +27,13 @@ import type {
   MyReport,
   MarketplaceGeoJson,
   MarketplaceInquiry,
+  MarketplaceConversation,
+  MarketplaceUserSearchResult,
+  ConversationListingOption,
   MarketplaceListingOwner,
   MarketplaceListingPublic,
   MarketplaceListingWrite,
+  UserNotification,
 } from '../types'
 
 export type OtpPurpose = 'register' | 'login'
@@ -706,6 +710,57 @@ export const marketplaceApi = {
   myInquiries: () => api.get<MarketplaceInquiry[]>('/marketplace/my/inquiries/'),
   markInquiryRead: (id: number) =>
     api.post<MarketplaceInquiry>(`/marketplace/my/inquiries/${id}/read/`),
+  listingConversation: (slug: string) =>
+    api.get<{ conversation: MarketplaceConversation | null }>(
+      `/marketplace/listings/${slug}/conversation/`,
+    ),
+  myConversations: (params?: { archived?: boolean | 'all' }) =>
+    api.get<MarketplaceConversation[]>('/marketplace/my/conversations/', {
+      params:
+        params?.archived === 'all'
+          ? { archived: 'all' }
+          : params?.archived
+            ? { archived: '1' }
+            : undefined,
+    }),
+  myConversation: (id: number) =>
+    api.get<MarketplaceConversation>(`/marketplace/my/conversations/${id}/`),
+  archiveConversation: (id: number, archived: boolean) =>
+    api.post<MarketplaceConversation>(`/marketplace/my/conversations/${id}/archive/`, {
+      archived,
+    }),
+  deleteConversation: (id: number) =>
+    api.delete(`/marketplace/my/conversations/${id}/`),
+  sendConversationMessage: (id: number, body: string, replyToId?: number) =>
+    api.post<{ conversation: MarketplaceConversation; message: import('../types').MarketplaceMessage }>(
+      `/marketplace/my/conversations/${id}/messages/`,
+      { body, reply_to_id: replyToId ?? null },
+    ),
+  deleteConversationMessage: (conversationId: number, messageId: number) =>
+    api.delete<MarketplaceConversation>(
+      `/marketplace/my/conversations/${conversationId}/messages/${messageId}/`,
+    ),
+  markConversationRead: (id: number) =>
+    api.post<MarketplaceConversation>(`/marketplace/my/conversations/${id}/read/`),
+  searchUsers: (q: string) =>
+    api.get<MarketplaceUserSearchResult[]>('/marketplace/users/search/', { params: { q } }),
+  conversationListingOptions: (userId: number) =>
+    api.get<ConversationListingOption[]>('/marketplace/users/conversation-listings/', {
+      params: { user_id: userId },
+    }),
+  startConversation: (data: {
+    recipient_user_id: number
+    message: string
+    listing_id?: number | null
+  }) =>
+    api.post<MarketplaceConversation>('/marketplace/my/conversations/start/', data),
+}
+
+export const notificationsApi = {
+  list: () => api.get<UserNotification[]>('/auth/notifications/'),
+  unreadCount: () => api.get<{ count: number }>('/auth/notifications/unread-count/'),
+  markRead: (id: number) => api.post<UserNotification>(`/auth/notifications/${id}/read/`),
+  markAllRead: () => api.post<{ updated: number }>('/auth/notifications/read-all/'),
 }
 
 export const adsApi = {

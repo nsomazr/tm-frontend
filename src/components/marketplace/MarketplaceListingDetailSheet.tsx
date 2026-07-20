@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { analyticsApi, marketplaceApi } from '../../api'
 import { useAuth } from '../../auth/AuthContext'
 import AssistantMessageContent from '../assistant/AssistantMessageContent'
 import { DEFAULT_COUNTRY_CODE } from '../map/countryFocus'
 import { matchGeologicalColor } from '../../constants/geologicalMineralColors'
-import MarketplaceContactCard from './MarketplaceContactCard'
+import MarketplaceListingMessages from './MarketplaceListingMessages'
 import MarketplacePlotInsightCard from './MarketplacePlotInsightCard'
 import type { AreaInsight, MarketplaceListingDocument, MarketplaceListingPublic } from '../../types'
 
@@ -73,24 +73,17 @@ export default function MarketplaceListingDetailSheet({
   onClose,
 }: MarketplaceListingDetailSheetProps) {
   const { user, hasFullMapAccess } = useAuth()
-  const queryClient = useQueryClient()
-  const [message, setMessage] = useState('')
-  const [contactEmail, setContactEmail] = useState(user?.email ?? '')
-  const [sent, setSent] = useState(false)
   const [docSummaryId, setDocSummaryId] = useState<number | null>(null)
   const [docSummary, setDocSummary] = useState<string | null>(null)
   const [plotInsight, setPlotInsight] = useState<AreaInsight | null>(null)
   const [showContact, setShowContact] = useState(false)
 
   useEffect(() => {
-    setMessage('')
-    setContactEmail(user?.email ?? '')
-    setSent(false)
     setDocSummaryId(null)
     setDocSummary(null)
     setPlotInsight(null)
     setShowContact(false)
-  }, [listing.id, user?.email])
+  }, [listing.id])
 
   const hasPublicContact =
     !!listing.show_contact_public &&
@@ -99,19 +92,6 @@ export default function MarketplaceListingDetailSheet({
   const loginNext = `/login?next=${encodeURIComponent(`/marketplace?listing=${listing.slug}`)}`
   const hasMapPoint = listing.center_lat != null && listing.center_lng != null
   const docs = listing.documents ?? []
-
-  const inquire = useMutation({
-    mutationFn: () =>
-      marketplaceApi.inquire(listing.slug, {
-        message,
-        contact_email: contactEmail || user?.email || undefined,
-      }),
-    onSuccess: () => {
-      setSent(true)
-      setMessage('')
-      queryClient.invalidateQueries({ queryKey: ['marketplace-inquiries'] })
-    },
-  })
 
   const summarizeDoc = useMutation({
     mutationFn: (docId: number) => marketplaceApi.summarizeDocument(listing.slug, docId),
@@ -348,19 +328,13 @@ export default function MarketplaceListingDetailSheet({
                 </dl>
               ) : null}
               {listing.allow_inquiries ? (
-                <MarketplaceContactCard
+                <MarketplaceListingMessages
+                  listingSlug={listing.slug}
                   listingTitle={listing.title}
-                  loginNext={loginNext}
                   signedIn={!!user}
-                  replyEmail={user?.email ?? null}
-                  contactEmail={contactEmail}
-                  onContactEmailChange={setContactEmail}
-                  message={message}
-                  onMessageChange={setMessage}
-                  sent={sent}
-                  sending={inquire.isPending}
-                  error={inquire.isError ? errorMessage(inquire.error) : null}
-                  onSubmit={() => inquire.mutate()}
+                  loginNext={loginNext}
+                  allowInquiries={listing.allow_inquiries}
+                  startOpen
                 />
               ) : null}
             </div>

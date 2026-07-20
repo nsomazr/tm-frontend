@@ -77,8 +77,8 @@ export default function MineralHeatmapColorbar({
       } ${className}`}
       aria-label={
         loading
-          ? 'Loading mineral concentration heatmap'
-          : `${shown?.name ?? shown?.slug ?? 'Mineral'} concentration scale`
+          ? m.map.heatmapLoading
+          : `${shown?.name ?? shown?.slug ?? m.map.heatmapTitle} prospectivity scale`
       }
       aria-busy={loading}
     >

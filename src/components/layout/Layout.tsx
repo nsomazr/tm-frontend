@@ -7,6 +7,7 @@ import LanguageSwitch from './LanguageSwitch'
 import MobileMenu from './MobileMenu'
 import MineralsNavMenu from './MineralsNavMenu'
 import ThemeToggle from './ThemeToggle'
+import NotificationBell from './NotificationBell'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `nav-link ${isActive ? 'nav-link-active' : ''}`
@@ -20,6 +21,7 @@ function UserMenu() {
     const planName = user.current_plan?.name ?? 'Explorer'
     return (
       <div className="flex items-center gap-2 sm:gap-3">
+        <NotificationBell />
         <Link
           to="/dashboard/subscription"
           className="hidden sm:inline-flex items-center rounded-full border border-terra-200/80 bg-terra-50/80 px-2.5 py-1 text-[11px] font-semibold text-terra-800 dark:border-terra-500/30 dark:bg-terra-500/10 dark:text-terra-300"

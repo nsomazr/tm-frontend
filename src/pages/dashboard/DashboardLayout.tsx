@@ -3,11 +3,20 @@ import { useAuth } from '../../auth/AuthContext'
 import { useMapEntitlements } from '../../hooks/useMapEntitlements'
 import WorkspaceTabs from '../../components/layout/WorkspaceTabs'
 import WorkspaceSidebar, { WorkspaceMobileNav } from '../../components/layout/WorkspaceSidebar'
+import NotificationBell from '../../components/layout/NotificationBell'
 
 const mainLinks = [
   { to: '/dashboard', label: 'Overview', end: true },
   { to: '/dashboard/assistant', label: 'Ask Terra' },
-  { to: '/dashboard/marketplace', label: 'My listings' },
+  {
+    to: '/dashboard/marketplace',
+    label: 'My listings',
+    matchPath: (pathname: string) =>
+      pathname === '/dashboard/marketplace' ||
+      (pathname.startsWith('/dashboard/marketplace/') &&
+        !pathname.startsWith('/dashboard/marketplace/messages')),
+  },
+  { to: '/dashboard/marketplace/messages', label: 'Messages', end: true },
   { to: '/dashboard/subscription', label: 'Subscription' },
   { to: '/dashboard/billing', label: 'Billing' },
   { to: '/dashboard/analytics', label: 'Analytics' },
@@ -43,14 +52,17 @@ export default function DashboardLayout() {
         storageKey="tm-dashboard-sidebar"
         workspaceTabs={<WorkspaceTabs sidebar />}
         header={
-          <div>
-            <p className="font-semibold text-app-text truncate">
-              {user?.first_name || user?.username}
-            </p>
-            <p className="text-xs text-app-muted truncate mt-0.5">{user?.email}</p>
-            <p className="mt-1.5 inline-flex max-w-full truncate rounded-full border border-terra-200/80 bg-terra-50/80 px-2 py-0.5 text-[10px] font-semibold text-terra-800 dark:border-terra-500/30 dark:bg-terra-500/10 dark:text-terra-300">
-              {planName}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold text-app-text truncate">
+                {user?.first_name || user?.username}
+              </p>
+              <p className="text-xs text-app-muted truncate mt-0.5">{user?.email}</p>
+              <p className="mt-1.5 inline-flex max-w-full truncate rounded-full border border-terra-200/80 bg-terra-50/80 px-2 py-0.5 text-[10px] font-semibold text-terra-800 dark:border-terra-500/30 dark:bg-terra-500/10 dark:text-terra-300">
+                {planName}
+              </p>
+            </div>
+            <NotificationBell />
           </div>
         }
         groups={groups}

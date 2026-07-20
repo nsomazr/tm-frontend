@@ -28,12 +28,6 @@ import {
   type ExplorationDraw,
 } from '../../components/map/explorationGeometry'
 import {
-  bufferRadiusToAreaKm2,
-  clampReportBufferKm,
-  REPORT_BUFFER_KM_MAX,
-  REPORT_BUFFER_KM_MIN,
-} from '../../constants/reportBufferZone'
-import {
   OtherMineralsField,
   PrimaryMineralField,
 } from '../../components/marketplace/MarketplaceMineralPicker'
@@ -156,8 +150,6 @@ export default function DashboardMarketplaceEditorPage() {
   const [manualLngDms, setManualLngDms] = useState<DmsAxisParts>(() => emptyDmsParts('lng'))
   const [fitBounds, setFitBounds] = useState<AdminFitBounds | null>(null)
   const [coordinateFormat, setCoordinateFormat] = useCoordinateFormatState()
-  const [bufferKm, setBufferKm] = useState('')
-  const [showBuffer, setShowBuffer] = useState(false)
   const [layerFileName, setLayerFileName] = useState('')
   const [layerFeatureCount, setLayerFeatureCount] = useState<number | null>(null)
   const [layerError, setLayerError] = useState('')
@@ -197,8 +189,6 @@ export default function DashboardMarketplaceEditorPage() {
     setAllowInquiries(row.allow_inquiries)
     setStatus(row.status)
     setShowOnMap(row.show_on_map)
-    setBufferKm(row.buffer_km != null ? String(row.buffer_km) : '')
-    setShowBuffer(row.buffer_km != null)
     const nextDraw = drawFromGeometry(row.geometry as { type?: string; coordinates?: unknown })
     if (nextDraw && (nextDraw.mode === 'point' || nextDraw.mode === 'polygon')) {
       setDrawMode(nextDraw.mode)
@@ -337,9 +327,6 @@ export default function DashboardMarketplaceEditorPage() {
   const points = draw?.mode === 'point' ? draw.points : draw?.points ?? []
   const finishedPolygons = draw?.mode === 'polygon' ? draw.polygons || [] : []
   const polygonAreaKm2 = explorationTotalAreaKm2(draw)
-  const bufferNum =
-    showBuffer && bufferKm.trim() !== '' ? clampReportBufferKm(Number(bufferKm)) : null
-  const bufferAreaKm2 = bufferNum != null ? bufferRadiusToAreaKm2(bufferNum) : 0
   const manualLatOk =
     coordinateFormat === 'dms'
       ? dmsPartsToDecimal(manualLatDms, 'lat') != null
@@ -360,8 +347,6 @@ export default function DashboardMarketplaceEditorPage() {
   const buildPayload = (nextStatus?: MarketplaceListingStatus): MarketplaceListingWrite => {
     const geometry =
       draw && explorationReady(draw) ? geometryFromDraw(draw) : existing.data?.geometry || {}
-    const buffer =
-      showBuffer && bufferKm.trim() !== '' ? clampReportBufferKm(Number(bufferKm)) : null
     const about = description.trim()
     const listSummary = (about.split('\n').find((line) => line.trim()) || title).trim().slice(0, 500)
     const primary = primaryMineral.trim()
@@ -376,7 +361,7 @@ export default function DashboardMarketplaceEditorPage() {
       primary_mineral: primary,
       other_minerals: others,
       geometry,
-      buffer_km: buffer,
+      buffer_km: null,
       contact_name: '',
       contact_email: showContactPublic ? contactEmail.trim() : '',
       contact_phone: showContactPublic ? contactPhone.trim() : '',
@@ -888,11 +873,6 @@ Drilling and assays available on request. Road access year-round.`}
                     {hasArea
                       ? `${points.length} point${points.length === 1 ? '' : 's'} on the map`
                       : 'No points yet'}
-                    {bufferNum ? (
-                      <span className="block text-xs text-app-muted mt-1">
-                        Buffer around each ≈ {formatAreaKm2(bufferAreaKm2)}
-                      </span>
-                    ) : null}
                   </p>
                 ) : (
                   <p className="text-app-text">
@@ -910,42 +890,7 @@ Drilling and assays available on request. Road access year-round.`}
                         {3 - points.length === 1 ? '' : 'ices'} for the first polygon
                       </span>
                     )}
-                    {bufferNum && hasArea ? (
-                      <span className="block text-xs text-app-muted mt-1">
-                        Plus optional buffer {bufferNum} km
-                      </span>
-                    ) : null}
                   </p>
-                )}
-              </div>
-
-              <div className="rounded-xl border app-divider p-3 space-y-2">
-                <label className="flex items-center gap-2 text-sm text-app-text">
-                  <input
-                    type="checkbox"
-                    checked={showBuffer}
-                    onChange={(e) => {
-                      setShowBuffer(e.target.checked)
-                      if (!e.target.checked) setBufferKm('')
-                    }}
-                  />
-                  <span>Add optional buffer around the area</span>
-                </label>
-                {showBuffer && (
-                  <label className="block text-sm">
-                    <span className="text-app-muted">
-                      Buffer radius ({REPORT_BUFFER_KM_MIN}-{REPORT_BUFFER_KM_MAX} km)
-                    </span>
-                    <input
-                      type="number"
-                      min={REPORT_BUFFER_KM_MIN}
-                      max={REPORT_BUFFER_KM_MAX}
-                      className="mt-1 w-full rounded-lg border app-divider bg-app-bg px-3 py-2 text-app-text"
-                      value={bufferKm}
-                      onChange={(e) => setBufferKm(e.target.value)}
-                      placeholder="e.g. 5"
-                    />
-                  </label>
                 )}
               </div>
             </div>

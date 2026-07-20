@@ -444,13 +444,18 @@ export default function DashboardMarketplacePage() {
       </section>
 
       <section>
-        <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-lg font-semibold text-app-text">Inquiry inbox</h2>
-          {unread > 0 && (
-            <span className="rounded-full bg-terra-100 px-2.5 py-0.5 text-xs font-medium text-terra-800 dark:bg-terra-500/20 dark:text-terra-300">
-              {unread} unread
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {unread > 0 && (
+              <span className="rounded-full bg-terra-100 px-2.5 py-0.5 text-xs font-medium text-terra-800 dark:bg-terra-500/20 dark:text-terra-300">
+                {unread} unread
+              </span>
+            )}
+            <Link to="/dashboard/marketplace/messages" className="text-sm text-terra-600 hover:underline">
+              Open messages
+            </Link>
+          </div>
         </div>
         <div className="overflow-hidden rounded-xl border app-divider bg-app-surface">
           {inquiriesQuery.isLoading ? (
@@ -492,7 +497,14 @@ export default function DashboardMarketplacePage() {
                           {new Date(inquiry.created_at).toLocaleString()}
                         </p>
                       </div>
-                      {!inquiry.is_read && (
+                      {!inquiry.is_read && inquiry.conversation_id ? (
+                        <Link
+                          to={`/dashboard/marketplace/messages?conversation=${inquiry.conversation_id}`}
+                          className="btn-secondary text-xs"
+                        >
+                          Reply in chat
+                        </Link>
+                      ) : !inquiry.is_read ? (
                         <button
                           type="button"
                           className="btn-secondary text-xs"
@@ -501,7 +513,7 @@ export default function DashboardMarketplacePage() {
                         >
                           Mark read
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </li>
                 ))}

@@ -15,6 +15,7 @@ import DashboardAnalytics from './pages/dashboard/DashboardAnalytics'
 import DashboardTerraAssistant from './pages/dashboard/DashboardTerraAssistant'
 import DashboardReports from './pages/dashboard/DashboardReports'
 import DashboardMarketplacePage from './pages/dashboard/DashboardMarketplacePage'
+import DashboardMarketplaceMessagesPage from './pages/dashboard/DashboardMarketplaceMessagesPage'
 import DashboardMarketplaceEditorPage from './pages/dashboard/DashboardMarketplaceEditorPage'
 import ExplorationReportPage from './pages/dashboard/ExplorationReportPage'
 import LoginPage from './pages/LoginPage'
@@ -76,6 +77,7 @@ export default function App() {
           <Route path="assistant" element={<DashboardTerraAssistant />} />
           <Route path="reports" element={<DashboardReports />} />
           <Route path="marketplace" element={<DashboardMarketplacePage />} />
+          <Route path="marketplace/messages" element={<DashboardMarketplaceMessagesPage />} />
           <Route path="marketplace/new" element={<DashboardMarketplaceEditorPage />} />
           <Route path="marketplace/:id" element={<DashboardMarketplaceEditorPage />} />
           <Route path="exploration-reports" element={<ExplorationReportPage />} />
